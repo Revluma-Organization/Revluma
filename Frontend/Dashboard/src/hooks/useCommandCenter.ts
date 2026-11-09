@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
 import type { CommandCenterData, CommandCenterResponse } from "@/components/command-center/types";
+import { parseCommandCenterResponse } from "@/lib/commandCenterContract";
 import {
   COMMAND_CENTER_TIMEOUT_MS,
   classifyCommandCenterFailure,
@@ -45,10 +46,8 @@ export function useCommandCenter(): CommandCenterState {
     try {
       const result = await api.get<CommandCenterResponse>("/rev/command-center", { signal: controller.signal });
       if (controller.signal.aborted || !mountedRef.current) return;
-      const next = result.data?.data;
-      if (result.data?.success !== true || next?.contract_version !== "command-center-v1" ||
-        typeof next.context?.organization_id !== "string" || !next.briefing ||
-        !Array.isArray(next.metrics) || !Array.isArray(next.findings) || !Array.isArray(next.evidence?.resources)) {
+      const next = parseCommandCenterResponse(result.data, organizationId);
+      if (!next) {
         setFailure({ kind: "invalid_contract", retryAfterSeconds: null, backendMessage: null });
         if (background) setAnnouncement("The refresh failed: the server response was not usable. The last successful briefing is still shown.");
         return;
@@ -84,7 +83,7 @@ export function useCommandCenter(): CommandCenterState {
         setRefreshing(false);
       }
     }
-  }, []);
+  }, [organizationId]);
 
   useEffect(() => {
     mountedRef.current = true;

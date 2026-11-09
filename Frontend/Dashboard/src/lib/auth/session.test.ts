@@ -65,7 +65,7 @@ describe("auth session helpers", () => {
     });
 
     redirectToLogin(true);
-    expect(replace).toHaveBeenCalledWith(LOGIN_PATH);
+    expect(replace).toHaveBeenCalledWith(`${LOGIN_PATH}?next=%2Fdashboard%2Foverview`);
   });
 
   it("does not redirect when already on an auth page", () => {

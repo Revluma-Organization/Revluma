@@ -7,25 +7,33 @@ import {
   broadcastLogout,
   clearAuthStorage,
   getAccessToken,
+  getRefreshToken,
   redirectToLogin,
 } from "@/lib/auth/session";
 import { queryClient } from "@/lib/queryClient";
 
-function handleUnauthorized(): void {
+export function handleUnauthorized(): void {
   clearAuthStorage();
   try {
     queryClient.clear();
   } catch {
-    // ignore
+    // Query cache may be unavailable during a very early authentication failure.
   }
   broadcastLogout();
   redirectToLogin(true);
+}
+
+/** Sanitised request correlation: never include merchant payloads in telemetry. */
+export function createRequestId(): string {
+  return globalThis.crypto?.randomUUID?.() ??
+    `rv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
 export interface ApiResponse<T = unknown> {
   data: T;
   status: number;
   ok: boolean;
+  correlationId: string;
 }
 
 export class ApiError extends Error {
@@ -33,6 +41,7 @@ export class ApiError extends Error {
   body: unknown;
   /** Raw Retry-After header (delta-seconds or HTTP-date), when the server sent one. */
   retryAfter: string | null;
+  correlationId: string | null;
 
   constructor(status: number, message: string, body?: unknown) {
     super(message);
@@ -40,6 +49,7 @@ export class ApiError extends Error {
     this.status = status;
     this.body = body;
     this.retryAfter = null;
+    this.correlationId = null;
   }
 }
 
@@ -52,6 +62,10 @@ export interface RequestOptions {
   skipAuthRedirect?: boolean;
   /** Allows page/store changes to cancel obsolete read requests. */
   signal?: AbortSignal;
+  /** Bounded transport time; caller cancellation remains distinct from timeout. */
+  timeoutMs?: number;
+  /** Stable request identifier for server-side diagnostics (never a secret). */
+  requestId?: string;
 }
 
 /**
@@ -59,14 +73,23 @@ export interface RequestOptions {
  * Prefer VITE_API_URL. Always ensure `/api/v1` suffix so paths like `/auth/logout`
  * hit `POST /api/v1/auth/logout` on the Express backend.
  */
-function resolveBaseUrl(): string {
-  const raw =
-    (import.meta.env.VITE_API_URL as string | undefined)?.trim() ||
-    "http://localhost:8000/api/v1";
-
+export function resolveApiBaseUrl(rawValue: string | undefined, production = import.meta.env.PROD): string {
+  const raw = rawValue?.trim() || (production ? "" : "http://localhost:8000/api/v1");
+  if (!raw) throw new Error("VITE_API_URL is required for a production build.");
   const normalized = raw.replace(/\/+$/, "");
-  if (normalized.endsWith("/api/v1")) return normalized;
-  return `${normalized}/api/v1`;
+  const base = normalized.endsWith("/api/v1") ? normalized : `${normalized}/api/v1`;
+  const parsed = new URL(base);
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
+  if (production && (parsed.protocol !== "https:" || local)) {
+    throw new Error("Production API URL must use HTTPS and cannot target a local service.");
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("API URL must use HTTP or HTTPS.");
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error("API URL cannot contain credentials, query parameters or fragments.");
+  return base;
+}
+
+function resolveBaseUrl(): string {
+  return resolveApiBaseUrl(import.meta.env.VITE_API_URL as string | undefined);
 }
 
 const BASE_URL = resolveBaseUrl();
@@ -143,7 +166,10 @@ async function performTokenRefresh(): Promise<string | null> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include", // Sends the HttpOnly cookie automatically
-      body: JSON.stringify({ organization_id: storedOrganizationId() }),
+      body: JSON.stringify({
+        organization_id: storedOrganizationId(),
+        ...(getRefreshToken() ? { refresh_token: getRefreshToken() } : {}),
+      }),
     });
 
     if (!response.ok) return null;
@@ -178,6 +204,22 @@ function refreshAccessToken(): Promise<string | null> {
   return refreshInFlight;
 }
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
+function requestAbort(signal: AbortSignal | undefined, timeoutMs: number) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) controller.abort();
+  const timer = globalThis.setTimeout(() => { timedOut = true; controller.abort(); }, Math.max(1, timeoutMs));
+  return {
+    signal: controller.signal,
+    timedOut: () => timedOut,
+    clear: () => { globalThis.clearTimeout(timer); signal?.removeEventListener("abort", abort); },
+  };
+}
+
 async function request<T>(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
@@ -199,10 +241,12 @@ async function request<T>(
     // Detect if the body is a file upload (FormData)
   const isFormData = options.body instanceof FormData;
 
-  const headers: Record<string, string> = {};
-  
-  // Only set application/json if we are NOT sending a file
-  if (!isFormData) {
+  const correlationId = options.requestId ?? createRequestId();
+  const headers: Record<string, string> = { "X-Request-ID": correlationId };
+
+  // Avoid a needless CORS preflight on bodyless reads and let multipart fetch
+  // generate its own boundary.
+  if (!isFormData && options.body !== undefined) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -228,19 +272,25 @@ async function request<T>(
   }
 
   let response: Response;
+  const transport = requestAbort(options.signal, options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
   try {
     response = await fetch(url.toString(), {
       method,
       headers,
       credentials: "include",
-      signal: options.signal,
-      // Pass FormData directly so fetch can auto-generate the multipart boundary!
-      body: isFormData 
-        ? (options.body as FormData) 
+      signal: transport.signal,
+      body: isFormData
+        ? (options.body as FormData)
         : (options.body !== undefined ? JSON.stringify(options.body) : undefined),
     });
   } catch (networkError) {
-    throw new ApiError(0, `Network error: ${(networkError as Error).message}`);
+    if (transport.timedOut()) throw new ApiError(0, "The request timed out. Please try again.");
+    if (options.signal?.aborted || (networkError as Error)?.name === "AbortError") {
+      throw new ApiError(0, "The request was cancelled.");
+    }
+    throw new ApiError(0, "The service could not be reached. Check your connection and try again.");
+  } finally {
+    transport.clear();
   }
 
   assertCurrentSession(generation);
@@ -253,7 +303,7 @@ async function request<T>(
       : await refreshAccessToken();
     assertCurrentSession(generation);
     if (refreshed) {
-      return request<T>(method, path, options, true);
+      return request<T>(method, path, { ...options, requestId: correlationId }, true);
     }
     handleUnauthorized();
     throw new ApiError(401, "Unauthorized – redirecting to login");
@@ -269,10 +319,16 @@ async function request<T>(
   }
 
   const ct = response.headers.get("content-type") ?? "";
-  const data = ct.includes("application/json")
-    ? ((await response.json()) as T)
-    : (null as unknown as T);
+  let data: T;
+  try {
+    data = ct.includes("application/json")
+      ? ((await response.json()) as T)
+      : (null as unknown as T);
+  } catch {
+    throw new ApiError(response.status, "The service returned an unreadable response. Please try again.");
+  }
   assertCurrentSession(generation);
+  const responseCorrelationId = response.headers.get("x-request-id") ?? correlationId;
 
   if (!response.ok) {
     const errorBody = data as {
@@ -292,10 +348,11 @@ async function request<T>(
     // Task 220 — surface rate-limit / service retry guidance so the UI can
     // honor it (disabled retry + countdown) instead of inviting a loop.
     apiError.retryAfter = response.headers.get("retry-after");
+    apiError.correlationId = responseCorrelationId;
     throw apiError;
   }
 
-  return { data, status: response.status, ok: response.ok };
+  return { data, status: response.status, ok: response.ok, correlationId: responseCorrelationId };
 }
 
 function get<T = unknown>(

@@ -2,7 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { WorkspaceSelection } from './WorkspaceSelection';
 import { LOGIN_PATH } from '@/lib/auth/constants';
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -42,5 +42,8 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }
 
   if (!user.tenant_id) return <WorkspaceSelection />;
-  return <>{children}</>;
+  // A workspace switch is a hard client-data boundary. Remount the complete
+  // protected subtree so local pages, streams and non-React-query caches from
+  // the previous organization cannot survive the context change.
+  return <Fragment key={user.tenant_id}>{children}</Fragment>;
 };

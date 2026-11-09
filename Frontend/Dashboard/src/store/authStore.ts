@@ -42,6 +42,30 @@ interface AuthState {
   sessionVerified: boolean;
 }
 
+interface AuthUserResponse {
+  id: string;
+  email: string;
+  full_name: string;
+  active_organization_id?: string | null;
+  email_verified?: boolean;
+  onboarding_completed?: boolean;
+  profile_picture_url?: string | null;
+}
+
+interface AuthEnvelope {
+  requires_2fa?: boolean;
+  temp_token?: string;
+  resetToken?: string;
+  data?: {
+    requires_2fa?: boolean;
+    temp_token?: string;
+    access_token?: string;
+    refresh_token?: string;
+    user?: AuthUserResponse;
+    resetToken?: string;
+  };
+}
+
 interface AuthActions {
   setUser: (user: User | null) => void;
   setLoading: (loading: boolean) => void;
@@ -140,7 +164,7 @@ export const useAuthStore = create<AuthStore>()(
       verifyOtp: async (email, otp) => {
   set({ loading: true, error: null });
   try {
-    const res = await api.post<any>('/auth/forgot-password/verify', {
+    const res = await api.post<AuthEnvelope>('/auth/forgot-password/verify', {
       email,
       code: otp,
     });
@@ -175,15 +199,15 @@ export const useAuthStore = create<AuthStore>()(
         set({ loading: true, error: null });
         try {
           // Changed typing to 'any' to dynamically handle both 2FA and normal login responses
-          const res = await api.post<any>('/auth/login', { account: { email, password } });
+          const res = await api.post<AuthEnvelope>('/auth/login', { account: { email, password } });
           if (generation !== currentSessionGeneration()) return;
 
           // --- PHASE 1: 2FA INTERCEPTION ---
           if (res.data.requires_2fa || res.data.data?.requires_2fa) {
             set({ loading: false });
-            return { 
-              requires2FA: true, 
-              tempToken: res.data.temp_token || res.data.data?.temp_token || res.data.data?.access_token 
+            return {
+              requires2FA: true,
+              tempToken: res.data.temp_token || res.data.data?.temp_token || res.data.data?.access_token
             };
           }
 
@@ -204,7 +228,7 @@ export const useAuthStore = create<AuthStore>()(
               full_name: user.full_name,
               display_name: user.full_name.split(' ')[0],
               avatar_url: null,
-              profile_picture_url: (user as any).profile_picture_url || null,
+              profile_picture_url: user.profile_picture_url || null,
               role: 'unknown',
               tenant_id: user.active_organization_id || '',
               email_verified: user.email_verified === true,
@@ -213,7 +237,7 @@ export const useAuthStore = create<AuthStore>()(
             loading: false,
             error: null,
           });
-        } catch (err: any) {
+        } catch (err: unknown) {
           if (generation !== currentSessionGeneration()) return;
           set({ loading: false, error: 'Invalid email or password. Please try again.' });
           throw err;
@@ -227,8 +251,8 @@ export const useAuthStore = create<AuthStore>()(
         set({ loading: true, error: null });
         try {
           // Pass the boolean to backend's endpoint
-          const res = await api.post<any>('/auth/2fa/verify', 
-            { code, trust_device: trustDevice }, 
+          const res = await api.post<AuthEnvelope>('/auth/2fa/verify',
+            { code, trust_device: trustDevice },
             { accessToken: tempToken, skipAuthRedirect: true }
           );
           if (generation !== currentSessionGeneration()) return;
@@ -250,7 +274,7 @@ export const useAuthStore = create<AuthStore>()(
               full_name: user.full_name,
               display_name: user.full_name.split(' ')[0],
               avatar_url: null,
-              profile_picture_url: (user as any).profile_picture_url || null,
+              profile_picture_url: user.profile_picture_url || null,
               role: 'unknown',
               tenant_id: user.active_organization_id || '',
               email_verified: user.email_verified === true,
@@ -259,7 +283,7 @@ export const useAuthStore = create<AuthStore>()(
             loading: false,
             error: null,
           });
-        } catch (err: any) {
+        } catch (err: unknown) {
           if (generation !== currentSessionGeneration()) return;
           set({ loading: false, error: 'Invalid 2FA code. Please try again.' });
           throw err;
@@ -297,8 +321,11 @@ export const useAuthStore = create<AuthStore>()(
             const res = await api.get<{ success: boolean; data: ProfileData }>('/auth/me');
             if (!res.data.success) throw new Error('Session could not be verified.');
             u = res.data.data;
-          } catch {
+          } catch (error) {
             if (!isCurrent()) return;
+            // Compatibility fallback is only for deployments without /auth/me.
+            // Never repeat a forbidden, timed-out or unauthorized session probe.
+            if (!(error instanceof Error && 'status' in error && (error as { status?: unknown }).status === 404)) throw error;
             const res2 = await api.get<{ success: boolean; data: ProfileData }>('/auth/getProfile');
             if (!res2.data.success) throw new Error('Session could not be verified.');
             u = res2.data.data;

@@ -51,7 +51,9 @@ async function revokeServerSession(allSessions: boolean, accessToken?: string): 
     await api.post(endpoint, { refresh_token: refreshToken }, { skipAuthRedirect: true, accessToken });
   } catch (err) {
     // Network / 401 / 404 — local clear still proceeds.
-    console.warn("[auth] Server logout failed; clearing local session anyway.", err);
+    const status = typeof err === "object" && err !== null && "status" in err
+      ? (err as { status?: unknown }).status : undefined;
+    console.warn("[auth] Server logout failed; clearing local session anyway.", { status });
   }
 }
 
@@ -69,7 +71,7 @@ export async function performLogout(options: LogoutOptions = {}): Promise<void> 
     clearClientSession();
 
     if (!skipRedirect) {
-      redirectToLogin(true);
+      redirectToLogin(true, false);
     }
   })().finally(() => {
     logoutInFlight = null;
@@ -81,5 +83,5 @@ export async function performLogout(options: LogoutOptions = {}): Promise<void> 
 /** Local-only purge used by cross-tab listeners (no second server call). */
 export function purgeLocalSession(redirect = true): void {
   clearClientSession();
-  if (redirect) redirectToLogin(true);
+  if (redirect) redirectToLogin(true, false);
 }

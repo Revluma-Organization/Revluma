@@ -4,6 +4,8 @@ import { createSseParser, RevStreamError, streamRevAnswer } from './revStream';
 vi.mock('@/lib/api', () => ({
   getApiBaseUrl: () => 'https://api.example.test/api/v1',
   getStreamingAuthHeaders: async () => ({ Authorization: 'Bearer scoped-token' }),
+  createRequestId: () => '11111111-1111-4111-8111-111111111111',
+  handleUnauthorized: vi.fn(),
 }));
 const REQUEST = '44444444-4444-4444-8444-444444444444';
 const CONV = '33333333-3333-4333-8333-333333333333';

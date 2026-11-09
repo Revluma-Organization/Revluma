@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/api", () => ({
   getApiBaseUrl: () => "https://api.example.test/api/v1",
   getStreamingAuthHeaders: async () => ({ Authorization: "Bearer test-token" }),
+  createRequestId: () => "11111111-1111-4111-8111-111111111111",
+  handleUnauthorized: vi.fn(),
 }));
 
 import { createSseParser, RevStreamError, streamRevAnswer } from "./revStream";

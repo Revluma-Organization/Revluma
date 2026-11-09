@@ -3,6 +3,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Mail, KeyRound, Lock, ArrowRight, Loader2, CheckCircle2, ShieldCheck, ChevronLeft, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api";
 
+type PasswordResetResponse = {
+  reset_token?: string;
+  resetToken?: string;
+  token?: string;
+  data?: { reset_token?: string; resetToken?: string };
+};
+
 export default function ForgotPassword() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [loading, setLoading] = useState(false);
@@ -61,7 +68,7 @@ export default function ForgotPassword() {
     setError("");
 
     try {
-      await api.post<any>("/auth/forgot-password", { email });
+      await api.post<Record<string, never>>("/auth/forgot-password", { email });
       setOtp(["", "", "", "", "", ""]);
       setResendSeconds(45);
       setExpirySeconds(10 * 60);
@@ -109,7 +116,7 @@ export default function ForgotPassword() {
     setLoading(true);
     setError("");
     try {
-      await api.post<any>("/auth/forgot-password", { email });
+      await api.post<Record<string, never>>("/auth/forgot-password", { email });
       setOtp(["", "", "", "", "", ""]);
       setResendSeconds(45);
       setExpirySeconds(10 * 60);
@@ -132,14 +139,14 @@ export default function ForgotPassword() {
     setError("");
 
     try {
-      const res = await api.post<any>("/auth/forgot-password/verify", { 
-        email, 
-        code: otpString 
+      const res = await api.post<PasswordResetResponse>("/auth/forgot-password/verify", {
+        email,
+        code: otpString
       });
-            const token = res.data?.reset_token 
-        || res.data?.resetToken 
-        || res.data?.data?.reset_token 
-        || res.data?.data?.resetToken 
+            const token = res.data?.reset_token
+        || res.data?.resetToken
+        || res.data?.data?.reset_token
+        || res.data?.data?.resetToken
         || res.data?.token;
 
       if (token) {
@@ -169,7 +176,7 @@ export default function ForgotPassword() {
     setError("");
 
         try {
-      await api.post<any>("/auth/forgot-password/reset", {
+      await api.post<Record<string, never>>("/auth/forgot-password/reset", {
         email: email,
         reset_token: resetToken,
         password: newPassword,
@@ -228,7 +235,7 @@ export default function ForgotPassword() {
 
         {/* Main Card */}
         <div className="recovery-card border rounded-2xl p-6 sm:p-8 relative overflow-hidden">
-          
+
           {/* Decorative hairline */}
           <div className="absolute top-0 left-0 w-full h-1 bg-blue-600" />
 
@@ -350,7 +357,7 @@ export default function ForgotPassword() {
                           Change Email
                         </button>
                       </div>
-                      
+
                       <div className="flex justify-between gap-2 sm:gap-3">
                         {otp.map((digit, index) => (
                           <input
@@ -472,7 +479,7 @@ export default function ForgotPassword() {
             )}
           </AnimatePresence>
         </div>
-        
+
         {/* Help text below card */}
         {step !== 3 && !successMessage && (
           <p className="text-center text-[0.7rem] text-slate-500 mt-6">

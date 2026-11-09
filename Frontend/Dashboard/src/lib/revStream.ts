@@ -4,7 +4,7 @@
 // framing, cancellation and typed events so the workspace never renders an
 // unvalidated provider payload directly.
 
-import { getApiBaseUrl, getStreamingAuthHeaders } from "@/lib/api";
+import { createRequestId, getApiBaseUrl, getStreamingAuthHeaders, handleUnauthorized } from "@/lib/api";
 
 export type EvidenceStatus = "available" | "partial" | "unavailable" | "unsupported";
 
@@ -348,6 +348,7 @@ export async function streamRevAnswer({
       headers: {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
+        "X-Request-ID": createRequestId(),
         ...authHeaders,
       },
       credentials: "include",
@@ -369,6 +370,7 @@ export async function streamRevAnswer({
 
   if (!response.ok) {
     clearTimers();
+    if (response.status === 401) handleUnauthorized();
     let code = "STREAM_START_FAILED";
     let detail = "Rev could not start this response. Please try again.";
     try {

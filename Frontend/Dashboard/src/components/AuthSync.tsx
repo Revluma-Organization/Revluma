@@ -37,7 +37,7 @@ export function AuthSync() {
       } catch {
         // ignore
       }
-      redirectToLogin(true);
+      redirectToLogin(true, false);
     });
   }, [resetLocalAuthState]);
 
