@@ -1614,8 +1614,7 @@ describe('Task 224 — Rev Intelligence conversation experience (305–311)', ()
       expect(retryButton()).not.toBeNull();
     });
 
-    it.each([[401, T.unauthorized], [403, T.forbidden], [422, T.validation]] as const)
-      ('offers no futile retry for the permanent %s failure', async (status, message) => {
+    it.each([[401, T.unauthorized], [403, T.forbidden], [422, T.validation]] as const)('offers no futile retry for the permanent %s failure', async (status, message) => {
         freshSend();
         await rejectTurn(new ApiError(status, 'raw', {}));
         expect(await screen.findByText(message)).toBeInTheDocument();

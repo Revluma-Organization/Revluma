@@ -4,7 +4,7 @@
 
 Final local source is based on `c7279ffca080975010a9337f5ebd35e78827b439` and contains only Task 227 changes.
 
-- Full Dashboard: **57 files, 1,290/1,290 PASS**.
+- Full Dashboard: **58 files, 1,385/1,385 PASS**.
 - New Task 227 matrix: **161/161 PASS**, with required categories 20 API, 25 auth, 15 Integrations, 20 Command Center, 25 Rev, 15 cross-workspace, 15 failure/recovery, 10 build/runtime, 16 responsive/accessibility.
 - TypeScript: PASS. ESLint: **0 errors / 18 warnings**. Production build: PASS. Backend app syntax and diff whitespace: PASS.
 - Existing route-level Rev tests cover stale responses, pagination, idempotency, stream termination, modal focus and restoration. Existing Command Center and integration suites cover abort, timeout, malformed state, retry, reconnect and tenant transitions. Task 226 remains 160/160 within the full run.

@@ -16,7 +16,7 @@ Original Tasks **322–325** are delivered together on `arena/13bc77df-revluma`;
 
 | Check | Result |
 |---|---|
-| `npm test` in `Frontend/Dashboard` | **57 files, 1,290/1,290 tests PASS** |
+| `npm test` in `Frontend/Dashboard` | **58 files, 1,385/1,385 tests PASS** |
 | `Task227ProductionWiring.test.ts` | **161/161 new scenarios PASS** |
 | `npx tsc --noEmit` | PASS |
 | `npm run lint -- --quiet` | PASS; full lint retains 18 warnings, 0 errors |
