@@ -57,7 +57,7 @@ describe("Task 219 scenarios A–J and authoritative hierarchy", () => {
   it("G: genuine activity preserves its investigation path", () => {
     render(router(<OperationalActivity data={ccFixture({ activity: [{ id: "f1", kind: "business", type: "revenue_change", finding_id: "a/b", label: "Recorded change", occurred_at: "2026-11-08T10:00:00Z", note: "Verified finding." }] })} />));
     fireEvent.click(screen.getByRole("button", { name: /Investigate event/ }));
-    expect(navigate).toHaveBeenCalledWith("/dashboard/rev-intell?finding=a%2Fb");
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=a%2Fb"));
   });
   it("H: no activity has an explicit empty state and no fake event", () => {
     render(<OperationalActivity data={ccFixture()} />);
@@ -96,7 +96,7 @@ describe("Task 219 consolidated Task 218 contracts", () => {
   it("canonical activity retains exact finding IDs and only working integration destinations", () => {
     render(router(<OperationalActivity data={ccFixture({ operational_activity: operationalActivityFixture({ items: [{ event_id: "finding:abc", type: "finding", category: "finding", severity: "warning", title: "Recorded change", detail: "finding type: revenue_change", status: "open", occurred_at: "2026-11-08T10:00:00Z", received_at: "2026-11-08T10:00:01Z", source: "intelligence_findings", finding_id: "a/b", link: "/findings" }], total: 1, returned: 1 }) })} />));
     fireEvent.click(screen.getByRole("button", { name: /Investigate event/ }));
-    expect(navigate).toHaveBeenCalledWith("/dashboard/rev-intell?finding=a%2Fb");
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=a%2Fb"));
   });
   it("an empty canonical window is not a claim that nothing happened", () => {
     render(<OperationalActivity data={ccFixture({ operational_activity: operationalActivityFixture({ items: [], total: 0, returned: 0 }) })} />);
@@ -205,7 +205,7 @@ describe("Task 219 finding, activity and readiness governance", () => {
   it("Rev navigation preserves the exact finding route", () => {
     priority(ccPriorityFixture());
     fireEvent.click(screen.getByRole("button", { name: /Investigate in Rev Intelligence/ }));
-    expect(navigate).toHaveBeenCalledWith("/dashboard/rev-intell?finding=finding-1");
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=finding-1"));
   });
   it("excluded stale findings remain historical, not current headings", () => {
     priority(ccFixture({ priority_selection: { ...ccFixture().priority_selection, exclusions: [{ finding_id: "old", title: "Old issue", reason: "stale_unreverified" }] } }));

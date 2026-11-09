@@ -16,6 +16,7 @@ import GlassmorphismCard from "@/components/GlassmorphismCard";
 import { createPortal } from "react-dom";
 
 import { useIntegrationStates } from "@/hooks/useIntegrationStates";
+import { MerchantJourneyStatus } from "@/components/MerchantJourneyStatus";
 import { IntegrationStatusBadge } from "@/components/IntegrationStatus";
 import { SyncProgressCard } from "@/components/SyncProgress";
 import {
@@ -476,6 +477,7 @@ export default function Integrations() {
     // Task 215 mobile guard: w-full + overflow-x-clip ensure no horizontal
     // page scroll at 320–430px; individual cards use min-w-0/break-words.
     <div className="mx-auto w-full max-w-[1480px] space-y-6 overflow-x-clip">
+      <MerchantJourneyStatus />
       {/* Page header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>

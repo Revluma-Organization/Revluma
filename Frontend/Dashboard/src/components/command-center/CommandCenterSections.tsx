@@ -3,6 +3,7 @@ import {
   PackageCheck, PlugZap, RefreshCw, ShoppingBag, ShoppingCart, Store,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { investigationRoute } from "@/lib/workspaceNavigation";
 import { useEffect, useRef, useState } from "react";
 import { INTEGRATION_STATE_LABELS } from "@/lib/integrationState";
 import { api } from "@/lib/api";
@@ -10,6 +11,12 @@ import { type ActivityItem, type BusinessIndicator, BUSINESS_STATUS_LABEL, DATA_
 import { cn } from "@/lib/utils";
 import { cc } from "./tokens";
 import type { BusinessMetric, CommandCenterData, EvidenceResource } from "./types";
+
+function useWorkspaceNavigation() {
+  const navigate = useNavigate();
+  return (route: string) => navigate(route.startsWith("/dashboard/rev-intell")
+    ? investigationRoute(route, `${window.location.pathname}${window.location.search}${window.location.hash}`) : route);
+}
 
 const money = (value: number, currency: string) => {
   try { return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value); }
@@ -61,7 +68,7 @@ export function CommandCenterHeader({ data, refreshing, lastSuccessfulAt, onRefr
 }
 
 export function OperationalBriefing({ data }: { data: CommandCenterData }) {
-  const navigate = useNavigate();
+  const openRoute = useWorkspaceNavigation();
   const { briefing } = data;
   const hasPriority = Boolean(data.priority_finding);
   return <section aria-labelledby="operational-briefing-heading" className={cn(cc.surface, "relative overflow-hidden p-5 before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-[#1F06AC] sm:p-7")}>
@@ -83,7 +90,7 @@ export function OperationalBriefing({ data }: { data: CommandCenterData }) {
       <p className={cn("max-w-2xl", cc.metadata)}>{hasPriority ? `${data.priority_selection.eligible_count} eligible finding${data.priority_selection.eligible_count === 1 ? "" : "s"} · ${data.priority_finding?.confidence.classification.replaceAll("_", " ")} confidence in the leading observation` : briefing.next_investigation.reason}</p>
       {hasPriority
         ? <a href="#priority-finding" className={cc.primary}>Review priority <ArrowDown className="h-3.5 w-3.5" /></a>
-        : <button type="button" onClick={() => navigate(briefing.next_investigation.route)} className={cc.primary}>{briefing.next_investigation.label}<ArrowRight className="h-3.5 w-3.5" /></button>}
+        : <button type="button" onClick={() => openRoute(briefing.next_investigation.route)} className={cc.primary}>{briefing.next_investigation.label}<ArrowRight className="h-3.5 w-3.5" /></button>}
     </div>
   </section>;
 }
@@ -103,7 +110,7 @@ function observationText(item: CommandCenterData["findings"][number]["evidence"]
 }
 
 export function PriorityFindings({ data }: { data: CommandCenterData }) {
-  const navigate = useNavigate();
+  const openRoute = useWorkspaceNavigation();
   const finding = data.priority_finding;
   const lower = data.findings.filter(item => item.id !== finding?.id);
   const critical = finding && ["critical", "high"].includes(finding.severity);
@@ -151,10 +158,10 @@ export function PriorityFindings({ data }: { data: CommandCenterData }) {
       </details>
       <div className={cn("mt-5 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between", cc.divider)}>
         <p className={cc.metadata}>{finding.recommendation.validation_method || "Further evidence is required before a current recommendation."}</p>
-        <button type="button" onClick={() => navigate(finding.investigation.route)} className={cc.primary}>Investigate in Rev Intelligence <ArrowRight className="h-3.5 w-3.5" /></button>
+        <button type="button" onClick={() => openRoute(finding.investigation.route)} className={cc.primary}>Investigate in Rev Intelligence <ArrowRight className="h-3.5 w-3.5" /></button>
       </div>
     </article> : <div className="p-5 sm:p-6"><p className="text-sm font-semibold">No sufficiently supported priority is currently available</p><p className={cn("mt-1.5 max-w-3xl", cc.metadata)}>{data.priority_selection.reason || "No current finding meets the validity and evidence requirements."} This is not proof that the store has no problems.</p>{data.priority_selection.exclusions.length > 0 && <ul className={cn("mt-3 space-y-1", cc.metadata)} aria-label="Findings excluded from current priority">{data.priority_selection.exclusions.map(item => <li key={item.finding_id}><span className="font-semibold text-[#344054]">{item.title}</span> — not current: {item.reason.replaceAll("_", " ")}. Historical evidence is not presented as a current condition.</li>)}</ul>}</div>}
-    {lower.length > 0 && <div className={cn("border-t p-5", cc.divider)}><h3 className={cc.cardTitle}>Other eligible findings</h3><div className={cn("mt-3 divide-y", cc.divider)}>{lower.map(item => <article key={item.id} className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="text-xs font-semibold">{item.title}</h4><p className={cn("mt-1", cc.metadata)}>{item.severity} · {item.confidence.classification.replaceAll("_", " ")} confidence · {item.evidence_freshness.state}</p></div><button type="button" onClick={() => navigate(item.investigation.route)} className={cc.secondary}>Investigate <ArrowRight className="h-3.5 w-3.5" /></button></article>)}</div></div>}
+    {lower.length > 0 && <div className={cn("border-t p-5", cc.divider)}><h3 className={cc.cardTitle}>Other eligible findings</h3><div className={cn("mt-3 divide-y", cc.divider)}>{lower.map(item => <article key={item.id} className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="text-xs font-semibold">{item.title}</h4><p className={cn("mt-1", cc.metadata)}>{item.severity} · {item.confidence.classification.replaceAll("_", " ")} confidence · {item.evidence_freshness.state}</p></div><button type="button" onClick={() => openRoute(item.investigation.route)} className={cc.secondary}>Investigate <ArrowRight className="h-3.5 w-3.5" /></button></article>)}</div></div>}
   </section>;
 }
 
@@ -223,7 +230,7 @@ export function HealthIndicators({ data }: { data: CommandCenterData }) {
 export const BusinessOverview = HealthIndicators;
 
 function CanonicalOperationalActivity({ data }: { data: CommandCenterData }) {
-  const navigate = useNavigate();
+  const openRoute = useWorkspaceNavigation();
   const contract = data.operational_activity!;
   const [extra, setExtra] = useState<ActivityItem[]>([]);
   const [cursor, setCursor] = useState(contract.next_cursor);
@@ -262,7 +269,7 @@ function CanonicalOperationalActivity({ data }: { data: CommandCenterData }) {
     {items.length ? <ul className={cn("divide-y", cc.divider)}>{items.map(item => {
       const investigate = item.type === "finding" && item.finding_id;
       const integrations = item.link === "/integrations";
-      return <li key={item.event_id} className="flex gap-3 p-5"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.severity === "critical" ? "bg-[#b42318]" : item.severity === "warning" || item.severity === "attention" ? "bg-[#b54708]" : item.type === "finding" ? "bg-[#1F06AC]" : "bg-[#98a2b3]")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold">{item.title}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.type.replaceAll("_", " ")} · {item.severity}</span></div>{item.detail && <p className={cn("mt-1 break-words", cc.metadata)}>{item.detail}</p>}<p className={cn("mt-1", cc.metadata)}>Occurred {dateTime(item.occurred_at)}{new Date(item.received_at).getTime() - new Date(item.occurred_at).getTime() > 300_000 ? ` · recorded ${relative(item.received_at)}` : ""}</p>{investigate && <button type="button" onClick={() => navigate(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}{integrations && <button type="button" onClick={() => navigate("/dashboard/integrations")} className={cn("mt-2 min-h-9", cc.disclosure)}>Review integration <ArrowRight className="inline h-3 w-3" /></button>}</div></li>;
+      return <li key={item.event_id} className="flex gap-3 p-5"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.severity === "critical" ? "bg-[#b42318]" : item.severity === "warning" || item.severity === "attention" ? "bg-[#b54708]" : item.type === "finding" ? "bg-[#1F06AC]" : "bg-[#98a2b3]")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold">{item.title}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.type.replaceAll("_", " ")} · {item.severity}</span></div>{item.detail && <p className={cn("mt-1 break-words", cc.metadata)}>{item.detail}</p>}<p className={cn("mt-1", cc.metadata)}>Occurred {dateTime(item.occurred_at)}{new Date(item.received_at).getTime() - new Date(item.occurred_at).getTime() > 300_000 ? ` · recorded ${relative(item.received_at)}` : ""}</p>{investigate && <button type="button" onClick={() => openRoute(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}{integrations && <button type="button" onClick={() => openRoute("/dashboard/integrations")} className={cn("mt-2 min-h-9", cc.disclosure)}>Review integration <ArrowRight className="inline h-3 w-3" /></button>}</div></li>;
     })}</ul> : <div className="p-5"><p className="text-xs font-semibold">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No activity could be confirmed for this {contract.window_days}-day window. An empty feed may mean no matching records or unavailable source evidence; it does not prove that nothing happened.</p></div>}
     {failed && <p role="alert" className={cn("px-5 pb-3", cc.warning)}>More activity could not be loaded. The events already shown are unchanged.</p>}
     {hasMore && cursor && <div className="p-5 pt-0"><button type="button" onClick={() => void loadMore()} disabled={pending} className={cc.secondary}>{pending ? "Loading…" : `Load more (${Math.max(0, total - items.length)} remaining)`}</button></div>}
@@ -270,11 +277,11 @@ function CanonicalOperationalActivity({ data }: { data: CommandCenterData }) {
 }
 
 export function OperationalActivity({ data }: { data: CommandCenterData }) {
-  const navigate = useNavigate();
+  const openRoute = useWorkspaceNavigation();
   if (data.operational_activity) return <CanonicalOperationalActivity data={data} />;
   return <section aria-labelledby="operational-activity-heading" className={cc.surface}>
     <SectionHeader id="operational-activity-heading" title="Operational activity" description="Verified findings and system events, in chronological order" />
-    {data.activity.length ? <ul className={cn("divide-y", cc.divider)}>{data.activity.map(item => <li key={item.id} className="flex gap-3 p-5"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.kind === "business" ? "bg-[#1F06AC]" : "bg-[#98a2b3]")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold">{item.label}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.kind}</span></div><p className={cn("mt-1", cc.metadata)}>{dateTime(item.occurred_at)} · {item.note}</p>{item.kind === "business" && item.finding_id && <button type="button" onClick={() => navigate(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}</div></li>)}</ul> : <div className="p-5"><p className="text-xs font-semibold">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No verified operational activity is recorded for this view. No placeholder events are inserted.</p></div>}
+    {data.activity.length ? <ul className={cn("divide-y", cc.divider)}>{data.activity.map(item => <li key={item.id} className="flex gap-3 p-5"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.kind === "business" ? "bg-[#1F06AC]" : "bg-[#98a2b3]")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold">{item.label}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.kind}</span></div><p className={cn("mt-1", cc.metadata)}>{dateTime(item.occurred_at)} · {item.note}</p>{item.kind === "business" && item.finding_id && <button type="button" onClick={() => openRoute(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}</div></li>)}</ul> : <div className="p-5"><p className="text-xs font-semibold">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No verified operational activity is recorded for this view. No placeholder events are inserted.</p></div>}
   </section>;
 }
 

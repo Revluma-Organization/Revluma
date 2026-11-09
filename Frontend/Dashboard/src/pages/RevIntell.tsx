@@ -27,8 +27,9 @@ import {
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
   Zap, RefreshCw, Mic, Phone, Pencil,
   Trash2, ImageIcon, AlertCircle, RefreshCcw, Square, Search,
-  ThumbsUp, ThumbsDown, Volume2,
+  ThumbsUp, ThumbsDown, Volume2, ArrowLeft,
 } from "lucide-react";
+import { commandCenterReturnRoute } from "@/lib/workspaceNavigation";
 import revIntellLogo from "@/assets/images/rev-intell-logo.png";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
@@ -1582,6 +1583,14 @@ export default function RevIntell() {
       style={{ height: "calc(100dvh - var(--topbar-h, 64px))", margin: "-20px -20px 0", background: bg }}>
 
       <div className="flex flex-col flex-1 min-w-0 h-full">
+
+      <div className="absolute left-4 top-4 z-30">
+        <button type="button" onClick={() => navigate(commandCenterReturnRoute(searchParams.toString() ? `?${searchParams}` : ""))}
+          className="flex min-h-11 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors hover:opacity-80"
+          style={{ background: card, borderColor: bdr, color: t1 }} aria-label="Return to Command Center">
+          <ArrowLeft size={16} aria-hidden="true" /><span className="hidden sm:inline">Command Center</span>
+        </button>
+      </div>
 
       {/* Hamburger (mobile) */}
       <div className="absolute top-4 right-4 z-30">

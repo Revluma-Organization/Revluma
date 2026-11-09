@@ -18,6 +18,7 @@ const { buildBusinessHealth, validateBusinessHealth } = require('../services/bus
 const { fetchBusinessHealthBundle } = require('../services/businessHealthRepository');
 const { buildOperationalActivity, validateOperationalActivity, LIMIT_DEFAULT, LIMIT_MAX } = require('../services/operationalActivity');
 const { fetchOperationalActivityBundle } = require('../services/operationalActivityRepository');
+const { CONTRACT_VERSION: JOURNEY_CONTRACT_VERSION, projectJourneyState, validateJourney } = require('../services/merchantJourney');
 
 async function optionalRows(model, args) {
   if (!model?.findMany) return [];
@@ -165,6 +166,44 @@ async function attachCanonicalStates(responseStores, organizationId, now) {
   }
 }
 
+
+// Task 225 — deterministic, refresh-safe onboarding/workspace projection.
+// A store filter is optional, but is always scoped by the active membership.
+exports.getMerchantJourney = async (req, res, next) => {
+  try {
+    const membership = await requireMembership(prisma, req.user.id, req.user.tenantId);
+    const organizationId = membership.organization_id;
+    const storeId = req.query.store_id;
+    if (storeId !== undefined && (typeof storeId !== 'string' || !/^[0-9a-f-]{36}$/i.test(storeId))) {
+      return res.status(400).json({ success: false, error: 'Invalid store_id.' });
+    }
+    const states = await retrieveIntegrationStates({ organizationId });
+    const candidates = states.filter(state => state.store?.id);
+    const selectedState = storeId ? candidates.find(state => state.store.id === storeId) :
+      [...candidates].sort((a, b) => Date.parse(b.store.last_synced_at || b.store.installed_at || 0) - Date.parse(a.store.last_synced_at || a.store.installed_at || 0))[0];
+    if (storeId && !selectedState) return res.status(404).json({ success: false, error: 'Store not found.' });
+    const selected = selectedState ? projectJourneyState(selectedState) : {
+      state: 'authenticated_setup_required', reason: 'no_shopify_store', store: null,
+      title: 'Connect your Shopify store', explanation: 'Authorize read-only Shopify access to start gathering your store evidence.',
+      next_route: '/dashboard/integrations', can_enter_workspace: false, required_resources: [], limited_capabilities: [],
+      authorization: { verified: false, verification: 'not_installed' }, synchronization: { state: 'unknown', last_succeeded_at: null },
+    };
+    const payload = {
+      contract_version: JOURNEY_CONTRACT_VERSION, organization_id: organizationId,
+      selected_store_id: selected.store?.id || null, selected,
+      stores: candidates.map(state => {
+        const projected = projectJourneyState(state);
+        return { id: state.store.id, shop_domain: state.store.shop_domain, state: projected.state,
+          can_enter_workspace: projected.can_enter_workspace, last_synced_at: state.store.last_synced_at };
+      }),
+      evaluated_at: new Date().toISOString(), source: 'rev-integration-state-v1',
+    };
+    const check = validateJourney(payload);
+    if (!check.valid) return res.status(500).json({ success: false, error: 'Merchant journey contract validation failed.' });
+    res.set('Cache-Control', 'no-store');
+    return res.status(200).json({ success: true, data: payload });
+  } catch (error) { next(error); }
+};
 
 exports.getIntegrationStates = async (req, res, next) => {
   try {
