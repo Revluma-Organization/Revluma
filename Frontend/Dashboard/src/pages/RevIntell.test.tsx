@@ -1854,3 +1854,26 @@ describe('Task 224 — Rev Intelligence conversation experience (305–311)', ()
     });
   });
 });
+
+describe('Task 230 return journey', () => {
+  it('preserves the safe Command Center position after a new finding conversation is created', async () => {
+    replies.set(`/rev/findings/${findingOne}`, Promise.resolve(findingReply()));
+    renderPage(`/dashboard/rev-intell?finding=${findingOne}&return_to=${encodeURIComponent(`/dashboard/overview?finding=${findingOne}&section=priority`)}`);
+    await screen.findByRole('heading', { name: 'Revenue decline' });
+    send('Investigate this finding');
+    await act(async () => { streams[0].request.handlers.onMeta?.({ conversation_id: 'Created' }); });
+    expect(new URLSearchParams(screen.getByLabelText('Current search').textContent || '').get('return_to')).toBe(`/dashboard/overview?finding=${findingOne}&section=priority`);
+    fireEvent.click(screen.getByRole('button', { name: /return to command center/i }));
+    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/overview');
+    expect(screen.getByLabelText('Current search')).toHaveTextContent(`finding=${findingOne}`);
+    expect(streams[0].request.signal?.aborted).toBe(true);
+  });
+
+  it('rejects a hostile return destination and does not navigate outside the workspace', async () => {
+    renderPage('/dashboard/rev-intell/A?return_to=https%3A%2F%2Fevil.example');
+    await screen.findByText('Message from A');
+    fireEvent.click(screen.getByRole('button', { name: /return to command center/i }));
+    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/overview');
+    expect(screen.getByLabelText('Current search')).toBeEmptyDOMElement();
+  });
+});

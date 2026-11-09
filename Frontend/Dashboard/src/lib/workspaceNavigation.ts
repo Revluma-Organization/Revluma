@@ -32,3 +32,13 @@ export function investigationRoute(route: string, commandCenterLocation: string)
 export function commandCenterReturnRoute(search: string): string {
   return safeWorkspaceRoute(new URLSearchParams(search).get(RETURN_PARAM));
 }
+
+/** Preserve only the sanitized return hint when Rev changes conversation URLs. */
+export function revConversationRoute(conversationId: string | null, findingId: string | null, returnHint: string | null): string {
+  const params = new URLSearchParams();
+  if (findingId !== null) params.set("finding", findingId);
+  if (returnHint !== null) params.set(RETURN_PARAM, safeWorkspaceRoute(returnHint));
+  const path = conversationId ? `/dashboard/rev-intell/${encodeURIComponent(conversationId)}` : "/dashboard/rev-intell";
+  const query = params.toString();
+  return `${path}${query ? `?${query}` : ""}`;
+}

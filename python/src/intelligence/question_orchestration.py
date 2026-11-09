@@ -60,7 +60,11 @@ def understand_question(message: str, intent: str, *, classification: dict | Non
     previous_understanding = previous.get("question_understanding") or {}
     inherited_intent = ((context.get("last_investigation") or {}).get("intent")
                         or previous_understanding.get("primary_intent"))
-    followup = bool(classification.get("followup") or (FOLLOWUP.search(text) and inherited_intent))
+    # The routing layer has already distinguished a standalone question from
+    # an elliptical follow-up. Do not reinterpret ordinary questions beginning
+    # with "how" or "why" as follow-ups when it explicitly decided otherwise.
+    followup = (bool(classification["followup"]) if "followup" in classification
+                else bool(FOLLOWUP.search(text) and inherited_intent))
     explicit = {name for name, pattern in PATTERNS.items() if pattern.search(text)}
     if re.search(r"which products? are affected|products? affected|product availability", text, re.I):
         explicit.add("operational")

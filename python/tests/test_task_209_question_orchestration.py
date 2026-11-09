@@ -365,3 +365,17 @@ def test_51_error_logs_and_results_do_not_echo_secrets(caplog):
         executor=lambda **kwargs: (_ for _ in ()).throw(ConnectionError("access_token=secret")))
     serialized = json.dumps(results) + caplog.text
     assert "secret" not in serialized and "access_token" not in serialized
+
+
+def test_task230_standalone_checkout_question_does_not_inherit_revenue_domain():
+    result = understand_question("How many checkouts are available for investigation?", "checkout_investigation",
+                                 context=prior(), classification={"followup": False})
+    assert result["primary_intent"] == "checkout_investigation"
+    assert result["required_domains"] == ["checkout"]
+
+
+def test_task230_explicit_checkout_followup_can_expand_revenue_context():
+    result = understand_question("Could abandoned checkouts explain it?", "checkout_investigation",
+                                 context=prior(), classification={"followup": True})
+    assert result["primary_intent"] == "revenue_investigation"
+    assert set(result["required_domains"]) == {"revenue", "checkout"}

@@ -14,8 +14,13 @@ import type { BusinessMetric, CommandCenterData, EvidenceResource } from "./type
 
 function useWorkspaceNavigation() {
   const navigate = useNavigate();
-  return (route: string) => navigate(route.startsWith("/dashboard/rev-intell")
-    ? investigationRoute(route, `${window.location.pathname}${window.location.search}${window.location.hash}`) : route);
+  return (route: string) => {
+    if (!route.startsWith("/dashboard/rev-intell")) return navigate(route);
+    const current = new URL(window.location.href);
+    const finding = new URL(route, current.origin).searchParams.get("finding");
+    if (finding && /^[0-9a-f-]{36}$/i.test(finding)) current.searchParams.set("finding", finding);
+    navigate(investigationRoute(route, `${current.pathname}${current.search}${current.hash}`));
+  };
 }
 
 const money = (value: number, currency: string) => {

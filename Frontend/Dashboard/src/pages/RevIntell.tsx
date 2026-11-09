@@ -29,7 +29,7 @@ import {
   Trash2, ImageIcon, AlertCircle, RefreshCcw, Square, Search,
   ThumbsUp, ThumbsDown, Volume2,
 } from "lucide-react";
-import { commandCenterReturnRoute } from "@/lib/workspaceNavigation";
+import { commandCenterReturnRoute, revConversationRoute } from "@/lib/workspaceNavigation";
 import { explainWorkspaceError, merchantMessage } from "@/lib/workspaceCommunication";
 import { workspaceDesign } from "@/lib/workspaceDesign";
 import revIntellLogo from "@/assets/images/rev-intell-logo.png";
@@ -796,6 +796,7 @@ export default function RevIntell() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const findingId = searchParams.get("finding");
+  const returnHint = searchParams.get("return_to");
 
   const [conversations,  setConversations]  = useState<Conversation[]>([]);
   const [activeId,       setActiveId]       = useState<string | null>(urlConvId || null);
@@ -1192,8 +1193,8 @@ export default function RevIntell() {
     const target = conversations[0];
     if (!target) return;
     resumedBareRouteRef.current = true;
-    navigate(`/dashboard/rev-intell/${target.id}`, { replace: true });
-  }, [conversations, urlConvId, findingId, navigate]);
+    navigate(revConversationRoute(target.id, null, returnHint), { replace: true });
+  }, [conversations, urlConvId, findingId, navigate, returnHint]);
 
   useLayoutEffect(() => () => {
     copyRequestRef.current += 1;
@@ -1248,18 +1249,18 @@ export default function RevIntell() {
     setInput("");
     setMessages([]);
     setConvNotFound(false);
-    navigate("/dashboard/rev-intell");
-  }, [navigate, resetThread]);
+    navigate(revConversationRoute(null, null, returnHint));
+  }, [navigate, resetThread, returnHint]);
 
   // ── Navigate to conversation ──────────────────────────────────────────────
   const openConversation = useCallback((convId: string) => {
     resetThread();
     setMenuOpen(false);
     setEvidenceFor(null);
-    navigate(`/dashboard/rev-intell/${convId}`);
+    navigate(revConversationRoute(convId, null, returnHint));
     if (convId === urlConvId && findingId === null) void loadConversation(convId);
     // URL change triggers the useEffect above which loads the conversation
-  }, [navigate, urlConvId, findingId, resetThread, loadConversation]);
+  }, [navigate, urlConvId, findingId, resetThread, loadConversation, returnHint]);
 
   // ── Turn normalisation ────────────────────────────────────────────────────
   // Node returns the persisted, bounded turn. We keep both the legacy
@@ -1316,7 +1317,7 @@ export default function RevIntell() {
       justCreatedIdRef.current = id;
       justCreatedFindingRef.current = turnFindingId ?? null;
       setActiveId(id);
-      navigate(`/dashboard/rev-intell/${id}${turnFindingId ? `?finding=${encodeURIComponent(turnFindingId)}` : ""}`, { replace: true });
+      navigate(revConversationRoute(id, turnFindingId ?? null, returnHint), { replace: true });
     };
     const trimmed = text.trim();
     const previousSubmission = draftSubmissionRef.current;
@@ -1518,11 +1519,11 @@ export default function RevIntell() {
         turnPendingRef.current = false;
         setThinking(false);
         if (topicChange && findingId) {
-          navigate(turnConversationId ? `/dashboard/rev-intell/${turnConversationId}` : "/dashboard/rev-intell", { replace: true });
+          navigate(revConversationRoute(turnConversationId, null, returnHint), { replace: true });
         }
       }
     }
-  }, [activeId, convLoading, convError, convNotFound, findingId, findingContext, findingLoading, findingError, findingRetryDraft, navigate, imageAttachment, loadConversations, messagesMore]);
+  }, [activeId, convLoading, convError, convNotFound, findingId, findingContext, findingLoading, findingError, findingRetryDraft, navigate, imageAttachment, loadConversations, messagesMore, returnHint]);
 
   // ── Stop generation ───────────────────────────────────────────────────────
   const stopGeneration = useCallback(() => {
@@ -1732,6 +1733,13 @@ export default function RevIntell() {
       style={{ height: "calc(100dvh - var(--topbar-h, 64px))", margin: "-20px -20px 0", background: bg }}>
 
       <div className="flex flex-col flex-1 min-w-0 h-full">
+
+      <div className="shrink-0 px-4 pt-3 pr-16">
+        <button type="button" onClick={() => navigate(commandCenterReturnRoute(searchParams.toString()))}
+          className="min-h-11 rounded-lg px-2 text-sm font-medium hover:underline" style={{ color: t2 }}>
+          ← Return to Command Center
+        </button>
+      </div>
 
       {/* Hamburger (mobile) */}
       <div className="absolute top-4 right-4 z-30">
