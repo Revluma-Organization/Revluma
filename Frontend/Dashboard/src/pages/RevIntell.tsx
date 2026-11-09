@@ -27,7 +27,7 @@ import {
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
   Zap, RefreshCw, Mic, Phone, Pencil,
   Trash2, ImageIcon, AlertCircle, RefreshCcw, Square, Search,
-  ThumbsUp, ThumbsDown, Volume2, ArrowLeft,
+  ThumbsUp, ThumbsDown, Volume2,
 } from "lucide-react";
 import { commandCenterReturnRoute } from "@/lib/workspaceNavigation";
 import { explainWorkspaceError, merchantMessage } from "@/lib/workspaceCommunication";
@@ -50,6 +50,7 @@ import {
   streamRevAnswer, RevStreamError,
   type RevAnswerPayload, type InvestigationStep,
 } from "@/lib/revStream";
+import { classifyRevFailure, classifyRevResponseError, isAssertiveRevFailure } from "@/lib/revError";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,10 @@ interface Message {
   isStreaming?: boolean;
   hasError?:   boolean;
   errorCode?:  string;
+  /** Whether a "Try again" action is an honest, recoverable recovery for this error. */
+  retryable?:  boolean;
+  /** Real rate-limit / service guidance (Retry-After) in seconds, when present. */
+  retryAfterSeconds?: number | null;
   /** Only a pre-persistence rejection permits replacing a local failed attempt. */
   persistence?: "persisted" | "not-persisted" | "unknown";
   imageAssisted?: boolean;
@@ -183,8 +188,35 @@ function responseErrorCode(error: unknown): string | undefined {
 
 // ── Error message mapper ──────────────────────────────────────────────────────
 
-function cleanError(code?: string, _raw?: string): string {
-  const common = explainWorkspaceError(code ? { code, status: code === "UNAUTHORIZED" ? 401 : undefined } : { status: 500 });
+// The closed code/status → merchant message map is the single source of truth and
+// lives here, delegating to the shared workspace-language classifier
+// (explainWorkspaceError / merchantMessage, Task 226) plus a small set of
+// Rev-specific overrides. revError.ts decides ONLY recoverable / retryable /
+// Retry-After / assertive (never message text), so the two can never drift: a
+// failure's wording always comes from cleanError, its recovery semantics from
+// revError.ts.
+// `code` is normally a structured backend code string, but a raw transport failure
+// reaches us as an ApiError (or a status string / { status }), so it is normalised
+// into the explainWorkspaceError reason it understands. A numeric status string is
+// coerced to a number so the shared classifier can map it to a *distinct* message
+// (404→not_found, 429→rate_limited, 503→unavailable, …) rather than the generic 500.
+function cleanError(code?: string | { status?: number } | (ApiError & { status?: number }), _raw?: string): string {
+  const statusFromErr =
+    code && typeof code === "object" && "status" in code &&
+    typeof (code as { status: unknown }).status === "number"
+      ? (code as { status: number }).status
+      : null;
+  const statusNum =
+    statusFromErr ?? (typeof code === "string" && /^\d+$/.test(code.trim()) ? Number(code.trim()) : null);
+  const reason =
+    (code && typeof code === "object")
+      ? code
+      : (statusNum !== null
+          ? { status: statusNum }
+          : (code
+              ? { code, status: code === "UNAUTHORIZED" ? 401 : undefined }
+              : { status: 500 }));
+  const common = explainWorkspaceError(reason);
   const revSpecific: Record<string, string> = {
     INTELLIGENCE_AUTH_FAILED: "Rev Intelligence isn’t available right now. Your store connection has not been changed; try again shortly.",
     INTELLIGENCE_NOT_CONFIGURED: "Rev Intelligence is being set up. Check back shortly.",
@@ -197,7 +229,18 @@ function cleanError(code?: string, _raw?: string): string {
     STREAM_UNSUPPORTED: "This browser can’t receive Rev’s live answer. Use a current browser and try again.",
     VALIDATION_ERROR: merchantMessage("validation").body,
   };
-  return revSpecific[code || ""] || common.body;
+  return revSpecific[typeof code === "string" ? code : ""] || common.body;
+}
+
+// Centralizes the failed-turn message across both catches (the api.post reject and
+// the stream reject). A structured/stream error code wins; an ApiError maps by its
+// numeric HTTP status through cleanError (so 404/429/502-504 stay distinct); a plain
+// transport/network error (no code, no status) uses the long-standing closed fallback.
+function revTurnMessage(code: string | undefined | null, err: unknown): string {
+  if (err instanceof RevStreamError) return cleanError(err.code, err.message);
+  if (code) return cleanError(code);
+  if (err instanceof ApiError) return cleanError(err);
+  return "Rev is taking a moment. Please try again shortly.";
 }
 
 
@@ -262,6 +305,33 @@ function LoadingBar({ isDark }: { isDark: boolean }) {
   );
 }
 
+
+// ── Retry with an honest rate-limit countdown ─────────────────────────────────
+// A 429 / 5xx carries a real Retry-After: the control is disabled and counts
+// down rather than firing an immediate retry loop or fabricating progress. A
+// permanent failure never renders a retry control at all (see the error bubble).
+function RetryAfterButton({ seconds, onRetry, disabled, label, isDark }: {
+  seconds: number | null | undefined; onRetry: () => void; disabled?: boolean; label: string; isDark: boolean;
+}) {
+  const [remaining, setRemaining] = useState(() => Math.max(0, Math.floor(seconds ?? 0)));
+  const waiting = remaining > 0;
+  useEffect(() => {
+    if (!waiting) return;
+    const id = window.setInterval(() => setRemaining(r => (r > 1 ? r - 1 : 0)), 1000);
+    return () => window.clearInterval(id);
+  }, [waiting]);
+  const blocked = disabled || waiting;
+  return (
+    <button type="button" onClick={onRetry} disabled={blocked}
+      aria-label={waiting ? `Retry in ${remaining} seconds` : label}
+      style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 999,
+        fontSize: "0.78rem", fontWeight: 600, background: "rgba(220,38,38,0.1)", color: isDark ? "#fca5a5" : "#b91c1c",
+        border: "1px solid rgba(220,38,38,0.25)", cursor: blocked ? "not-allowed" : "pointer",
+        opacity: blocked ? 0.7 : 1, fontFamily: "inherit" }}>
+      <RefreshCcw size={12} />{waiting ? `${label} in ${remaining}s` : label}
+    </button>
+  );
+}
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
@@ -360,13 +430,15 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
               <p style={{ fontSize: "0.86rem", color: isDark ? "#fca5a5" : "#b91c1c", margin: "0 0 8px", fontWeight: 600 }}>
                 {typeof msg.content === "string" ? msg.content : "Rev encountered an issue."}
               </p>
-              <button onClick={onRetry} disabled={actionsDisabled}
-                style={{ display: "inline-flex", alignItems: "center", gap: 5,
-                  padding: "5px 12px", borderRadius: 999, fontSize: "0.78rem", fontWeight: 600,
-                  background: "rgba(220,38,38,0.1)", color: isDark ? "#fca5a5" : "#b91c1c",
-                  border: "1px solid rgba(220,38,38,0.25)", cursor: "pointer", fontFamily: "inherit" }}>
-                <RefreshCcw size={12} />{retryLabel ?? "Try again"}
-              </button>
+              {/* A manual "Try again" is an honest recovery for transient failures
+                  (retryable) and for finding rejections, which support a
+                  recover-in-place retry (fix the finding, re-send). It is not
+                  offered for permanent 401/403/422 failures, where re-sending the
+                  identical request is futile. */}
+              {(msg.retryable !== false || (msg.errorCode && FINDING_ERRORS.includes(msg.errorCode))) && (
+                <RetryAfterButton seconds={msg.retryAfterSeconds} onRetry={onRetry} disabled={actionsDisabled}
+                  label={retryLabel ?? "Try again"} isDark={isDark} />
+              )}
             </div>
           </div>
         )}
@@ -734,6 +806,12 @@ export default function RevIntell() {
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [storeContext, setStoreContext] = useState<StoreContext>(UNKNOWN_STORE);
+  // One canonical live region for dynamic conversation events (Task 224 §8). It is
+  // always mounted (present before it is spoken) and holds a single message, so
+  // announcements are never duplicated across components. Errors are already
+  // announced assertively by their visible role="alert" bubble, so this region
+  // carries only the non-error transitions (polite) and urgent session failures.
+  const [announcement, setAnnouncement] = useState<{ text: string; assertive: boolean } | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef  = useRef<AbortController | null>(null);
@@ -761,6 +839,14 @@ export default function RevIntell() {
   // keeps one mount to a single continuity redirect.
   const newChatIntentRef = useRef(false);
   const resumedBareRouteRef = useRef(false);
+  // A prior transport-level conversation failure that is awaiting recovery; the
+  // next successful load announces "Connection restored." (never for 404/403,
+  // which are permanent, not a dropped connection).
+  const convRecoverRef = useRef(false);
+
+  const announce = useCallback((text: string, assertive = false) => {
+    setAnnouncement({ text, assertive });
+  }, []);
 
   const loadFinding = useCallback(async (id: string) => {
     const request = ++findingRequestRef.current;
@@ -790,6 +876,9 @@ export default function RevIntell() {
         evidenceReferences: Array.isArray(priority?.evidence?.references) ? priority.evidence.references.map((ref: any) => ref.id).filter((ref: unknown) => typeof ref === "string") : [],
       });
       if (!inputEditedRef.current) setInput(`Help me investigate this finding: ${finding.title}. Explain the observed change, limitations and supported next steps.`);
+      // Contextual handoff (Task 224 §4/§8): tell the merchant what is being
+      // investigated so the first response has a known subject.
+      announce(`Investigating: ${finding.title}.`);
     } catch (error) {
       if (request !== findingRequestRef.current) return;
       const code = responseErrorCode(error) || (error instanceof ApiError && [403, 404].includes(error.status) ? "FINDING_NOT_FOUND" : undefined);
@@ -894,6 +983,7 @@ export default function RevIntell() {
       setConvLoading(true);
       setMessagesMore(false);
       setMessagesMoreError(null);
+      announce("Loading conversation.");
     }
 
     try {
@@ -962,6 +1052,10 @@ export default function RevIntell() {
           evidenceQuality: persistedFinding.evidence_quality,
         } : null);
       }
+      if (!append && convRecoverRef.current) {
+        convRecoverRef.current = false;
+        announce("Connection restored.");
+      }
     } catch (err: any) {
       if (request !== conversationRequestRef.current) return;
       if (append) {
@@ -969,6 +1063,9 @@ export default function RevIntell() {
       } else if (err?.status === 404 || err?.status === 403) {
         setConvNotFound(true);
       } else {
+        // A transport-level failure (not a permanent 404/403) is a candidate for
+        // a later "Connection restored." announcement.
+        convRecoverRef.current = true;
         setConvError("This conversation could not be loaded. Please try again.");
       }
     } finally {
@@ -1160,6 +1257,8 @@ export default function RevIntell() {
     const turn = ++turnRequestRef.current;
     turnPendingRef.current = true;
     pinnedRef.current = true;
+    // A pending retry draft means this submission recovers a prior failed turn.
+    announce(findingRetryDraft ? "Retrying your question." : "Sending your question.");
     const isCurrent = () => turn === turnRequestRef.current;
     const topicChange = EXPLICIT_FINDING_TOPIC_CHANGE.test(text);
     const turnFindingId = topicChange ? undefined : findingContext?.id;
@@ -1246,11 +1345,15 @@ export default function RevIntell() {
           const persisted = typeof data?.conversation_id === "string";
           if (persisted) { acceptDraft(); adoptConversation(data.conversation_id); }
           findingRejected(data?.error?.code);
+          const failCode = typeof data?.error?.code === "string" ? data.error.code : null;
+          const failure = classifyRevResponseError(failCode);
           patch(message => ({
             ...message, isStreaming: false, hasError: true,
             errorCode: data?.error?.code,
+            retryable: failure.retryable,
+            retryAfterSeconds: failure.retryAfterSeconds,
             persistence: persisted ? "persisted" : FINDING_ERRORS.includes(data?.error?.code) ? "not-persisted" : "unknown",
-            content: cleanError(data?.error?.code, data?.error?.message),
+            content: cleanError(failCode),
           }));
         } else {
           acceptDraft();
@@ -1265,10 +1368,10 @@ export default function RevIntell() {
         const persisted = typeof failedTurn?.conversation_id === "string";
         if (persisted) { acceptDraft(); adoptConversation(failedTurn.conversation_id as string); }
         findingRejected(code);
-        const msg = code ? cleanError(code) : err instanceof ApiError
-          ? cleanError(String((err as any).status), err.message)
-          : "Rev is taking a moment. Please try again shortly.";
-        patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code, content: msg,
+        const failure = classifyRevFailure(err, code);
+        const msg = revTurnMessage(code, err);
+        patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code,
+          retryable: failure.retryable, retryAfterSeconds: failure.retryAfterSeconds, content: msg,
           persistence: persisted ? "persisted" : code && FINDING_ERRORS.includes(code) ? "not-persisted" : "unknown" }));
       } finally {
         if (isCurrent()) {
@@ -1282,6 +1385,7 @@ export default function RevIntell() {
     const controller = new AbortController();
     abortRef.current = controller;
     let finalRejected = false;
+    let accepted = false;
 
     try {
       const result = await streamRevAnswer({
@@ -1294,7 +1398,10 @@ export default function RevIntell() {
           onMeta: ({ conversation_id }) => {
             acceptDraft();
             adoptConversation(conversation_id);
-            if (conversation_id) patch(message => ({ ...message, persistence: "persisted" }));
+            if (conversation_id) {
+              patch(message => ({ ...message, persistence: "persisted" }));
+              if (!accepted) { accepted = true; announce("Your message was received."); }
+            }
           },
           onPlan: (plan) => {
             if (plan.steps?.length) patch(message => ({ ...message, steps: plan.steps }));
@@ -1315,7 +1422,9 @@ export default function RevIntell() {
               finalRejected = true;
               const code = (payload as RevAnswerPayload & { error?: { code?: string } }).error?.code;
               findingRejected(code);
-              patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code, content: cleanError(code), payload: undefined,
+              const failure = classifyRevResponseError(code);
+              patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code,
+                retryable: failure.retryable, retryAfterSeconds: failure.retryAfterSeconds, content: cleanError(code), payload: undefined,
                 persistence: message.persistence !== "persisted" && code && FINDING_ERRORS.includes(code) ? "not-persisted" : message.persistence }));
               return;
             }
@@ -1330,6 +1439,7 @@ export default function RevIntell() {
               payload: normalised,
               steps: payload.investigation?.steps?.length ? payload.investigation.steps : message.steps,
             }));
+            announce("Your answer is ready.");
           },
         },
       });
@@ -1341,7 +1451,7 @@ export default function RevIntell() {
         if (controller.signal.aborted) return { ...message, isStreaming: false, cancelled: true };
         if (message.payload) return { ...message, isStreaming: false };
         return {
-          ...message, isStreaming: false, hasError: true,
+          ...message, isStreaming: false, hasError: true, retryable: true,
           content: result.completed
             ? "Rev finished without returning an answer. Please try again."
             : "This response was interrupted. You can generate it again.",
@@ -1354,12 +1464,10 @@ export default function RevIntell() {
       } else {
         const code = responseErrorCode(err) ?? "";
         findingRejected(code);
-        const msg = err instanceof RevStreamError
-          ? cleanError(err.code, err.message)
-          : err instanceof ApiError
-            ? cleanError(String((err as any).status), err.message)
-            : "Rev is taking a moment. Please try again shortly.";
-        patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code, content: msg,
+        const failure = classifyRevFailure(err, code);
+        const msg = revTurnMessage(code, err);
+        patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code,
+          retryable: failure.retryable, retryAfterSeconds: failure.retryAfterSeconds, content: msg,
           persistence: message.persistence !== "persisted" && FINDING_ERRORS.includes(code) ? "not-persisted" : message.persistence }));
       }
     } finally {
@@ -1583,14 +1691,6 @@ export default function RevIntell() {
 
       <div className="flex flex-col flex-1 min-w-0 h-full">
 
-      <div className="absolute left-4 top-4 z-30">
-        <button type="button" onClick={() => navigate(commandCenterReturnRoute(searchParams.toString() ? `?${searchParams}` : ""))}
-          className="flex min-h-11 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors hover:opacity-80"
-          style={{ background: card, borderColor: bdr, color: t1 }} aria-label="Return to Command Center">
-          <ArrowLeft size={16} aria-hidden="true" /><span className="hidden sm:inline">Command Center</span>
-        </button>
-      </div>
-
       {/* Hamburger (mobile) */}
       <div className="absolute top-4 right-4 z-30">
         <button onClick={() => setMenuOpen(v => !v)}
@@ -1621,6 +1721,14 @@ export default function RevIntell() {
                 "Stale or historical finding — Rev will revalidate it before offering current advice."}
             </p>}
           {!findingError && <p className="mt-2 text-xs" style={{ color: t2 }}>Rev will verify this finding against your workspace records when you send. You can edit the question first.</p>}
+          {!findingError && (
+            <button onClick={newChat}
+              aria-label="Start a separate conversation without inheriting this finding"
+              className="mt-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors hover:opacity-80"
+              style={{ borderColor: bdr, color: t1 }}>
+              Start a separate conversation
+            </button>
+          )}
         </>}
         {findingError && <div role="alert" className="text-sm">
           <p>{findingError}</p>
@@ -2066,6 +2174,19 @@ export default function RevIntell() {
             <Copy size={12} />Copied
           </motion.div>
         )}
+      {/* Canonical accessible status region (Task 224 §8). Holds a single message
+          so announcements are never duplicated; polite for ordinary transitions,
+          assertive only for urgent session/permission failures. Rendered only while
+          the workspace owns focus: when a modal/dialog is open it is the active
+          context, the background must not announce behind it, and a live region in
+          the background would defeat the modal's aria-modal scoping. Every
+          conversation announcement fires in the workspace (loading, submission,
+          acceptance, completion, handoff, recovery) — never during a modal
+          interaction — so this never drops one. */}
+      {!(menuOpen || evidenceFor !== null || renameModalId !== null || deleteConfirmId !== null) && (
+        <div role={announcement?.assertive ? "alert" : "status"}
+          className="sr-only" data-testid="rev-status-region">{announcement?.text ?? ""}</div>
+      )}
     </div>
     </MotionConfig>
   );

@@ -158,3 +158,54 @@ Task 225 consolidates original Tasks 312–316. [Diagnostics](diagnostics/TASK-2
 ### Task 226 — Workspace consistency, language and accessibility (original Tasks 317–321)
 
 [Diagnosis](diagnostics/TASK-226-WORKSPACE-CONSISTENCY-LANGUAGE-ACCESSIBILITY-diagnostics.md), [implementation](implementation/TASK-226-WORKSPACE-CONSISTENCY-LANGUAGE-ACCESSIBILITY.md) and [validation](validation/TASK-226-WORKSPACE-CONSISTENCY-LANGUAGE-ACCESSIBILITY.md) record the shared design/language contracts, all 160 required scenario categories, axe checks, full regressions and production limits. Task 226 adds 166 new passing scenarios and retains the complete three-workspace purpose and evidence model. Authenticated live workspaces, real-browser rendering and manual screen-reader acceptance remain external verification gates.
+
+## 2026-11-07 Task 224
+
+User-assigned Task 224 (original Tasks 305–311: error classification and truthful surfaces;
+recoverable retry with bounded backoff; Command Center context handoff and independent
+investigation; responsive layout across the 320–1920 matrix; keyboard interaction; accessible
+announcements — i.e. productionize the Rev Intelligence conversation experience). Its
+[diagnostics](diagnostics/TASK-224-REV-CONVERSATION-EXPERIENCE-305-311-diagnostics.md),
+[implementation](implementation/TASK-224-REV-CONVERSATION-EXPERIENCE-305-311.md) and
+[validation](validation/TASK-224-REV-CONVERSATION-EXPERIENCE-305-311.md) record the four genuine
+gaps the audit found and fixed — **frontend-only, layered on latest main `3a3baa0` (including
+Tasks 223, 225 and 226), no backend source / data model / migration / read-only boundary changed,
+no fixture inserted**. Authored before Task 226, it was re-reconciled onto `3a3baa0` so that
+Task 226's unified workspace language (REV-DEC-0032) stays the single source of error *wording*
+while this task's `revError.ts` supplies only the recovery *decision* (retryable / Retry-After /
+assertive) — the two layers cannot drift:
+**F-1 (305)** raw HTTP statuses and transport failures had no distinct truthful message and no
+shared recoverable/permanent classifier — now a new closed decision layer `src/lib/revError.ts`
+(`classifyRevFailure`/`classifyRevResponseError`/`isAssertiveRevFailure`) returns
+`{ kind, retryable, retryAfterSeconds }`, and the message wording stays in the single source of
+truth `cleanError()` (Task 226's `explainWorkspaceError`/`merchantMessage` + a small `revSpecific`
+override table); the reason is normalised to a numeric status so raw HTTP statuses still map to
+*distinct* messages (404→not-found, 429→rate-limited, 502/503/504→unavailable), the long-standing
+`"Rev is taking a moment…"` fallback is retained for a plain transport error, and no
+backend/provider/SQL/credential text is ever interpolated;
+**F-2 (306)** no bounded/`Retry-After` retry and an unconditional "Try again" — now a
+`RetryAfterButton` live countdown (`disabled` until the server `Retry-After` elapses), offered only
+where a recovery is honest (transient, or a finding rejection) and withheld for permanent
+`401/403/422`, with no auto-retry and a recovered pre-save rejection reusing the existing question
+(no duplicate);
+**F-3 (307)** no explicit escape from an inherited finding context — the Task-211 handoff
+(revalidation caveat, pre-filled editable draft, `findingId` carried into the first turn) is reused
+plus a new "Start a separate conversation" control that clears context so an independent
+investigation sends no `findingId`;
+**F-4 (311)** no `aria-live` region — now a single polite/assertive live region (assertive only for
+5xx/429/timeout/network/invalid-contract/401/403), rendered only while the workspace owns focus,
+announcing each transition once. 308/309 responsive is the structural invariant set (workspace
+`overflow-hidden`, independent `overflow-y-auto` stream, `aria-expanded` hamburger, `z-[170]` modal
+drawer) with the viewport matrix as a manual production-acceptance check; 310 keyboard re-locks
+Enter/Shift+Enter (Task 222), Escape-close-with-focus-restore, and a keyboard-reachable retry
+control. Local evidence (reconciled tree `3a3baa0`): 95 newly authored Task-224 scenarios (38
+`revError.test.ts` + 57 `RevIntell.test.tsx`), ≈190 Task-224-relevant total including the retained
+207/210/211/212/222/223/225 contracts, **full frontend suite 1224/1224 across 57 files** (no
+regression), `tsc` project error count **0** (none in `RevIntell.tsx`/`revError.ts`/the Task-224
+tests); `RevIntell.tsx`/test re-reconciled against Task 226's rewrite of `cleanError()`.
+Decision: REV-DEC-0033. No real browser / production egress / authenticated merchant session in
+this environment, so the live in-browser acceptance at `revluma-test-store-v1.myshopify.com` (real
+viewport matrix, real network failures, real `Retry-After`, real screen-reader announce) remains a
+documented production-acceptance step (covered by the Vitest + jsdom + Testing Library suite and
+the structural/responsive source audit); the deployed production revision is verified via the
+Vercel connector after merge.

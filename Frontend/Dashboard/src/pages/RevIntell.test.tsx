@@ -400,7 +400,7 @@ describe('finding investigation handoff', () => {
       await screen.findByRole('heading', { name: 'Revenue decline' });
     } else if (outcome === 'successful') await screen.findByText('Image finding answer');
     else await screen.findByText(outcome === 'acknowledged failure'
-      ? 'A supporting service did not respond. Verified information already shown remains available.' : 'Rev is taking a moment. Please try again shortly.');
+       ? 'A supporting service did not respond. Verified information already shown remains available.' : 'Rev is taking a moment. Please try again shortly.');
     fireEvent.click(screen.getByRole('button', { name: outcome === 'rejected' ? 'Try again' : 'Ask again' }));
     expect(screen.getByLabelText('Question recovery')).toHaveTextContent('Reattach the original image');
     if (outcome === 'successful' || outcome === 'acknowledged failure') {
@@ -1432,5 +1432,426 @@ describe('Task 222 — question input lifecycle and submission control', () => {
     renderPage();
     openHistory();
     expect(await screen.findByRole('button', { name: /Untitled conversation/ })).toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 224 — Rev Intelligence conversation experience (original Tasks 305–311).
+// Integration layer on top of the revError classifier (see revError.test.ts):
+// verifies the page surfaces truthful, distinct, non-leaking messages; offers
+// retry only where recoverable; carries Command Center finding context with an
+// honest independent-conversation escape; and announces state changes in a
+// single polite/assertive live region.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Task 224 — Rev Intelligence conversation experience (305–311)', () => {
+  // Fresh, empty workspace so a send always starts a new turn with no history to
+  // resume (REV-RESUME-001) and no conversation load competing with the turn.
+  function freshSend(text = 'Why did revenue dip last week?') {
+    noHistoryToResume();
+    renderPage();
+    send(text);
+  }
+  const rejectTurn = async (error: unknown) => {
+    await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+    await act(async () => { streams[0].result.reject(error as Error); });
+  };
+  const structuredReject = async (code: string) => {
+    await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      streams[0].request.handlers.onFinal?.({ success: false, error: { code } } as unknown as RevAnswerPayload);
+      streams[0].result.resolve({ conversationId: null, completed: true });
+    });
+  };
+  // Local finding-handoff helper (the earlier describe's openFinding is scoped out).
+  async function openFinding() {
+    replies.set(`/rev/findings/${findingOne}`, Promise.resolve(findingReply()));
+    const view = renderPage(`/dashboard/rev-intell?finding=${findingOne}`);
+    await screen.findByRole('heading', { name: 'Revenue decline' });
+    return view;
+  }
+  // Non-finding failures persist as "unknown", so the retry control is labelled
+  // "Ask again" (re-ask); only a pre-save finding rejection is "not-persisted" and
+  // labelled "Try again" (recover in place). Both re-send the same question.
+  const retryButton = () => screen.queryByRole('button', { name: /try again|ask again/i });
+  // Count how many user-message BUBBLES in the thread contain `text`. Task 223's
+  // draft-preserving submission (acceptDraft clears the input only once the server
+  // persists) keeps the question in the input too after a pre-persistence failure,
+  // so a plain text match would see the bubble AND the input. The user bubble's
+  // gradient class is unique to the thread bubble (the input is a <textarea>), so
+  // this counts thread copies only — the right signal for "preserved / not duplicated".
+  const threadQuestionCount = (text: string) =>
+    screen.getAllByText(text, { selector: '[class*="rounded-tr-md"]', exact: true }).length;
+
+  // Task 226 made the shared workspace language (cleanError → explainWorkspaceError)
+  // the single source of truth for a failure's wording; these are its exact strings.
+  // A few codes (INTELLIGENCE_AUTH_FAILED, *_NOT_CONFIGURED, NOTHING_TO_RETRY,
+  // STREAM_START_FAILED) are not individually worded by the shared classifier and
+  // therefore surface the generic 500 message — the recovery decision (retryable,
+  // in revError.ts) still distinguishes them, which 306 locks in.
+  const T = {
+      unavailable: 'A supporting service did not respond. Verified information already shown remains available.',
+      invalidResponse: 'Nothing has been marked complete. Try again; contact support if this continues.',
+      rateLimited: 'Wait a moment before trying again. Existing information remains available.',
+      readOnly: 'Ask Rev to explain or recommend next steps. It cannot change your store.',
+      unsupported: 'The connected store does not provide the information needed for this request.',
+      unauthorized: 'Sign in again to continue. Revluma has not changed your store connection.',
+      forbidden: 'Reconnect Shopify or ask a workspace owner to review your access.',
+      notFound: 'It may have been removed or replaced. Return to the workspace and choose a current item.',
+      validation: 'Revluma couldn’t accept the information provided. No new operation was started.',
+      // A plain transport/network error (no code, no HTTP status) uses the long-
+      // standing closed fallback the page keeps for that case (not cleanError's body).
+      network: 'Rev is taking a moment. Please try again shortly.',
+      failed: 'No success is assumed. Try again or review the affected connection.',
+      findingUnverified: 'Revluma hasn’t verified this finding’s evidence yet, so Rev won’t treat it as fact.',
+      // Rev-specific overrides Task 226 keeps in cleanError (they take precedence
+      // over the shared classifier's common.body for these exact codes).
+      authFailed: 'Rev Intelligence isn’t available right now. Your store connection has not been changed; try again shortly.',
+      notConfigured: 'Rev Intelligence is being set up. Check back shortly.',
+      nothingToRetry: 'There is no earlier answer to retry yet.',
+      streamStartFailed: 'Rev couldn’t start this answer. Your question is preserved; try again.',
+      streamUnsupported: 'This browser can’t receive Rev’s live answer. Use a current browser and try again.',
+  };
+
+  describe('305 — truthful, distinct, non-leaking error surfaces', () => {
+    it.each([
+      ['INTELLIGENCE_TIMEOUT', T.unavailable],
+      ['INTELLIGENCE_UNAVAILABLE', T.unavailable],
+      ['INTELLIGENCE_INVALID_RESPONSE', T.invalidResponse],
+      ['INTELLIGENCE_AUTH_FAILED', T.authFailed],
+      ['INTELLIGENCE_NOT_CONFIGURED', T.notConfigured],
+      ['RATE_LIMITED', T.rateLimited],
+      ['READ_ONLY', T.readOnly],
+      ['NOTHING_TO_RETRY', T.nothingToRetry],
+      ['STREAM_START_FAILED', T.streamStartFailed],
+      ['STREAM_UNSUPPORTED', T.streamUnsupported],
+      ['UNAUTHORIZED', T.unauthorized],
+      ['VALIDATION_ERROR', T.validation],
+    ] as const)('maps the structured code %s to its closed, truthful message', async (code, message) => {
+      freshSend();
+      await structuredReject(code);
+      expect(await screen.findByText(message)).toBeInTheDocument();
+    });
+
+    it.each([
+      [400, T.validation],
+      [401, T.unauthorized],
+      [403, T.forbidden],
+      [404, T.notFound],
+      [409, T.failed],
+      [422, T.validation],
+      [429, T.rateLimited],
+      [500, T.failed],
+      [502, T.unavailable],
+      [503, T.unavailable],
+      [504, T.unavailable],
+    ] as const)('maps raw HTTP %s to a distinct closed message (no backend text)', async (status, message) => {
+      freshSend();
+      await rejectTurn(new ApiError(status, 'raw', { error: { message: `internal-${status}-detail` } }));
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(screen.queryByText(`internal-${status}-detail`)).not.toBeInTheDocument();
+    });
+
+    it('maps a network-level connection failure to the connection message', async () => {
+      freshSend();
+      await rejectTurn(new Error('socket closed'));
+      expect(await screen.findByText(T.network)).toBeInTheDocument();
+    });
+
+    it('never leaks SQL, provider, stack, or credential text into the surfaced message', async () => {
+      freshSend();
+      await rejectTurn(new ApiError(500, 'boom', {
+        error: { message: 'SQLSTATE[42S02]: relation "rev_turns" does not exist; at provider.call() token=sk_live_SECRET stack=Trace' },
+      }));
+      const region = await screen.findByText(T.failed);
+      expect(region).toBeInTheDocument();
+      for (const needle of ['SQLSTATE', 'rev_turns', 'sk_live', 'provider.call', 'Trace', 'boom']) {
+        expect(screen.queryByText(new RegExp(needle))).not.toBeInTheDocument();
+      }
+    });
+
+    it('preserves the merchant\'s question and any prior content when a turn fails', async () => {
+      replies.set('/rev/conversations', Promise.resolve(reply([conversation('A')])));
+      replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [
+        { id: 'u1', role: 'user', content: 'Earlier question', created_at: '2026-11-02T12:00:00Z' },
+        { id: 'r1', role: 'rev', content: 'Earlier answer', created_at: '2026-11-02T12:00:05Z' },
+      ] })));
+      renderPage('/dashboard/rev-intell/A');
+      await screen.findByText('Earlier answer');
+      send('Follow-up that will fail');
+      await rejectTurn(new ApiError(503, 'Unavailable', {}));
+      expect(await screen.findByText(T.unavailable)).toBeInTheDocument();
+      // The failed turn keeps the question in the thread (it may also remain in the
+      // input draft — Task 223's draft-preserving submission only clears the input
+      // once the server persists, and this turn failed before that). Nothing prior is dropped.
+      expect(threadQuestionCount('Follow-up that will fail')).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('Earlier question')).toBeInTheDocument();
+      expect(screen.getByText('Earlier answer')).toBeInTheDocument();
+    });
+
+    it('does not fabricate a success (no answer text) when a turn fails', async () => {
+      freshSend();
+      await rejectTurn(new ApiError(500, 'boom', {}));
+      await screen.findByText(T.failed);
+      expect(answerView).not.toHaveBeenCalled();
+      expect(screen.queryByRole('heading', { name: /answer|situation|recommendation/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('306 — recoverable retry (bounded, honest, no auto-retry)', () => {
+    it('offers a manual retry for a transient 5xx failure', async () => {
+      freshSend();
+      await rejectTurn(new ApiError(500, 'boom', {}));
+      await screen.findByText(T.failed);
+      expect(retryButton()).not.toBeNull();
+      expect(retryButton()).toBeEnabled();
+    });
+
+    it('offers a manual retry for a rate limit (retryable once the window passes)', async () => {
+      freshSend();
+      await rejectTurn(new ApiError(429, 'slow down', {}));
+      await screen.findByText(T.rateLimited);
+      expect(retryButton()).not.toBeNull();
+    });
+
+    it.each([[401, T.unauthorized], [403, T.forbidden], [422, T.validation]] as const)
+      ('offers no futile retry for the permanent %s failure', async (status, message) => {
+        freshSend();
+        await rejectTurn(new ApiError(status, 'raw', {}));
+        expect(await screen.findByText(message)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+      });
+
+    it('offers a recover-in-place retry for a finding rejection (fix and re-send)', async () => {
+      await openFinding();
+      send('Rejected question');
+      await rejectTurn(new RevStreamError('FINDING_EVIDENCE_UNVERIFIED', 'Unverified', 409));
+      await waitFor(() => expect(screen.getAllByText(T.findingUnverified).length).toBeGreaterThan(0));
+      expect(retryButton()).not.toBeNull();
+    });
+
+    it('respects a server Retry-After by disabling the retry with an honest countdown', async () => {
+      freshSend();
+      await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+      const err = new ApiError(429, 'slow down', {});
+      (err as ApiError & { retryAfter: string | null }).retryAfter = '2';
+      await act(async () => { streams[0].result.reject(err); });
+      await screen.findByText(T.rateLimited);
+      // The retry is offered but bounded: disabled, and its accessible name
+      // announces the wait ("Retry in 2 seconds") while the visible text counts down.
+      const button = screen.getByRole('button', { name: 'Retry in 2 seconds' });
+      expect(button).toBeDisabled();
+      expect(button).toHaveTextContent('Ask again in 2s');
+    });
+
+    it('re-sends the identical question on retry without duplicating it in the thread', async () => {
+      // A pre-save (recover-in-place) rejection reuses the existing question, so
+      // the re-send must not add a second copy of it.
+      await openFinding();
+      send('The same follow-up');
+      await rejectTurn(new RevStreamError('FINDING_EVIDENCE_UNVERIFIED', 'Unverified', 409));
+      // Exactly one copy in the thread. The input may still hold the draft (Task 223's
+      // draft-preserving submission clears the input only once the server persists),
+      // so count thread bubbles rather than every text match.
+      await waitFor(() => expect(threadQuestionCount('The same follow-up')).toBe(1));
+      // The rejection also flags the finding; re-fetching clears that flag so the
+      // recovered question can be sent. Retry then prepares; Send confirms.
+      fireEvent.click(await screen.findByRole('button', { name: 'Retry finding' }));
+      await screen.findByRole('heading', { name: 'Revenue decline' });
+      fireEvent.click(retryButton()!);
+      fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+      await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(2));
+      expect(streams[1].request.message).toBe('The same follow-up');
+      await act(async () => {
+        streams[1].request.handlers.onMeta?.({ conversation_id: 'C' });
+        streams[1].request.handlers.onFinal?.(answer('C', 'Recovered answer'));
+        streams[1].result.resolve({ conversationId: 'C', completed: true });
+      });
+      expect(screen.getAllByText('The same follow-up')).toHaveLength(1);
+      expect(screen.getByText('Recovered answer')).toBeInTheDocument();
+    });
+
+    it('does not auto-retry: a failed turn stays failed until the merchant acts', async () => {
+      freshSend();
+      await rejectTurn(new ApiError(500, 'boom', {}));
+      await screen.findByText(T.failed);
+      await act(async () => { await new Promise(r => setTimeout(r, 50)); });
+      // No second request was issued on its own.
+      expect(streamRevAnswer).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('311 — single polite/assertive live region', () => {
+    it('announces a new submission in a polite status region', () => {
+      freshSend();
+      const region = screen.getByTestId('rev-status-region');
+      expect(region).toHaveTextContent('Sending your question.');
+      expect(region).toHaveAttribute('role', 'status');
+    });
+
+    it('announces acceptance once the server acknowledges the message', async () => {
+      freshSend();
+      await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+      await act(async () => { streams[0].request.handlers.onMeta?.({ conversation_id: 'C1' }); });
+      expect(screen.getByTestId('rev-status-region')).toHaveTextContent('Your message was received.');
+    });
+
+    it('announces completion when the answer is ready', async () => {
+      freshSend();
+      await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+      await act(async () => {
+        streams[0].request.handlers.onMeta?.({ conversation_id: 'C1' });
+        streams[0].request.handlers.onFinal?.(answer('C1', 'The answer'));
+        streams[0].result.resolve({ conversationId: 'C1', completed: true });
+      });
+      expect(screen.getByTestId('rev-status-region')).toHaveTextContent('Your answer is ready.');
+    });
+
+    it('announces the finding handoff with the finding subject', async () => {
+      await openFinding();
+      expect(screen.getByTestId('rev-status-region')).toHaveTextContent('Investigating: Revenue decline.');
+    });
+
+    it('announces a retry of a recovered question distinctly from a fresh send', async () => {
+      await openFinding();
+      send('Rejected question');
+      await rejectTurn(new RevStreamError('FINDING_EVIDENCE_UNVERIFIED', 'Unverified', 409));
+      await waitFor(() => expect(screen.getAllByText(T.findingUnverified).length).toBeGreaterThan(0));
+      // Retry the rejected finding, then prepare and confirm the recovered question.
+      fireEvent.click(await screen.findByRole('button', { name: 'Retry finding' }));
+      await screen.findByRole('heading', { name: 'Revenue decline' });
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+      expect(screen.getByTestId('rev-status-region')).toHaveTextContent('Retrying your question.');
+    });
+
+    it('keeps exactly one live region (never duplicates an announcement)', () => {
+      freshSend();
+      expect(screen.getAllByTestId('rev-status-region')).toHaveLength(1);
+    });
+
+    it('hides the live region while the history drawer owns focus', async () => {
+      noHistoryToResume();
+      renderPage('/dashboard/rev-intell/A');
+      replies.set('/rev/conversation/A', Promise.resolve(reply(thread('A'))));
+      // Wait for the load to announce, then open the drawer.
+      await screen.findByText('Message from A');
+      openHistory();
+      await screen.findByRole('dialog', { name: 'Conversation history' });
+      expect(screen.queryByTestId('rev-status-region')).not.toBeInTheDocument();
+      // Closing the drawer restores the region.
+      fireEvent.keyDown(screen.getByRole('dialog', { name: 'Conversation history' }), { key: 'Escape' });
+      await waitFor(() => expect(historyDialog()).not.toBeInTheDocument());
+      expect(screen.getByTestId('rev-status-region')).toBeInTheDocument();
+    });
+  });
+
+  describe('307 — Command Center context handoff + independent conversation', () => {
+    it('carries the finding context (finding id) into the first turn', async () => {
+      await openFinding();
+      send('Investigate this');
+      await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+      expect(streams[0].request.findingId).toBe(findingOne);
+    });
+
+    it('surfaces the finding subject and its revalidation caveat without leaking raw evidence', async () => {
+      await openFinding();
+      expect(screen.getByRole('heading', { name: 'Revenue decline' })).toBeInTheDocument();
+      expect(screen.getByText(/Rev will revalidate it before offering current advice/)).toBeInTheDocument();
+      expect(screen.queryByText('RAW_EVIDENCE_MUST_NOT_BE_SENT')).not.toBeInTheDocument();
+    });
+
+    it('pre-fills an editable investigation draft grounded in the finding', async () => {
+      await openFinding();
+      await waitFor(() => expect((screen.getByPlaceholderText(/Ask (me|Rev)/) as HTMLTextAreaElement).value).toMatch(/Help me investigate this finding: Revenue decline/));
+    });
+
+    it('offers an explicit independent-conversation escape in the finding banner', async () => {
+      await openFinding();
+      expect(screen.getByRole('button', { name: /Start a separate conversation/ })).toBeInTheDocument();
+    });
+
+    it('starting a separate conversation drops the inherited finding context and routing', async () => {
+      await openFinding();
+      fireEvent.click(screen.getByRole('button', { name: /Start a separate conversation/ }));
+      await waitFor(() => expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/));
+      expect(screen.queryByRole('heading', { name: 'Revenue decline' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Start a separate conversation/ })).not.toBeInTheDocument();
+    });
+
+    it('an independent conversation does not inherit the finding id', async () => {
+      await openFinding();
+      fireEvent.click(screen.getByRole('button', { name: /Start a separate conversation/ }));
+      await waitFor(() => expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/));
+      send('Unrelated question');
+      await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+      expect(streams[0].request.findingId).toBeUndefined();
+    });
+  });
+
+  describe('310 — keyboard operation', () => {
+    it('submits on Enter but not on Shift+Enter (Task 222 contract)', async () => {
+      noHistoryToResume();
+      renderPage();
+      const field = screen.getByPlaceholderText(/Ask (me|Rev)/);
+      fireEvent.change(field, { target: { value: 'Revenue question' } });
+      fireEvent.keyDown(field, { key: 'Enter', shiftKey: true });
+      expect(streamRevAnswer).not.toHaveBeenCalled();
+      fireEvent.keyDown(field, { key: 'Enter' });
+      await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+    });
+
+    it('closes the conversation-history drawer on Escape and restores focus to the trigger', async () => {
+      noHistoryToResume();
+      renderPage('/dashboard/rev-intell/A');
+      await screen.findByText('Message from A');
+      openHistory();
+      const drawer = await screen.findByRole('dialog', { name: 'Conversation history' });
+      fireEvent.keyDown(drawer, { key: 'Escape' });
+      await waitFor(() => expect(historyDialog()).not.toBeInTheDocument());
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Open conversation history' })).toHaveFocus());
+    });
+
+    it('keeps a failed-turn retry reachable by keyboard (focusable, not excluded)', async () => {
+      freshSend();
+      await rejectTurn(new ApiError(500, 'boom', {}));
+      await screen.findByText(T.failed);
+      const button = retryButton()!;
+      expect(button).not.toHaveAttribute('tabindex', '-1');
+      button.focus();
+      expect(button).toHaveFocus();
+    });
+  });
+
+  describe('308/309 — responsive structure', () => {
+    it('clips the workspace to the viewport so it cannot scroll horizontally', () => {
+      renderPage();
+      const ws = document.querySelector('.rev-workspace');
+      expect(ws).toBeTruthy();
+      expect(ws!.className).toMatch(/overflow-hidden/);
+    });
+
+    it('keeps the message stream in its own scroll region separate from the composer', () => {
+      renderPage();
+      expect(screen.getByTestId('rev-scroll-box').className).toMatch(/overflow-y-auto/);
+    });
+
+    it('exposes an accessible history control for narrow viewports', () => {
+      renderPage();
+      expect(screen.getByRole('button', { name: 'Open conversation history' })).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('stacks the history drawer above the workspace (z-order) when open', () => {
+      renderPage();
+      openHistory();
+      const overlay = Array.from(document.querySelectorAll('div')).find(d => typeof d.className === 'string' && d.className.includes('z-[170]'));
+      expect(overlay).toBeTruthy();
+    });
+
+    it('keeps the composer (question field + send control) present in the layout', () => {
+      renderPage();
+      expect(screen.getByPlaceholderText(/Ask (me|Rev)/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Send message' })).toBeInTheDocument();
+    });
   });
 });
