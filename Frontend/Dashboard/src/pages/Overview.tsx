@@ -62,10 +62,17 @@ export default function Overview() {
   const { data, loading, refreshing, failure, lastSuccessfulAt, announcement, refetch } = useCommandCenter();
   const [searchParams] = useSearchParams();
   const selectedFinding = searchParams.get("finding");
+  const selectedSection = searchParams.get("section");
   useEffect(() => {
-    if (!selectedFinding || !data?.findings.some(finding => finding.id === selectedFinding)) return;
-    document.getElementById("priority-finding")?.scrollIntoView({ block: "start" });
-  }, [selectedFinding, data]);
+    if (!data) return;
+    if (selectedFinding && data.findings.some(finding => finding.id === selectedFinding)) {
+      document.getElementById("priority-finding")?.scrollIntoView({ block: "start" });
+      return;
+    }
+    const sections: Record<string, string> = { priority: "priority-finding", activity: "operational-activity-heading", evidence: "evidence-heading", health: "business-health-heading" };
+    const target = selectedSection && sections[selectedSection];
+    if (target) document.getElementById(target)?.scrollIntoView({ block: "start" });
+  }, [selectedFinding, selectedSection, data]);
   return <div data-command-center className={cc.page}>
     <div aria-live="polite" className="sr-only">{announcement}</div>
     <CommandCenterHeader data={data} refreshing={refreshing} lastSuccessfulAt={lastSuccessfulAt} onRefresh={() => void refetch(true)} />

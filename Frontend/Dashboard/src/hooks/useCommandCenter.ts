@@ -60,6 +60,9 @@ export function useCommandCenter(): CommandCenterState {
         setAnnouncement(when ? `Briefing refreshed at ${when}.` : "Briefing refreshed.");
       }
     } catch (reason) {
+      // A timed-out request may settle after a newer request has started.
+      // Its error and lifecycle flags must not affect the newer request.
+      if (abortRef.current?.controller !== controller) return;
       if (controller.signal.aborted) {
         if (timedOut() && mountedRef.current) {
           // We aborted it ourselves for being too slow: that is a timeout, not a success.
@@ -78,7 +81,7 @@ export function useCommandCenter(): CommandCenterState {
       clear();
       // A timeout abort ends this request's lifecycle too (the timer was this
       // request's own); only superseded/unmount aborts are ignored.
-      if (mountedRef.current && (timedOut() || !controller.signal.aborted)) {
+      if (mountedRef.current && abortRef.current?.controller === controller && (timedOut() || !controller.signal.aborted)) {
         setLoading(false);
         setRefreshing(false);
       }

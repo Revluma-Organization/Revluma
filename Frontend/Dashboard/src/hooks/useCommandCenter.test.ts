@@ -109,6 +109,24 @@ describe("useCommandCenter — request lifecycle (Task 220)", () => {
     expect(result.current.data).toBeNull();
   });
 
+  it("ignores a superseded timeout that settles after a new request starts", async () => {
+    vi.useFakeTimers();
+    let rejectOld!: (error: Error) => void;
+    let resolveNew!: (value: unknown) => void;
+    mockedGet.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOld = reject; }));
+    mockedGet.mockImplementationOnce(() => new Promise(resolve => { resolveNew = resolve; }));
+    const { result } = renderHook(() => useCommandCenter());
+    await act(async () => { vi.advanceTimersByTime(30_001); });
+    act(() => { void result.current.refetch(false); });
+    await act(async () => { rejectOld(new DOMException("aborted", "AbortError")); });
+    expect(result.current.loading).toBe(true);
+    expect(result.current.failure).toBeNull();
+    await act(async () => { resolveNew({ ok: true, status: 200, data: { success: true, data: briefingFixture() } }); });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.data).toBeTruthy();
+    expect(result.current.failure).toBeNull();
+  });
+
   it("SC-HOOK-06: background refresh failure keeps the last successful snapshot", async () => {
     const { result } = renderHook(() => useCommandCenter());
     await waitFor(() => expect(result.current.data).toBeTruthy());
