@@ -102,6 +102,44 @@ interface Conversation {
   last_activity_at: string;
 }
 
+interface PersistedConversationMessage {
+  id: string;
+  role: string;
+  content: unknown;
+  created_at: string;
+  has_error?: boolean;
+  feedback_rating?: string | null;
+}
+
+interface FindingDetails {
+  id: string;
+  title: string;
+  description?: string;
+  status?: string;
+  current_validity?: string;
+  evidence?: { verified?: boolean };
+}
+
+interface PriorityFindingDetails {
+  confidence?: { classification?: string };
+  reporting_period?: FindingContext["reportingPeriod"];
+  limitations?: string[];
+  evidence?: { references?: Array<{ id?: unknown }> };
+}
+
+type RevTurnPayload = RevAnswerPayload & {
+  situation?: string;
+  insight?: string;
+  implication?: string;
+  recommendation?: string;
+  confidence_score?: number;
+  confidence_basis?: string;
+  actions?: RevResponse["actions"];
+  agents_used?: string[];
+  meta?: { agents_used?: string[] };
+  error?: { code?: string; message?: string };
+};
+
 interface FindingContext {
   id: string;
   title: string;
@@ -818,6 +856,7 @@ export default function RevIntell() {
   const inputRef  = useRef<HTMLTextAreaElement>(null);
   const historyRequestRef = useRef(0);
   const conversationRequestRef = useRef(0);
+  const storeRequestRef = useRef(0);
   const turnRequestRef = useRef(0);
   const turnPendingRef = useRef(false);
   const draftSubmissionRef = useRef<{
@@ -859,7 +898,7 @@ export default function RevIntell() {
     }
     setFindingLoading(true);
     try {
-      const result = await api.get<{ success: boolean; data: { finding: any; priority_finding?: any } }>(`/rev/findings/${encodeURIComponent(id)}`);
+      const result = await api.get<{ success: boolean; data: { finding: FindingDetails; priority_finding?: PriorityFindingDetails } }>(`/rev/findings/${encodeURIComponent(id)}`);
       if (request !== findingRequestRef.current) return;
       const finding = result.data.data?.finding;
       const priority = result.data.data?.priority_finding;
@@ -873,7 +912,7 @@ export default function RevIntell() {
         reportingPeriod: priority?.reporting_period || null,
         confidence: priority?.confidence?.classification,
         limitations: Array.isArray(priority?.limitations) ? priority.limitations : [],
-        evidenceReferences: Array.isArray(priority?.evidence?.references) ? priority.evidence.references.map((ref: any) => ref.id).filter((ref: unknown) => typeof ref === "string") : [],
+        evidenceReferences: Array.isArray(priority?.evidence?.references) ? priority.evidence.references.map((ref) => ref.id).filter((ref: unknown) => typeof ref === "string") : [],
       });
       if (!inputEditedRef.current) setInput(`Help me investigate this finding: ${finding.title}. Explain the observed change, limitations and supported next steps.`);
       // Contextual handoff (Task 224 §4/§8): tell the merchant what is being
@@ -917,15 +956,21 @@ export default function RevIntell() {
   // The registered backend route is /stores (plural). A failed request is
   // deliberately represented as unverifiable, never as a disconnected store.
   const loadStoreContext = useCallback(async () => {
+    const request = ++storeRequestRef.current;
     try {
       const res = await api.get<StoreListResponse>("/stores");
+      if (request !== storeRequestRef.current) return;
       setStoreContext(storeContextFromResponse(res.data));
     } catch {
-      setStoreContext({ ...UNKNOWN_STORE, loaded: true, loadError: true });
+      if (request === storeRequestRef.current) setStoreContext({ ...UNKNOWN_STORE, loaded: true, loadError: true });
     }
   }, []);
 
-  useEffect(() => { void loadStoreContext(); }, [loadStoreContext]);
+  useEffect(() => {
+    setStoreContext(UNKNOWN_STORE);
+    void loadStoreContext();
+    return () => { storeRequestRef.current += 1; };
+  }, [loadStoreContext]);
 
   // ── Load conversations list ───────────────────────────────────────────────
   const loadConversations = useCallback(async (searchText = searchQueryRef.current, append = false) => {
@@ -990,11 +1035,7 @@ export default function RevIntell() {
       const res = await api.get<{
         success: boolean;
         data: {
-          messages: Array<{
-            id: string; role: string; content: unknown;
-            created_at: string; has_error?: boolean;
-            feedback_rating?: string | null;
-          }>;
+          messages: PersistedConversationMessage[];
         };
       }>(`/rev/conversation/${encodeURIComponent(convId)}${append ? `?limit=${MESSAGE_PAGE_SIZE}&offset=${offset}` : ""}`);
 
@@ -1002,7 +1043,7 @@ export default function RevIntell() {
       const msgs = res.data.data?.messages;
       if (res.data.success !== true || !Array.isArray(msgs)) throw new Error('Invalid conversation response.');
 
-      const parsed: Message[] = msgs.map((m: any) => {
+      const parsed: Message[] = msgs.map((m) => {
         let content: string | RevResponse = "";
         const payload = m.role === "rev" ? normaliseRevAnswer(m.content) : undefined;
         const raw = m.content;
@@ -1012,7 +1053,7 @@ export default function RevIntell() {
           if ("response_type" in raw) {
             content = raw as RevResponse;
           } else if ("text" in raw) {
-            content = (raw as any).text || "";
+            content = typeof (raw as { text?: unknown }).text === "string" ? (raw as { text: string }).text : "";
           } else if ("situation" in raw) {
             content = { response_type: "analysis", ...raw } as RevResponse;
           } else {
@@ -1056,11 +1097,12 @@ export default function RevIntell() {
         convRecoverRef.current = false;
         announce("Connection restored.");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (request !== conversationRequestRef.current) return;
+      const status = err instanceof ApiError ? err.status : undefined;
       if (append) {
         setMessagesMoreError("More messages could not be loaded. Please try again.");
-      } else if (err?.status === 404 || err?.status === 403) {
+      } else if (status === 404 || status === 403) {
         setConvNotFound(true);
       } else {
         // A transport-level failure (not a permanent 404/403) is a candidate for
@@ -1223,7 +1265,7 @@ export default function RevIntell() {
   // Node returns the persisted, bounded turn. We keep both the legacy
   // RevResponse (for the existing sections renderer) and the evidence-bearing
   // payload so verified facts, hypotheses and unknowns are never dropped.
-  function normaliseTurn(data: any): { content: string | RevResponse; payload?: RevAnswerPayload } {
+  function normaliseTurn(data: RevTurnPayload): { content: string | RevResponse; payload?: RevAnswerPayload } {
     const responseType = (data?.response_type || "analysis") as ResponseType;
     const revResponse: RevResponse = {
       response_type: responseType,
@@ -1338,9 +1380,9 @@ export default function RevIntell() {
         body.image_base64 = capturedImage.base64;
         body.image_media_type = capturedImage.mediaType;
 
-        const res = await api.post<any>("/rev/chat", body);
+        const res = await api.post<RevTurnPayload>("/rev/chat", body);
         if (!isCurrent()) return;
-        const data = (res as any)?.data ?? (res as any);
+        const data = res.data;
         if (!data?.success) {
           const persisted = typeof data?.conversation_id === "string";
           if (persisted) { acceptDraft(); adoptConversation(data.conversation_id); }

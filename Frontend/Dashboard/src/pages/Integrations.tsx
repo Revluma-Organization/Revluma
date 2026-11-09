@@ -4,8 +4,7 @@ import {
   ExternalLink, Plug, WifiOff, X, Info, CheckCircle2, CircleX, Loader2,
   Clock, ShieldCheck, ArrowUpRight, Code2, Sparkles
 } from "lucide-react";
-import { WooCommerceConnect } from "./WooCommerceConnect";
-import { Fragment, useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { api, ApiError } from "@/lib/api";
@@ -18,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { explainWorkspaceError, resourceLanguage, resourceName } from "@/lib/workspaceCommunication";
 import { workspaceDesign } from "@/lib/workspaceDesign";
 import { WorkspaceStatus } from "@/components/workspace/WorkspaceStatus";
+import { useAuthStore } from "@/store/authStore";
 
 import { useIntegrationStates } from "@/hooks/useIntegrationStates";
 import { MerchantJourneyStatus } from "@/components/MerchantJourneyStatus";
@@ -142,24 +142,7 @@ const PLATFORMS: Platform[] = [
       "Webhook-based OOS and inventory updates",
     ],
   },
-  {
-    id: "woocommerce",
-    name: "WooCommerce",
-    tagline: "The open-source commerce platform for WordPress",
-    description:
-      "Connect your WooCommerce store via REST API to start recovering abandoned carts and unlocking customer intelligence across your catalogue.",
-    logo: "https://cdn.simpleicons.org/woocommerce/7C5CBF",
-    accentColor: "#7C5CBF",
-    accentBg: "hsl(258 45% 55% / 0.10)",
-    accentBorder: "hsl(258 45% 55% / 0.28)",
-    docsUrl: "https://woocommerce.com/document/woocommerce-rest-api/",
-    features: [
-      "Cart recovery via WooCommerce REST API",
-      "Full customer and order history sync",
-      "WordPress plugin for pixel installation",
-      "Real-time stock and pricing updates",
-    ],
-  },
+
 ];
 
 const COMING_SOON: ComingSoonPlatform[] = [
@@ -227,9 +210,10 @@ export default function Integrations() {
   // Shopify Modal State
   const [shopifyModalOpen, setShopifyModalOpen] = useState(false);
   const [shopDomain, setShopDomain] = useState("");
-
-  // WooCommerce Inline Form State
-  const [wooFormOpen, setWooFormOpen] = useState(false);
+  const organizationId = useAuthStore(state => state.user?.tenant_id || null);
+  const storeRequestRef = useRef(0);
+  const storeAbortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
 
   // Connect success/failure feedback
   const [statusCard, setStatusCard] = useState<{
@@ -256,24 +240,43 @@ export default function Integrations() {
 
   // Fetch initial statuses
   const fetchStatuses = useCallback(async (): Promise<ConnectedStore[] | null> => {
+    const request = ++storeRequestRef.current;
+    storeAbortRef.current?.abort();
+    const controller = new AbortController();
+    storeAbortRef.current = controller;
     setLoading(true);
     try {
-      const res = await api.get<{ success: boolean; data: { stores: ConnectedStore[] } }>("/stores");
+      const res = await api.get<{ success: boolean; data: { stores: ConnectedStore[] } }>("/stores", undefined, { signal: controller.signal });
       const stores = res.data?.data?.stores?.filter(store => store.platform === "shopify");
+      if (request !== storeRequestRef.current || controller.signal.aborted || !mountedRef.current) return null;
       if (res.data?.success !== true || !Array.isArray(stores)) {
         throw new Error("The store list response was invalid.");
       }
       setStores(stores);
       setStoreLoadError(false);
       return stores;
-    } catch (e) {
-      console.error("Failed to fetch store statuses", e);
+    } catch (error) {
+      if (request !== storeRequestRef.current || controller.signal.aborted || !mountedRef.current) return null;
+      const status = typeof error === "object" && error !== null && "status" in error
+        ? (error as { status?: unknown }).status : undefined;
+      console.error("Failed to fetch store statuses", { status });
       setStoreLoadError(true);
       return null;
     } finally {
-      setLoading(false);
+      if (request === storeRequestRef.current && mountedRef.current) setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    setStores([]);
+    setStoreLoadError(false);
+    return () => {
+      mountedRef.current = false;
+      storeRequestRef.current += 1;
+      storeAbortRef.current?.abort();
+    };
+  }, [organizationId]);
 
   useEffect(() => {
     const callbackStatus = searchParams.get("shopify");
@@ -367,7 +370,7 @@ export default function Integrations() {
       // of claiming success just because the request was accepted.
       const deadline = Date.now() + 60000;
       let latest: ConnectedStore | undefined;
-      while (Date.now() < deadline) {
+      while (Date.now() < deadline && mountedRef.current) {
         await new Promise((resolve) => window.setTimeout(resolve, 2000));
         const result = await fetchStatuses();
         latest = result?.find((store) => store.id === storeId);
@@ -421,11 +424,7 @@ export default function Integrations() {
   }
 
   function handleConnectClick(id: Platform["id"]) {
-    if (id === "shopify") {
-      setShopifyModalOpen(true);
-    } else if (id === "woocommerce") {
-      setWooFormOpen(true);
-    }
+    if (id === "shopify") setShopifyModalOpen(true);
   }
 
   async function handleShopifySubmit(e: React.FormEvent) {
@@ -513,10 +512,10 @@ export default function Integrations() {
             </p>
           </div>
           <button
-            onClick={() => navigate("/dashboard/settings/automation")}
+            onClick={() => navigate("/dashboard/rev-intell")}
             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-[0.82rem] font-bold text-black shadow-md transition-all hover:bg-emerald-400"
           >
-            Review automation policy
+            Review operational intelligence
             <ArrowUpRight className="h-4 w-4" />
           </button>
         </div>
@@ -589,7 +588,7 @@ export default function Integrations() {
                 </div>
 
                 {/* Description & Features */}
-                {!(platform.id === "woocommerce" && wooFormOpen) && (
+                {(
                   <>
                     <p className="text-[0.82rem] leading-relaxed text-t2">{platform.description}</p>
                     <div className="grid grid-cols-1 gap-x-3 gap-y-2.5 rounded-xl border border-border bg-glass/[0.015] p-3.5 sm:grid-cols-2">
@@ -601,25 +600,6 @@ export default function Integrations() {
                       ))}
                     </div>
                   </>
-                )}
-
-                {/* WooCommerce Inline Form */}
-                {platform.id === "woocommerce" && wooFormOpen && !isConnected && (
-                  <WooCommerceConnect
-                    accentColor={platform.accentColor}
-                    onCancel={() => setWooFormOpen(false)}
-                    onSuccess={() => {
-                      setWooFormOpen(false);
-                      fetchStatuses();
-                      showStatusCard(
-                        "success",
-                        "WooCommerce Connected!",
-                        "Your store is connected. Cart recovery sequences are ready to activate.",
-                        "Got it",
-                      );
-                    }}
-                    onError={(msg) => showStatusCard("error", "WooCommerce Connection Failed", msg, "Try Again")}
-                  />
                 )}
 
                 {!loading && !storeLoadError && platform.id === "shopify" && stores
@@ -786,7 +766,7 @@ export default function Integrations() {
                     );
                   })}
                 {/* Actions */}
-                {!(platform.id === "woocommerce" && wooFormOpen) && (
+                {(
                   <div className="mt-auto flex items-center gap-2 pt-1">
                     {loading ? (
                       <div className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-bg-3 py-2.5 text-xs text-t2"><Loader2 className="h-4 w-4 animate-spin" /> Loading saved connection…</div>
@@ -794,11 +774,11 @@ export default function Integrations() {
                       <p className="text-sm text-t2">Retry the store list to verify your connection.</p>
                     ) : isConnected ? (
                       <button
-                        onClick={() => navigate("/dashboard/settings/automation")}
+                        onClick={() => setWebhookDetailsStoreId(store?.id ?? null)}
                         className="flex flex-1 items-center justify-center gap-2 rounded-md border border-border bg-glass/[0.035] py-2 text-[0.82rem] font-semibold text-t1 transition-colors hover:border-border-md hover:bg-glass/[0.06]"
                       >
                         <CheckCircle2 className="h-3.5 w-3.5" style={{ color: "hsl(var(--accent))" }} />
-                        Configure Automation
+                        Review connection details
                       </button>
                     ) : (
                       <button

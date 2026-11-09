@@ -45,6 +45,9 @@ export function useSyncProgress(
   const settledRef = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
   const startedAtRef = useRef<number>(0);
+  const lifecycleRef = useRef(0);
+  const mountedRef = useRef(true);
+  const abortRef = useRef<AbortController | null>(null);
 
   const setProgressBoth = useCallback((next: SyncProgress | null) => {
     progressRef.current = next;
@@ -59,26 +62,31 @@ export function useSyncProgress(
     // Dedup: never fire a second request while one is in flight.
     if (inFlightRef.current) return progressRef.current;
     inFlightRef.current = true;
+    const lifecycle = lifecycleRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const res = await api.get<{ success: boolean; data: unknown }>(
-        `/stores/${storeId}/sync-progress`,
+        `/stores/${storeId}/sync-progress`, undefined, { signal: controller.signal },
       );
+      if (lifecycle !== lifecycleRef.current || !mountedRef.current || controller.signal.aborted) return null;
       // Fail-closed: an invalid contract normalizes to null (honest unknown).
       const normalized = normalizeSyncProgress(res.data?.data);
       setProgressBoth(normalized);
       setError(false);
       return normalized;
     } catch {
-      setError(true);
+      if (lifecycle === lifecycleRef.current && mountedRef.current && !controller.signal.aborted) setError(true);
       return null;
     } finally {
-      inFlightRef.current = false;
-      setLoading(false);
+      if (lifecycle === lifecycleRef.current) inFlightRef.current = false;
+      if (lifecycle === lifecycleRef.current && mountedRef.current) setLoading(false);
     }
   }, [storeId, setProgressBoth]);
 
   const schedule = useCallback(() => {
     window.clearTimeout(timerRef.current);
+    const lifecycle = lifecycleRef.current;
     const current = progressRef.current;
     const status = current?.job.status;
     // Stop on terminal (or no data): do not keep polling.
@@ -94,6 +102,7 @@ export function useSyncProgress(
     const interval = status === "running" ? RUNNING_INTERVAL_MS : SLOW_INTERVAL_MS;
     timerRef.current = window.setTimeout(async () => {
       const next = await fetchOnce();
+      if (lifecycle !== lifecycleRef.current) return;
       if (next && (TERMINAL_JOB_STATUSES.has(next.job.status) || !ACTIVE_JOB_STATUSES.has(next.job.status))) {
         settledRef.current = true;
       }
@@ -102,11 +111,17 @@ export function useSyncProgress(
   }, [fetchOnce]);
 
   useEffect(() => {
+    mountedRef.current = true;
+    lifecycleRef.current += 1;
+    abortRef.current?.abort();
+    inFlightRef.current = false;
+    setProgressBoth(null);
+    setError(false);
     if (!enabled || !storeId) {
       setLoading(false);
-      setProgressBoth(null);
       return;
     }
+    setLoading(true);
     settledRef.current = false;
     startedAtRef.current = Date.now();
     let cancelled = false;
@@ -121,6 +136,9 @@ export function useSyncProgress(
     })();
     return () => {
       cancelled = true;
+      lifecycleRef.current += 1;
+      abortRef.current?.abort();
+      inFlightRef.current = false;
       window.clearTimeout(timerRef.current);
     };
   }, [storeId, enabled, fetchOnce, schedule, setProgressBoth]);

@@ -137,17 +137,16 @@ export function onAuthBroadcast(
 }
 
 /** Hard navigate to the login page without leaving protected history entries. */
-export function redirectToLogin(replace = true): void {
+export function redirectToLogin(replace = true, preserveDestination = true): void {
   if (typeof window === "undefined") return;
-  // Avoid redirect loops if we are already on an auth page.
   const path = window.location.pathname;
   if (path.startsWith("/auth/") || path === "/login") return;
+  const destination = preserveDestination && path.startsWith("/dashboard/")
+    ? `${LOGIN_PATH}?next=${encodeURIComponent(path + (window.location.search || ""))}`
+    : LOGIN_PATH;
 
-  if (replace) {
-    window.location.replace(LOGIN_PATH);
-  } else {
-    window.location.href = LOGIN_PATH;
-  }
+  if (replace) window.location.replace(destination);
+  else window.location.href = destination;
 }
 
 export { LOGIN_PATH };

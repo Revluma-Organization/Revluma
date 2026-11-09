@@ -127,10 +127,11 @@ export const Organization: FC = () => {
         industry: finalIndustry,
       });
       setSaveStatus("success");
-        } catch (err: any) {
+        } catch (err: unknown) {
       setSaveStatus("error");
-      // Check if the backend threw a 409 Conflict for a taken slug
-      if (err?.response?.status === 409 || err?.status === 409) {
+      const status = typeof err === "object" && err !== null && "status" in err
+        ? (err as { status?: unknown }).status : undefined;
+      if (status === 409) {
         setErrorMessage("That workspace URL slug is already taken. Please choose another.");
       } else {
         setErrorMessage("Failed to save organization settings. Please try again.");

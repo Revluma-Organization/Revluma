@@ -12,6 +12,14 @@ interface NotifItem {
   time: string;
 }
 
+interface NotificationRecord {
+  id: string;
+  type: string;
+  message: string;
+  unread: boolean;
+  created_at: string;
+}
+
 const TONE: Record<string, { bg: string; border: string; color: string }> = {
   green:  { bg: 'hsl(var(--accent) / 0.10)',  border: 'hsl(var(--accent) / 0.22)',  color: 'hsl(var(--accent))' },
   amber:  { bg: 'hsl(var(--amber) / 0.10)',  border: 'hsl(var(--amber) / 0.22)',  color: 'hsl(var(--amber))' },
@@ -64,6 +72,9 @@ export function NotificationsPanel() {
   const { notifOpen, setNotifOpen } = useUI();
   const [items, setItems] = useState<NotifItem[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [mutationError, setMutationError] = useState(false);
+  const [pendingIds, setPendingIds] = useState<Set<string | number>>(new Set());
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -77,34 +88,50 @@ export function NotificationsPanel() {
 
   useEffect(() => {
     if (!notifOpen) return;
+    let active = true;
     setLoading(true);
-    api.get<{ data: { notifications: Array<{ id: string; type: string; message: string; unread: boolean; created_at: string }> } }>(
+    setLoadError(false);
+    setMutationError(false);
+    api.get<{ data: { notifications: NotificationRecord[] } }>(
       '/notifications?limit=20'
     )
       .then((res) => {
+        if (!active) return;
+        if (!Array.isArray(res.data.data?.notifications)) throw new Error('Invalid notification response');
         setItems(
-          res.data.data.notifications.map((n: any) => ({
+          res.data.data.notifications.map((n) => ({
             id:        n.id,
             unread:    n.unread,
             tag:       TYPE_TAG_MAP[n.type] ?? n.type ?? 'system',
             tagColor:  TAG_COLOR_MAP[n.type] ?? 'gray',
             text:      n.message,
             time:      formatRelativeTime(n.created_at),
-            actionUrl: n.action_url || null,
           }))
         );
       })
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
+      .catch(() => { if (active) { setItems(null); setLoadError(true); } })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [notifOpen]);
 
-  function markRead(id: string | number) {
-    api.patch(`/notifications/${id}/read`).catch(() => {});
-    setItems((arr) => arr?.map((n) => (n.id === id ? { ...n, unread: false } : n)) ?? null);
+  async function markRead(id: string | number) {
+    if (pendingIds.has(id)) return;
+    setMutationError(false);
+    setPendingIds(current => new Set(current).add(id));
+    try {
+      await api.patch(`/notifications/${encodeURIComponent(String(id))}/read`);
+      setItems((arr) => arr?.map((n) => (n.id === id ? { ...n, unread: false } : n)) ?? null);
+    } catch {
+      setMutationError(true);
+    } finally {
+      setPendingIds(current => { const next = new Set(current); next.delete(id); return next; });
+    }
   }
 
-  function markAll() {
-    items?.filter((n) => n.unread).forEach((n) => markRead(n.id));
+  async function markAll() {
+    const unread = items?.filter(n => n.unread).map(n => n.id) ?? [];
+    const results = await Promise.allSettled(unread.map(id => markRead(id)));
+    if (results.some(result => result.status === 'rejected')) setMutationError(true);
   }
 
   if (!notifOpen) return null;
@@ -120,12 +147,14 @@ export function NotificationsPanel() {
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <span className="text-sm font-semibold text-t1">Notifications</span>
-          <button onClick={markAll} className="text-[0.72rem] font-medium text-t3 transition-colors hover:text-t1">
-            Mark all read
+          <button type="button" onClick={() => void markAll()} disabled={pendingIds.size > 0 || !items?.some(item => item.unread)} className="text-[0.72rem] font-medium text-t3 transition-colors hover:text-t1 disabled:opacity-50">
+            {pendingIds.size > 0 ? 'Updating…' : 'Mark all read'}
           </button>
         </div>
 
         <div className="max-h-[460px] overflow-y-auto">
+          {loadError && <div role="alert" className="px-4 py-6 text-center text-[0.8rem] text-t2">Notifications are unavailable. Close and reopen this panel to retry.</div>}
+          {mutationError && <p role="alert" className="px-4 py-2 text-center text-[0.72rem] text-t2">The read status could not be saved. Please try again.</p>}
           {loading && (
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-start gap-2.5 border-b border-border px-4 py-3">
@@ -147,11 +176,14 @@ export function NotificationsPanel() {
           {!loading && items !== null && items.map((n) => {
             const tone = TONE[n.tagColor] ?? TONE.gray;
             return (
-              <div
+              <button
+                type="button"
                 key={n.id}
-                onClick={() => markRead(n.id)}
+                onClick={() => void markRead(n.id)}
+                disabled={!n.unread || pendingIds.has(n.id)}
+                aria-label={n.unread ? `Mark notification read: ${n.text}` : `Read notification: ${n.text}`}
                 className={cn(
-                  'flex cursor-pointer items-start gap-2.5 border-b border-border px-4 py-3 transition-colors hover:bg-glass/[0.035]',
+                  'flex w-full cursor-pointer items-start gap-2.5 border-b border-border px-4 py-3 text-left transition-colors hover:bg-glass/[0.035] disabled:cursor-default',
                   n.unread && 'bg-glass/[0.018]'
                 )}
               >
@@ -171,7 +203,7 @@ export function NotificationsPanel() {
                   </div>
                   <p className="text-[0.78rem] leading-snug text-t1">{n.text}</p>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>

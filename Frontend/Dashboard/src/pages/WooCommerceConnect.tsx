@@ -68,9 +68,8 @@ export const WooCommerceConnect: React.FC<WooCommerceConnectProps> = ({
         throw new Error("No redirect URL returned from the backend");
       }
       setStep(2);
-    } catch (err: any) {
-      console.error("WooCommerce connect failed:", err);
-      onError(err.message || "We couldn't connect to your store. Please check the URL.");
+    } catch (err: unknown) {
+      onError(err instanceof Error ? err.message : "We couldn't connect to your store. Please check the URL.");
     } finally {
       setIsConnecting(false);
     }
@@ -89,9 +88,8 @@ export const WooCommerceConnect: React.FC<WooCommerceConnectProps> = ({
         consumerSecret 
       });
       onSuccess();
-    } catch (err: any) {
-      console.error("WooCommerce verification failed:", err);
-      onError(err.message || 'Invalid API keys. Please try again.');
+    } catch (err: unknown) {
+      onError(err instanceof Error ? err.message : 'Invalid API keys. Please try again.');
     } finally {
       setIsVerifying(false);
     }

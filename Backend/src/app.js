@@ -92,8 +92,21 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+  exposedHeaders: ['X-Request-ID', 'Retry-After'],
 }));
+
+// Correlate browser, Node and downstream Python diagnostics without logging
+// credentials or merchant payloads. Client IDs are bounded and allowlisted;
+// malformed values are replaced rather than reflected into logs or responses.
+app.use((req, res, next) => {
+  const candidate = String(req.get('x-request-id') || '');
+  const requestId = /^[A-Za-z0-9._:-]{8,128}$/.test(candidate)
+    ? candidate : require('crypto').randomUUID();
+  req.requestId = requestId;
+  res.setHeader('X-Request-ID', requestId);
+  next();
+});
 
 // Provider signatures cover the exact bytes, so webhook bodies must be raw.
 app.use('/api/v1/webhooks', express.raw({ type: 'application/json', limit: '2mb' }), commerceWebhookRoute);

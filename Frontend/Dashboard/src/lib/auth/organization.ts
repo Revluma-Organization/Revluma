@@ -20,8 +20,8 @@ export function resolveProfileMembership(
 
 // This is a selection hint, never authorisation; the backend revalidates membership.
 export function storedOrganizationId(): string | undefined {
-  try {
-    for (const storage of [localStorage, sessionStorage]) {
+  for (const storage of [localStorage, sessionStorage]) {
+    try {
       const state = JSON.parse(storage.getItem('rv-auth') || 'null')?.state;
       const user = state?.user;
       const id = user?.tenant_id || user?.active_organization_id;
@@ -33,8 +33,8 @@ export function storedOrganizationId(): string | undefined {
           if (typeof claims.tenantId === 'string' && claims.tenantId) return claims.tenantId;
         } catch { /* Malformed legacy tokens cannot select a workspace. */ }
       }
-    }
-  } catch { /* A missing selection requires server-side resolution. */ }
+    } catch { /* Corrupt or unavailable storage must not hide the other valid session. */ }
+  }
   return undefined;
 }
 

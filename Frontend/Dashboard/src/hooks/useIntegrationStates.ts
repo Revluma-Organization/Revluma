@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/store/authStore";
 import {
   normalizeIntegrationState,
   type IntegrationState,
@@ -37,13 +38,22 @@ export function useIntegrationStates(): UseIntegrationStates {
   const [error, setError] = useState(false);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const activeRef = useRef(false);
+  const organizationId = useAuthStore(state => state.user?.tenant_id || null);
+  const requestRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
 
   const refetch = useCallback(async (): Promise<IntegrationState[]> => {
+    const request = ++requestRef.current;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const res = await api.get<{
         success: boolean;
         data: { contract_version: string; states: unknown[] };
-      }>("/stores/integration-states");
+      }>("/stores/integration-states", undefined, { signal: controller.signal });
+      if (request !== requestRef.current || controller.signal.aborted || !mountedRef.current) return [];
       if (res.data?.success !== true || !Array.isArray(res.data.data?.states)) {
         throw new Error("Integration states response was invalid.");
       }
@@ -57,12 +67,15 @@ export function useIntegrationStates(): UseIntegrationStates {
       setError(false);
       setLastFetchedAt(new Date());
       return normalized;
-    } catch (e) {
-      console.error("Failed to fetch integration states", e);
+    } catch (error) {
+      if (request !== requestRef.current || controller.signal.aborted || !mountedRef.current) return [];
+      const status = typeof error === "object" && error !== null && "status" in error
+        ? (error as { status?: unknown }).status : undefined;
+      console.error("Failed to fetch integration states", { status });
       setError(true);
       return [];
     } finally {
-      setLoading(false);
+      if (request === requestRef.current && mountedRef.current) setLoading(false);
     }
   }, []);
 
@@ -70,25 +83,34 @@ export function useIntegrationStates(): UseIntegrationStates {
   // scheduled only AFTER the initial fetch resolves, so it already reflects
   // whether any store is actively moving (15s) or not (60s).
   useEffect(() => {
+    mountedRef.current = true;
+    let active = true;
     let timer: number | undefined;
+    setStates([]);
+    setError(false);
+    setLastFetchedAt(null);
+    setLoading(true);
     const schedule = () => {
+      if (!active) return;
       window.clearTimeout(timer);
       timer = window.setTimeout(async () => {
         await refetch();
-        schedule();
+        if (active) schedule();
       }, activeRef.current ? ACTIVE_INTERVAL_MS : IDLE_INTERVAL_MS);
     };
-    void refetch().then(() => schedule());
+    void refetch().then(() => { if (active) schedule(); });
 
-    const onFocus = () => {
-      void refetch();
-    };
+    const onFocus = () => { if (active) void refetch(); };
     window.addEventListener("focus", onFocus);
     return () => {
+      active = false;
+      mountedRef.current = false;
+      requestRef.current += 1;
+      abortRef.current?.abort();
       window.clearTimeout(timer);
       window.removeEventListener("focus", onFocus);
     };
-  }, [refetch]);
+  }, [refetch, organizationId]);
 
   const byStoreId = useMemo(
     () => new Map(states.map((s) => [s.store.id, s])),

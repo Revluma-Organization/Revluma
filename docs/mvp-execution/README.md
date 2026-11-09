@@ -209,3 +209,6 @@ viewport matrix, real network failures, real `Retry-After`, real screen-reader a
 documented production-acceptance step (covered by the Vitest + jsdom + Testing Library suite and
 the structural/responsive source audit); the deployed production revision is verified via the
 Vercel connector after merge.
+### Task 227 — Frontend production wiring and release acceptance (original Tasks 322–325)
+
+[Diagnosis](diagnostics/TASK-227-FRONTEND-PRODUCTION-WIRING-RELEASE-ACCEPTANCE-diagnostics.md), [implementation](implementation/TASK-227-FRONTEND-PRODUCTION-WIRING-RELEASE-ACCEPTANCE.md) and [validation](validation/TASK-227-FRONTEND-PRODUCTION-WIRING-RELEASE-ACCEPTANCE.md) record production-safe API/auth wiring, bounded request lifecycles, tenant-safe workspace contracts, Shopify-only controls, correlation/security headers and 161 new scenarios. Final Dashboard evidence is 1,290/1,290 tests with clean typecheck, zero lint errors and production build. Exact deployment evidence and the unavailable authenticated active-store/real-browser acceptance gates are tracked separately. Decision REV-DEC-0033; Task 228 was not started.
