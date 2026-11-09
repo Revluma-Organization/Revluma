@@ -163,6 +163,29 @@ test('partial: some required ok, some failed => partial, no 100%', () => {
   assert.equal(findDomain(c, 'orders').failure.category, 'transient_throttle');
 });
 
+test('all required ok but a tracked OPTIONAL core domain failed => partial (completed WITH limitations), never a clean 100% (Task 229 P7)', () => {
+  const c = build(
+    { initial_sync_status: 'initial_completed_with_limitations', status: 'connected' },
+    [
+      row('products', { status: 'ok', records_discovered: 100, records_inserted: 100, pages_completed: 4, pagination_complete: true, last_succeeded_at: iso(50) }),
+      row('orders', { status: 'ok', records_discovered: 10, records_inserted: 10, pages_completed: 1, pagination_complete: true, last_succeeded_at: iso(50) }),
+      row('abandoned_checkouts', { status: 'ok', records_discovered: 3, records_inserted: 3, pages_completed: 1, pagination_complete: true, last_succeeded_at: iso(50) }),
+      // A TRACKED optional core domain terminally failed -> a limitation that
+      // the progress contract itself can see. It must not be papered over with
+      // a bare "completed"/100% (the honest terminal is "partial").
+      row('refunds', { status: 'failed', records_discovered: 0, error_code: 'SHOPIFY_GRAPHQL_ERROR', retry_count: 1, last_attempted_at: iso(60) }),
+    ]);
+  assert.equal(c.job.status, 'partial');
+  assert.equal(c.job.reason, 'required_complete_with_limitations');
+  assert.ok(c.overall.percent !== null && c.overall.percent < 100,
+    `must not overstate a tracked-domain limitation as 100%, got ${c.overall.percent}`);
+  // The failed tracked domain is surfaced with its own failure.
+  assert.equal(findDomain(c, 'refunds').status, 'failed');
+  assert.ok(findDomain(c, 'refunds').failure, 'failed tracked domain carries its failure');
+  // Required domains are still each 100% (they genuinely completed).
+  for (const d of REQUIRED_DOMAINS) assert.equal(findDomain(c, d).percent, 100);
+});
+
 test('measurable percent is null when any required resource has an unknown total', () => {
   const c = build(
     { initial_sync_status: 'partial', status: 'connected' },

@@ -35,6 +35,7 @@ const { ABANDONMENT_INACTIVITY_MS } = require('./checkoutInactivity');
 const { runFeatureJobs } = require('./featureWorkerService');
 const { recoverStuckDeliveries } = require('./webhookDeliveryRecovery');
 const { runRecoveryActions } = require('./recoveryActionService');
+const { runReaper } = require('./syncStallReaper');
 const { runDailyChurnScoring } = require('./churnWorkerService');
 const { runTrainingObservationFinalization } = require('./trainingObservationService');
 const {
@@ -66,6 +67,10 @@ const ALERT_QUEUE_INTERVAL_MS = intSetting('ALERT_QUEUE_INTERVAL_MS', '60000', 5
 const MORNING_BRIEFINGS_INTERVAL_MS = intSetting('MORNING_BRIEFINGS_INTERVAL_MS', '60000', 5000);
 
 const STORE_SYNC_INTERVAL_MS = intSetting('STORE_SYNC_INTERVAL_MS', String(15 * 60 * 1000), 5000);
+// Task 229 §3: reap stale-running sync domains and drive stuck stores to a
+// terminal state. Runs more often than a full store sync so a wedged store is
+// un-stuck within a few minutes, not the next 15-minute sync window.
+const SYNC_STALL_REAPER_INTERVAL_MS = intSetting('SYNC_STALL_REAPER_INTERVAL_MS', String(5 * 60 * 1000), 5000);
 
 const WEBHOOK_DELIVERY_RECOVERY_INTERVAL_MS = intSetting('WEBHOOK_DELIVERY_RECOVERY_INTERVAL_MS', String(5 * 60 * 1000), 60000);
 
@@ -143,6 +148,7 @@ let intelligenceAutomationTimer = null;
 let trainingObservationTimer = null;
 let webhookDeliveryRecoveryTimer;
 let intelligenceFindingsTimer = null;
+let syncStallReaperTimer = null;
 let startupPassTimers = [];
 
 let businessStateRunning = false;
@@ -150,6 +156,7 @@ let recommendationOutcomesRunning = false;
 let alertQueueRunning = false;
 let morningBriefingsRunning = false;
 let storeSyncRunning = false;
+let syncStallReaperRunning = false;
 let featureJobRunning = false;
 let recoveryActionRunning = false;
 let churnScoringRunning = false;
@@ -1129,6 +1136,44 @@ async function runStoreSync() {
     }
 }
 
+// Task 229 §3/§9: reap sync domains stuck in `running` (no worker progress
+// beyond the stall window) and drive their stores to a canonical terminal
+// state. This is what un-sticks a store wedged in initial_sync_status='running'
+// / recovery_status='recovering'. Idempotent + bounded; safe to run on every
+// interval — it only acts on genuinely stale in-flight stores.
+async function runSyncStallReaper() {
+    if (syncStallReaperRunning) return;
+    const lock = await acquireLock('sync-stall-reaper');
+    if (!lock) return;
+    syncStallReaperRunning = true;
+    const startedAt = Date.now();
+    try {
+        const result = await runReaper(prisma, { now: Date.now() });
+        if (result.reaped_domains > 0 || result.terminalized_stores > 0) {
+            logger.warn('scheduler_sync_stall_reaper_repaired', {
+                considered: result.considered,
+                reaped_domains: result.reaped_domains,
+                terminalized_stores: result.terminalized_stores,
+                reaped: result.results.flatMap(r => r.reaped || []),
+                terminalized: result.results.filter(r => r.changed).map(r => r.store_id),
+                latency_ms: Date.now() - startedAt,
+            });
+        } else {
+            logger.info('scheduler_sync_stall_reaper_completed', {
+                considered: result.considered,
+                latency_ms: Date.now() - startedAt,
+            });
+        }
+    } catch (error) {
+        logger.error('scheduler_sync_stall_reaper_failed', {
+            error_type: error?.code || error?.name || 'reaper_error',
+        });
+    } finally {
+        syncStallReaperRunning = false;
+        await releaseLock(lock);
+    }
+}
+
 async function runWebhookDeliveryRecovery() {
     const lock = await acquireLock('webhook-delivery-recovery');
     if (!lock) return;
@@ -1190,6 +1235,7 @@ function startScheduler() {
         ['recommendation-outcomes', runRecommendationOutcomeEvaluation],
         ['alert-queue', runAlertQueue],
         ['store-sync', runStoreSync],
+        ['sync-stall-reaper', runSyncStallReaper],
         ['feature-queue', runFeatureQueue],
         ['recovery-queue', runRecoveryQueue],
         ['churn-queue', runChurnQueue],
@@ -1249,6 +1295,11 @@ function startScheduler() {
     storeSyncTimer = setInterval(
         runStoreSync,
         STORE_SYNC_INTERVAL_MS
+    );
+
+    syncStallReaperTimer = setInterval(
+        runSyncStallReaper,
+        SYNC_STALL_REAPER_INTERVAL_MS
     );
 
     featureJobTimer = setInterval(runFeatureQueue, FEATURE_JOB_INTERVAL_MS);
@@ -1314,6 +1365,11 @@ function stopScheduler() {
         storeSyncTimer = null;
     }
 
+    if (syncStallReaperTimer) {
+        clearInterval(syncStallReaperTimer);
+        syncStallReaperTimer = null;
+    }
+
     if (morningBriefingsTimer) {
         clearInterval(morningBriefingsTimer);
         morningBriefingsTimer = null;
@@ -1377,6 +1433,7 @@ module.exports = {
     runChurnQueue,
     runFeatureQueue,
     runWebhookDeliveryRecovery,
+    runSyncStallReaper,
     runRecoveryQueue,
     runAutomationQueue,
     runTrainingObservationQueue,
