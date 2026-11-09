@@ -18,6 +18,7 @@
 // - Checkpoints are opaque caller-owned JSON merged atomically per write.
 
 const { authorizedResourceIds } = require('./authorizedResourceCatalog');
+const C = require('./syncStateContract');
 
 const DOMAINS = Object.freeze([...new Set([
   ...authorizedResourceIds(),
@@ -54,14 +55,49 @@ function safeMessage(error) {
   return String(msg).slice(0, 500);
 }
 
+// Compute the canonical contract columns for a write. The persisted `status`
+// stays the engine value; these columns carry the typed, versioned lifecycle +
+// coverage certification. The read path re-derives from the persisted row, so
+// these are a consistent denormalized snapshot for direct inspection, never the
+// sole source of truth.
+function contractColumns(canonical, { code, details, discovered, inserted, updated, paginationComplete, succeededAt, retryCount } = {}) {
+  const terminalFailure = canonical === C.RESOURCE_STATUS.FAILED || canonical === C.RESOURCE_STATUS.RESOURCE_PARTIAL;
+  const failure_class = terminalFailure ? C.classifyFailure(code, details) : C.FAILURE_CLASS.NONE;
+  const pseudoRow = {
+    status: canonical,
+    records_discovered: numOr(discovered),
+    records_inserted: numOr(inserted),
+    records_updated: numOr(updated),
+    pagination_complete: Boolean(paginationComplete),
+    error_code: code || null,
+    error_details: details || null,
+    failure_class,
+    last_succeeded_at: succeededAt || null,
+    last_attempted_at: new Date(),
+    capability_state: 'unknown',
+    retry_count: retryCount == null ? 0 : retryCount,
+  };
+  return {
+    canonical_status: canonical,
+    coverage_state: C.deriveCoverageState(pseudoRow),
+    failure_class,
+    capability_state: 'unknown',
+    retry_eligible: C.retryEligible(pseudoRow),
+    schema_version: C.CONTRACT_VERSION,
+    coverage_limitations: null,
+  };
+}
+
 async function beginAttempt(storeId, domain, db = defaultDb()) {
   assertDomain(domain);
   const now = new Date();
+  const cc = contractColumns(C.RESOURCE_STATUS.RUNNING, { discovered: 0, inserted: 0, updated: 0, paginationComplete: false });
   try {
     await db.store_sync_domain_states.upsert({
       where: { store_id_domain: { store_id: storeId, domain } },
       update: {
         status: 'running',
+        ...cc,
         records_discovered: 0,
         records_inserted: 0,
         records_updated: 0,
@@ -75,6 +111,7 @@ async function beginAttempt(storeId, domain, db = defaultDb()) {
         store_id: storeId,
         domain,
         status: 'running',
+        ...cc,
         last_attempted_at: now,
         last_checked_at: now,
       },
@@ -89,11 +126,16 @@ async function beginAttempt(storeId, domain, db = defaultDb()) {
 async function recordSuccess(storeId, domain, report = {}, db = defaultDb()) {
   assertDomain(domain);
   const now = new Date();
+  const cc = contractColumns(C.RESOURCE_STATUS.RESOURCE_COMPLETED, {
+    discovered: report.discovered, inserted: report.inserted, updated: report.updated,
+    paginationComplete: report.paginationComplete, succeededAt: now,
+  });
   try {
     await db.store_sync_domain_states.upsert({
       where: { store_id_domain: { store_id: storeId, domain } },
       update: {
         status: 'ok',
+        ...cc,
         records_discovered: numOr(report.discovered),
         records_inserted: numOr(report.inserted),
         records_updated: numOr(report.updated),
@@ -112,6 +154,7 @@ async function recordSuccess(storeId, domain, report = {}, db = defaultDb()) {
         store_id: storeId,
         domain,
         status: 'ok',
+        ...cc,
         records_discovered: numOr(report.discovered),
         records_inserted: numOr(report.inserted),
         records_updated: numOr(report.updated),
@@ -140,12 +183,20 @@ async function recordDegraded(storeId, domain, errorOrCode, report = {}, db = de
   try {
     const existing = await db.store_sync_domain_states.findUnique({
       where: { store_id_domain: { store_id: storeId, domain } },
-      select: { error_since: true },
+      select: { error_since: true, last_succeeded_at: true, retry_count: true },
+    });
+    const cc = contractColumns(C.RESOURCE_STATUS.RESOURCE_PARTIAL, {
+      code, details: message,
+      discovered: report.discovered, inserted: report.inserted, updated: report.updated,
+      paginationComplete: report.paginationComplete,
+      succeededAt: existing?.last_succeeded_at,
+      retryCount: (Number(existing?.retry_count) || 0) + 1,
     });
     await db.store_sync_domain_states.upsert({
       where: { store_id_domain: { store_id: storeId, domain } },
       update: {
         status: 'degraded',
+        ...cc,
         error_code: code,
         error_details: message,
         error_since: existing?.error_since || now,
@@ -163,6 +214,7 @@ async function recordDegraded(storeId, domain, errorOrCode, report = {}, db = de
         store_id: storeId,
         domain,
         status: 'degraded',
+        ...cc,
         error_code: code,
         error_details: message,
         error_since: now,
@@ -186,12 +238,21 @@ async function recordFailure(storeId, domain, error, report = {}, db = defaultDb
   try {
     const existing = await db.store_sync_domain_states.findUnique({
       where: { store_id_domain: { store_id: storeId, domain } },
-      select: { error_since: true },
+      select: { error_since: true, last_succeeded_at: true, retry_count: true },
+    });
+    const cc = contractColumns(C.RESOURCE_STATUS.FAILED, {
+      code, details: safeMessage(error),
+      discovered: report.discovered ?? error?.discovered ?? error?.products_upserted,
+      inserted: report.inserted, updated: report.updated,
+      paginationComplete: report.pagesCompleted ?? error?.pages_completed,
+      succeededAt: existing?.last_succeeded_at,
+      retryCount: (Number(existing?.retry_count) || 0) + 1,
     });
     await db.store_sync_domain_states.upsert({
       where: { store_id_domain: { store_id: storeId, domain } },
       update: {
         status: 'failed',
+        ...cc,
         error_code: code,
         error_details: safeMessage(error),
         error_since: existing?.error_since || now,
@@ -209,6 +270,7 @@ async function recordFailure(storeId, domain, error, report = {}, db = defaultDb
         store_id: storeId,
         domain,
         status: 'failed',
+        ...cc,
         error_code: code,
         error_details: safeMessage(error),
         error_since: now,
@@ -235,13 +297,28 @@ async function snapshot(storeId, db = defaultDb()) {
       where: { store_id: storeId },
       orderBy: { domain: 'asc' },
     });
-    const now = Date.now();
-    return rows.map(row => ({
-      ...row,
-      freshness_seconds: row.last_succeeded_at
-        ? Math.max(0, Math.floor((now - new Date(row.last_succeeded_at).getTime()) / 1000))
-        : null,
-    }));
+  const now = new Date();
+    return rows.map(row => {
+      // Authoritative re-derivation via the contract: the persisted denormalized
+      // columns are a cache for direct inspection; consumers always see values
+      // computed from the live row so a stale/legacy row cannot render wrong.
+      const failure_class = (row.status === 'ok' || row.status === 'never_run' || row.status === 'running')
+        ? (row.failure_class && row.failure_class !== 'unknown' ? row.failure_class : C.FAILURE_CLASS.NONE)
+        : C.classifyFailure(row.error_code, row.error_details);
+      const enriched = { ...row, failure_class };
+      return {
+        ...row,
+        canonical_status: C.toCanonicalStatus(row.status, { scope: 'resource' }),
+        coverage_state: C.deriveCoverageState(enriched),
+        failure_class,
+        retry_eligible: C.retryEligible(enriched),
+        freshness: C.deriveFreshness(enriched, { now }),
+        freshness_seconds: row.last_succeeded_at
+          ? Math.max(0, Math.floor((now - new Date(row.last_succeeded_at).getTime()) / 1000))
+          : null,
+        schema_version: C.CONTRACT_VERSION,
+      };
+    });
   } catch (error) {
     loggerWarn(storeId, '*', error, 'snapshot');
     return [];

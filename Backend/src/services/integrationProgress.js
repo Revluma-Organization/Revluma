@@ -246,6 +246,14 @@ function jobStatus(store, domains, nowMs) {
   const requiredOk = required.filter(d => d.status === 'ok');
   const requiredFailed = required.filter(d => ['failed', 'degraded'].includes(d.status));
   const allRequiredComplete = required.length > 0 && required.every(d => d.status === 'ok' && d.records.pagination_complete);
+  // A limitation is any domain that terminally failed or is partial (degraded),
+  // whether required or optional. When every REQUIRED resource is complete but
+  // an optional one terminally failed, the store completed WITH LIMITATIONS —
+  // never a bare "completed" (which the UI renders as a clean 100%). This keeps
+  // the progress contract consistent with the canonical store status
+  // (initial_completed_with_limitations) so we never overstate success (Task 229
+  // §1/§5).
+  const hasTerminalLimitation = domains.some(d => ['failed', 'degraded'].includes(d.status));
 
   if (syncStatus === 'running' || anyRunning) {
     // Running: is it stalled? Only via a REAL heartbeat older than threshold.
@@ -257,6 +265,12 @@ function jobStatus(store, domains, nowMs) {
   }
   if (syncStatus === 'queued') return { status: 'queued', reason: 'accepted_not_started' };
   if (allRequiredComplete && (syncStatus === 'completed' || requiredOk.length === required.length)) {
+    // All required units done + persisted, but a domain terminally failed/partial:
+    // the honest terminal is "partial" (completed with limitations), not a clean
+    // "completed"/100%.
+    if (hasTerminalLimitation) {
+      return { status: 'partial', reason: 'required_complete_with_limitations' };
+    }
     return { status: 'completed', reason: 'all_required_units_done_and_persisted' };
   }
   if (requiredFailed.length > 0 && requiredOk.length > 0) return { status: 'partial', reason: 'some_required_resources_failed' };

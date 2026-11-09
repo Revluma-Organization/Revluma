@@ -1425,6 +1425,19 @@ model store_sync_domain_states {
   created_at          DateTime  @default(now()) @db.Timestamptz(6)
   updated_at          DateTime  @default(now()) @db.Timestamptz(6)
 
+  // Canonical, typed, versioned sync contract (syncStateContract.js).
+  // `status` above remains the low-level engine state; these columns carry the
+  // merchant/reporting lifecycle + coverage certification. The read path
+  // re-derives from (status, error, records, capability_state) via the contract
+  // so a stale/legacy row can never render an incorrect outcome.
+  canonical_status      String  @default("never_run") @db.VarChar(48)
+  coverage_state        String  @default("unknown") @db.VarChar(32)
+  failure_class         String  @default("unknown") @db.VarChar(24)
+  capability_state      String  @default("unknown") @db.VarChar(24)
+  retry_eligible        Boolean @default(false)
+  schema_version        String  @default("1") @db.VarChar(8)
+  coverage_limitations  Json?
+
   @@unique([store_id, domain])
   @@index([store_id, status], map: "idx_store_sync_domain_states_status")
 }

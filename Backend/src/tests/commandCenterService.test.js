@@ -93,7 +93,7 @@ test('weak hypotheses and invalidated evidence never enter priority findings', (
     finding({ id: 'hypothesis', severity: 'critical', evidence: { verified: false } }),
     finding({ id: 'duplicate' }),
     valid,
-  ]);
+  ], { now: NOW });
   assert.deepEqual(result.map(item => item.id), ['duplicate', 'finding-1']);
 });
 
@@ -102,7 +102,7 @@ test('findings are deduplicated and ordered by defensible severity then recency'
     finding({ id: 'low', severity: 'low' }),
     finding({ id: 'critical', severity: 'critical', detected_at: new Date('2026-11-08T10:00:00Z') }),
     finding({ id: 'critical', severity: 'critical' }),
-  ]);
+  ], { now: NOW });
   assert.deepEqual(result.map(item => item.id), ['critical', 'low']);
 });
 
