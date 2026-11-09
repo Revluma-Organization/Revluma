@@ -23,10 +23,16 @@
 | Warning `#93470E` / white | 6.67:1 |
 | Shared meaningful border `#8490A3` / white | 3.23:1 |
 
-## Production evidence and limits
+## CI, merge and production evidence
 
-Baseline production `dpl_DbdSmKTasYLhC7MNuRkRtL6xDFkR` was READY/PROMOTED at `5473a489d12a9c6042f5bbec8d43f50815675389`; public workspace URLs require sign-in. Commit/PR/merge/final deployment references are recorded after delivery.
+- Implementation commit `597c2e17f2a93e7479a4cd07aa6e882bbe179dcc` was delivered in [PR #383](https://github.com/Revluma-Organization/Revluma/pull/383). Dashboard CI, Vercel and Vercel Preview Comments all passed before merge.
+- PR #383 merged into `main` as `3a3baa0aa42e04e47ba920f92547d0020fe7d53f`.
+- The automatic production deployment did not appear after the merge; production initially remained on the Task 225 release. An exact-source production deployment was therefore requested from `main` at the merge SHA rather than promoting the branch preview.
+- Production deployment `dpl_5g93ia3MHWuYemw4ShvXgKsiMmsX` is **READY/PROMOTED**, source `3a3baa0aa42e04e47ba920f92547d0020fe7d53f`, with `revluma.vercel.app` assigned, `aliasAssigned=true` and no alias error. The separate implementation-preview deployment `dpl_5MLzRF7f7YxZBdPpiKXFbxikTgmZ` also reached READY but was not used as merge evidence.
+- On 2026-11-06, the public homepage returned the Revluma marketing page. Unauthenticated requests to `/dashboard/integrations`, `/dashboard/overview` and `/dashboard/rev-intelligence` reached the sign-in page with their respective URL-encoded `next` destinations preserved. This verifies public hosting, SPA deep-link routing and the authentication boundary only.
 
-**Externally blocked:** no authenticated production merchant or real-browser/screen-reader environment is available. Consequently actual rendered contrast across every workspace/theme/state, browser zoom/text scaling, horizontal overflow at all 36 workspace/width combinations, complete keyboard-only production journeys, and NVDA/VoiceOver announcements remain unverified. jsdom viewport contracts, token arithmetic and axe scans are not represented as those proofs. Backend deployment identity and live provider failures are also unverified.
+## Authenticated acceptance limits
 
-Status before final delivery: **IMPLEMENTED AND LOCALLY VALIDATED — CI, DEPLOYMENT AND AUTHENTICATED PRODUCTION ACCEPTANCE PENDING**.
+**Externally blocked:** no authenticated production merchant or real-browser/screen-reader environment is available. Consequently actual rendered contrast across every workspace/theme/state, browser zoom/text scaling, horizontal overflow at all 36 workspace/width combinations, complete keyboard-only production journeys, and NVDA/VoiceOver announcements remain unverified. jsdom viewport contracts, token arithmetic and axe scans are not represented as those proofs. Backend deployment identity, live provider failures and authenticated three-workspace journeys also remain unverified.
+
+Final status: **IMPLEMENTED, LOCALLY VALIDATED, CI VERIFIED, MERGED AND FRONTEND DEPLOYED — AUTHENTICATED PRODUCTION AND MANUAL ACCESSIBILITY ACCEPTANCE PENDING**.
