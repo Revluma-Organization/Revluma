@@ -181,7 +181,14 @@ exports.chat = async (req, res, next) => {
   try {
     // 1. Validate before persistence. Oversize questions are rejected, never
     // silently truncated, and request_id is the stable idempotency key.
-    const validated = validateSubmission(req.body);
+    let validated;
+    try { validated = validateSubmission(req.body); }
+    catch (error) {
+      return res.status(error.statusCode || 400).json({
+        success: false,
+        error: { code: error.code || 'VALIDATION_ERROR', message: error.message || 'Message is invalid.' },
+      });
+    }
     const message = validated.message;
     correlationId = validated.requestId;
     const conversationId  = req.body?.conversation_id || null;
