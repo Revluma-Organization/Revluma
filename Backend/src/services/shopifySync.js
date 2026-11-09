@@ -702,12 +702,36 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     if (productsError && productsError.degraded !== 'permission_denied') throw productsError;
     const syncCompletedAt = new Date();
     const partialSync = Boolean(productsError) || customerSyncLimited;
+    // Task 229 §5 (D4) — persist an HONEST terminal status. The engine must not
+    // stamp a bare "completed" when the ledger shows terminally-failed/partial
+    // domains (e.g. extended resources that failed on an earlier pass and were
+    // not re-attempted here). Derive the canonical store status from the full
+    // ledger exactly as the reaper does (syncStateContract.deriveStoreSyncStatus
+    // over required + all domains), so the stored column is honest the moment the
+    // sync completes and never depends on the reaper chasing it down later.
+    // Fallback: if the ledger cannot be read or is empty, keep the legacy
+    // partial/completed value so a telemetry failure never breaks completion or
+    // under-reports worse than the pre-contract behavior.
+    let terminalStatus = partialSync ? 'partial' : 'completed';
+    try {
+      const { snapshot: readLedger } = require('./syncDomainState');
+      const { REQUIRED_INITIAL_RESOURCES } = require('./integrationDiagnostics');
+      const C = require('./syncStateContract');
+      const ledgerRows = await readLedger(store.id, prisma);
+      const derived = C.deriveStoreStatusFromLedger(ledgerRows, 'completed', { requiredDomains: REQUIRED_INITIAL_RESOURCES });
+      if (derived) terminalStatus = derived.status;
+    } catch (terminalDerivationError) {
+      logger.warn('shopify_terminal_status_derivation_failed', {
+        store_id: store.id,
+        error_type: terminalDerivationError?.code || terminalDerivationError?.name || 'derivation_error',
+      });
+    }
     const completion = await prisma.stores.updateMany({
       where: { id: store.id, current_sync_job_id: syncJobId, access_token: { not: null }, integration_state: { notIn: ['disconnected', 'authorization_required', 'authorization_expired', 'authorization_revoked'] } },
       data: {
         status: 'active',
         last_synced_at: syncCompletedAt,
-        initial_sync_status: partialSync ? 'partial' : 'completed',
+        initial_sync_status: terminalStatus,
         sync_completed_at: syncCompletedAt,
         sync_error_code: productsError?.code || (customerSyncLimited ? 'SHOPIFY_CUSTOMERS_ACCESS_DENIED' : null),
         recovery_status: 'completed',

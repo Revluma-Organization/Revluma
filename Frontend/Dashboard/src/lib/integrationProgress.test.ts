@@ -160,6 +160,37 @@ describe("normalizeSyncProgress (fail-closed)", () => {
     expect(p.domains[0].required).toBe(true);
     expect(p.retry.actionable).toBe(false);
   });
+
+  it("accepts a canonical store_status (completed with limitations) — Task 229 #3", () => {
+    const p = normalizeSyncProgress(validProgress({
+      "job.status": "completed",
+      "overall.percent": 100,
+      store_status: {
+        status: "initial_completed_with_limitations",
+        reason: "complete_with_optional_limitations",
+        limitations: [
+          { domain: "analytics.reports", required: false, status: "failed", coverage: "retrieval_failure", detail: "retrieval failed (SHOPIFY_GRAPHQL_ERROR)" },
+          { domain: "shop.policies", required: false, status: "failed", coverage: "retrieval_failure", detail: "retrieval failed (SHOPIFY_GRAPHQL_ERROR)" },
+        ],
+      },
+    }));
+    expect(p).not.toBeNull();
+    expect(p!.store_status?.status).toBe("initial_completed_with_limitations");
+    expect(p!.store_status?.limitations).toHaveLength(2);
+  });
+
+  it("normalizes a contract WITHOUT store_status (backward compatible)", () => {
+    const p = normalizeSyncProgress(validProgress());
+    expect(p).not.toBeNull();
+    expect(p!.store_status).toBeUndefined();
+  });
+
+  it("rejects a malformed store_status (fail-closed)", () => {
+    expect(normalizeSyncProgress(validProgress({ store_status: { status: "", reason: null, limitations: [] } }))).toBeNull();
+    expect(normalizeSyncProgress(validProgress({ store_status: { status: "initial_completed", reason: null, limitations: "nope" } }))).toBeNull();
+    expect(normalizeSyncProgress(validProgress({ store_status: { status: "initial_completed_with_limitations", reason: null, limitations: [{ domain: "x", coverage: "retrieval_failure", detail: null }] } }))).toBeNull();
+    expect(normalizeSyncProgress(validProgress({ store_status: { status: "initial_completed", reason: 5, limitations: [] } }))).toBeNull();
+  });
 });
 
 describe("progressLine (truthful copy)", () => {

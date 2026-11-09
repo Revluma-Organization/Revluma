@@ -27,6 +27,7 @@
 // (`storeController.getSyncProgress`) fail-closes on any contract violation.
 
 const { diagnosticFor, classifyShopifyError } = require('./integrationLifecycle');
+const C = require('./syncStateContract');
 
 const PROGRESS_CONTRACT_VERSION = 'rev-sync-progress-v1';
 
@@ -394,9 +395,32 @@ function buildSyncProgress({ store, domainRows = [], now = new Date() }) {
     return rest;
   });
 
+  // Task 229 §5 (#3) — surface the CANONICAL store status, derived from the FULL
+  // ledger (all 35 domains), plus its limitations. Deliberately separate from the
+  // 9-domain `job`/`domains` progress contract above: that contract is clean when
+  // the 9 tracked resources all succeed, even if an extended resource
+  // (analytics/reports, content/redirects, online-store/menus, shop/policies, …)
+  // failed. Without this field the merchant sees a bare "Complete" despite real,
+  // surfaced limitations — an overstatement of success.
+  const canonical = C.deriveStoreStatusFromLedger(domainRows, store?.initial_sync_status, { requiredDomains: REQUIRED_DOMAINS });
+  const store_status = canonical
+    ? {
+        status: canonical.status,
+        reason: canonical.reason,
+        limitations: (canonical.limitations || []).map(l => ({
+          domain: l.domain,
+          required: Boolean(l.required),
+          status: l.status,
+          coverage: l.coverage,
+          detail: l.detail,
+        })),
+      }
+    : { status: store?.initial_sync_status || 'not_started', reason: null, limitations: [] };
+
   return {
     contract_version: PROGRESS_CONTRACT_VERSION,
     store: { id: store?.id || null, shop_domain: store?.shop_domain || null },
+    store_status,
     job: {
       id: store?.current_sync_job_id || null,
       status: job.status,
@@ -471,6 +495,10 @@ function validateSyncProgress(contract) {
     }
     if (d.work.total_known === false && d.work.total_units != null) problems.push(`total_units_without_known_total:${d.domain}`);
     // No secrets may ever appear in the contract.
+  }
+  if (contract.store_status) {
+    if (typeof contract.store_status.status !== 'string' || contract.store_status.status.length === 0) problems.push('bad_store_status');
+    if (!Array.isArray(contract.store_status.limitations)) problems.push('bad_store_status_limitations');
   }
   const blob = JSON.stringify(contract);
   if (/shpat_|access_token|password|secret/i.test(blob)) problems.push('secret_leak');

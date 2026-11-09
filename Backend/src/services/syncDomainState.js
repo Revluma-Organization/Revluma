@@ -291,7 +291,7 @@ async function recordFailure(storeId, domain, error, report = {}, db = defaultDb
   }
 }
 
-async function snapshot(storeId, db = defaultDb()) {
+async function snapshot(storeId, db = defaultDb(), { strict = false } = {}) {
   try {
     const rows = await db.store_sync_domain_states.findMany({
       where: { store_id: storeId },
@@ -321,6 +321,11 @@ async function snapshot(storeId, db = defaultDb()) {
     });
   } catch (error) {
     loggerWarn(storeId, '*', error, 'snapshot');
+    // strict: the caller (e.g. the reaper) wants to know the ledger could not be
+    // read rather than receive an empty ledger that makes the store look
+    // "preserved terminal" and be silently skipped. Surface the error so a
+    // persistent read failure is logged per-store and never masked as a no-op.
+    if (strict) throw error;
     return [];
   }
 }

@@ -275,3 +275,101 @@ test('findMisreportedTerminalStores: only "completed" stores with a failed/parti
   // failure) are excluded.
   assert.deepEqual(res.map(s => s.id), ['s1', 's4']);
 });
+
+// ===========================================================================
+// Hardening: a failure in one reaper phase must never abort the pass or mask
+// an unreadable ledger, and the honesty refinement must not be throttled behind
+// the 20-oldest in-flight batch.
+// ===========================================================================
+
+// A mock db whose in-flight finder (stores.findMany with initial_sync_status.in
+// containing 'running') throws, but whose refinement finder + snapshot work.
+function makeDbWithFailingInFlightFinder(stores, domains) {
+  return {
+    store_sync_domain_states: {
+      async findMany({ where, select, distinct, take } = {}) {
+        if (where.store_id) return domains.filter(d => d.store_id === where.store_id).map(r => ({ ...r }));
+        let rows = domains.filter(d => !where.status || !where.status.in || where.status.in.includes(d.status));
+        if (distinct && distinct.length) { const seen = new Set(); rows = rows.filter(r => (seen.has(r[distinct[0]]) ? false : (seen.add(r[distinct[0]]), true))); }
+        rows = rows.slice(0, take);
+        return rows.map(r => (select ? Object.fromEntries(Object.keys(select).map(k => [k, r[k]])) : { ...r }));
+      },
+      async upsert() { throw new Error('no upsert in this test'); },
+      async findUnique() { return null; },
+    },
+    stores: {
+      async findMany({ where = {} } = {}) {
+        if ((where.initial_sync_status?.in || []).includes('running')) throw new Error('in-flight finder blew up');
+        let list = stores.filter(s => where.id?.in?.includes(s.id));
+        if (where.platform) list = list.filter(s => s.platform === where.platform);
+        if (where.initial_sync_status?.in) list = list.filter(s => where.initial_sync_status.in.includes(s.initial_sync_status));
+        if (where.status?.in) list = list.filter(s => where.status.in.includes(s.status));
+        if (where.orderBy?.updated_at === 'asc') list = list.slice().sort((a, b) => new Date(a.updated_at) - new Date(b.updated_at));
+        if (where.take != null) list = list.slice(0, where.take);
+        return list;
+      },
+      async update({ where, data }) { const s = stores.find(x => x.id === where.id); Object.assign(s, data); return { ...s }; },
+    },
+  };
+}
+
+test('runReaper: a failing in-flight finder does NOT abort the honesty refinement (phases are guarded)', async () => {
+  const stores = [{ id: 'mr-1', platform: 'shopify', status: 'active', initial_sync_status: 'completed', updated_at: STALE }];
+  const domains = [
+    okRow('mr-1', 'products'),
+    okRow('mr-1', 'orders'),
+    okRow('mr-1', 'abandoned_checkouts'),
+    { ...okRow('mr-1', 'refunds'), status: 'failed', error_code: 'SHOPIFY_GRAPHQL_ERROR', records_discovered: 0, records_inserted: 0, pagination_complete: false, last_succeeded_at: null },
+  ];
+  const db = makeDbWithFailingInFlightFinder(stores, domains);
+  const out = await R.runReaper(db, { now: NOW });
+  assert.ok(out.errors.some(e => e.phase === 'find_in_flight'), 'in-flight finder failure is recorded');
+  assert.equal(out.refined_stores, 1, 'the refinement still ran despite the in-flight finder failing');
+  assert.equal(stores[0].initial_sync_status, 'initial_completed_with_limitations');
+});
+
+test('runReaper: an unreadable ledger is surfaced as a per-store error, not a silent skip (strict snapshot)', async () => {
+  const stores = [{ id: 'st-1', platform: 'shopify', status: 'syncing', initial_sync_status: 'running', recovery_status: 'recovering', current_sync_job_id: 'j', sync_started_at: STALE }];
+  const db = {
+    store_sync_domain_states: {
+      async findMany({ where } = {}) {
+        if (where.store_id) throw new Error('ledger read failed');
+        return []; // refinement finder: no failed domains
+      },
+      async upsert() { return null; },
+      async findUnique() { return null; },
+    },
+    stores: {
+      async findMany({ where = {} } = {}) {
+        if ((where.initial_sync_status?.in || []).includes('running')) return stores.map(s => ({ ...s }));
+        return [];
+      },
+      async update({ where, data }) { const s = stores.find(x => x.id === where.id); Object.assign(s, data); return { ...s }; },
+    },
+  };
+  const out = await R.runReaper(db, { now: NOW });
+  assert.ok(out.errors.some(e => e.phase === 'reap' && e.store_id === 'st-1'), 'the ledger read failure is surfaced, not masked');
+  assert.equal(out.terminalized_stores, 0);
+  assert.equal(stores[0].initial_sync_status, 'running', 'unchanged — we never fabricate a terminal state we could not verify');
+});
+
+test('runReaper: honesty refinement is NOT throttled behind the 20-oldest batch (refineLimit decoupled)', async () => {
+  const N = 25;
+  const stores = [];
+  const domains = [];
+  for (let i = 0; i < N; i++) {
+    const id = `mr-${i}`;
+    stores.push({ id, platform: 'shopify', status: 'active', initial_sync_status: 'completed', updated_at: new Date(NOW.getTime() - (N - i) * 1000) });
+    domains.push(
+      okRow(id, 'products'),
+      okRow(id, 'orders'),
+      okRow(id, 'abandoned_checkouts'),
+      { ...okRow(id, 'refunds'), status: 'failed', error_code: 'SHOPIFY_GRAPHQL_ERROR', records_discovered: 0, records_inserted: 0, pagination_complete: false, last_succeeded_at: null },
+    );
+  }
+  const db = makeDbWithFailingInFlightFinder(stores, domains);
+  const out = await R.runReaper(db, { now: NOW });
+  assert.equal(out.refine_considered, N, 'all 25 misreported stores considered in one pass (not capped at 20)');
+  assert.equal(out.refined_stores, N, 'a recently-updated store is not queued behind the batch');
+  assert.ok(stores.every(s => s.initial_sync_status === 'initial_completed_with_limitations'));
+});

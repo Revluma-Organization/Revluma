@@ -218,3 +218,35 @@ describe("SyncProgressCard — mobile safety & a11y", () => {
     await waitFor(() => expect(screen.getByText(/temporarily unavailable/i)).toBeInTheDocument());
   });
 });
+
+describe("SyncProgressCard — canonical limitations (Task 229 #3)", () => {
+  it("surfaces 'completed with limitations' when an extended domain failed (job contract is a clean completed)", async () => {
+    const base = progress({ status: "completed", percent: 100, measurable: true }) as Record<string, unknown>;
+    base.store_status = {
+      status: "initial_completed_with_limitations",
+      reason: "complete_with_optional_limitations",
+      limitations: [
+        { domain: "analytics.reports", required: false, status: "failed", coverage: "retrieval_failure", detail: "retrieval failed (SHOPIFY_GRAPHQL_ERROR)" },
+        { domain: "shop.policies", required: false, status: "failed", coverage: "retrieval_failure", detail: "retrieval failed (SHOPIFY_GRAPHQL_ERROR)" },
+      ],
+    };
+    mockGet(base);
+    render(<SyncProgressCard storeId="s1" />);
+    // Headline is overridden (not a bare green "Complete")…
+    await waitFor(() => expect(screen.getByText("Complete with limitations")).toBeInTheDocument());
+    // …and the real limitations are listed, not hidden.
+    expect(screen.getByText(/completed with limitations — 2 data sources/i)).toBeInTheDocument();
+    expect(screen.getByText(/analytics\.reports/)).toBeInTheDocument();
+    expect(screen.getByText(/shop\.policies/)).toBeInTheDocument();
+  });
+
+  it("does not show the limitations banner for a clean completed store", async () => {
+    const base = progress({ status: "completed", percent: 100, measurable: true }) as Record<string, unknown>;
+    base.store_status = { status: "initial_completed", reason: "all_required_complete", limitations: [] };
+    mockGet(base);
+    render(<SyncProgressCard storeId="s1" />);
+    await waitFor(() => expect(screen.getAllByText("Complete").length).toBeGreaterThanOrEqual(1));
+    expect(screen.queryByText("Complete with limitations")).not.toBeInTheDocument();
+    expect(screen.queryByText(/completed with limitations/i)).not.toBeInTheDocument();
+  });
+});

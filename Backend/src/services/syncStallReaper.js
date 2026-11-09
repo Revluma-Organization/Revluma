@@ -42,6 +42,15 @@ const DEFAULT_STALE_MS = 2 * 60 * 60 * 1000;
 
 const REQUIRED_SET = new Set(REQUIRED_INITIAL_RESOURCES);
 
+// The D4 honesty refinement runs on a LARGER batch than in-flight reaping so a
+// recently-misreported terminal store is corrected promptly instead of being
+// throttled behind the 20-oldest in-flight batch for many 5-minute passes.
+const DEFAULT_REFINE_LIMIT = 200;
+
+function errCode(error) {
+  return error?.code || error?.name || 'reaper_error';
+}
+
 function toMs(value) {
   if (value == null) return null;
   if (value instanceof Date) {
@@ -192,40 +201,64 @@ async function reconcileStore(db, store, rows, { now, staleMs = DEFAULT_STALE_MS
 
 // Scheduler entry: reconcile a bounded batch of in-flight stores, then a bounded
 // batch of misreported terminal stores (D4 honesty refinement).
-async function runReaper(db, { now, staleMs = DEFAULT_STALE_MS, limit = 20, refine = true } = {}) {
-  const stores = await findInFlightStores(db, { limit });
+async function runReaper(db, { now, staleMs = DEFAULT_STALE_MS, limit = 20, refine = true, refineLimit = DEFAULT_REFINE_LIMIT } = {}) {
   const results = [];
+  const errors = [];
+
+  // (A) In-flight reaping. Each phase's finder is guarded so a throw in one does
+  //     not abort the other (previously an uncaught finder throw aborted the whole
+  //     pass, including the honesty refinement). A finder failure is recorded in
+  //     `errors` and the pass still returns the work it did complete.
+  let stores = [];
+  try {
+    stores = await findInFlightStores(db, { limit });
+  } catch (error) {
+    errors.push({ phase: 'find_in_flight', error: errCode(error) });
+  }
   let reapedTotal = 0;
   let terminalized = 0;
   for (const store of stores) {
     try {
-      const rows = await snapshot(store.id, db);
+      // strict: an unreadable ledger is a real, logged per-store error — not a
+      // silent "preserved terminal" skip that would leave the store unrefined.
+      const rows = await snapshot(store.id, db, { strict: true });
       const res = await reconcileStore(db, store, rows, { now, staleMs });
       results.push(res);
       reapedTotal += res.reaped.length;
       if (res.changed) terminalized++;
     } catch (error) {
-      results.push({ store_id: store.id, error: error?.code || error?.name || 'reaper_error' });
+      errors.push({ phase: 'reap', store_id: store.id, error: errCode(error) });
+      results.push({ store_id: store.id, error: errCode(error) });
     }
   }
 
-  // Bounded, idempotent refinement of already-terminal stores that the completion
-  // path overstated (marked "completed" despite a failed/partial domain). Reuses
-  // reconcileStore: no running domains to reap, so it simply re-derives and
-  // refines the canonical status (preserving the real completion timestamp).
+  // (B) Bounded, idempotent refinement of already-terminal stores that the
+  //     completion path overstated (marked "completed" despite a failed/partial
+  //     domain). Reuses reconcileStore: no running domains to reap, so it simply
+  //     re-derives and refines the canonical status (preserving the real
+  //     completion timestamp). Runs on a larger batch (refineLimit) than in-flight
+  //     reaping so a recently-misreported store is corrected promptly.
   let refined = 0;
+  let refineConsidered = 0;
   if (refine) {
-    const terminalStores = await findMisreportedTerminalStores(db, { limit });
+    let terminalStores = [];
+    try {
+      terminalStores = await findMisreportedTerminalStores(db, { limit: refineLimit });
+      refineConsidered = terminalStores.length;
+    } catch (error) {
+      errors.push({ phase: 'find_misreported', error: errCode(error) });
+    }
     for (const store of terminalStores) {
       try {
-        const rows = await snapshot(store.id, db);
+        const rows = await snapshot(store.id, db, { strict: true });
         const res = await reconcileStore(db, store, rows, { now, staleMs });
         if (res.changed) {
           results.push(res);
           if (res.refined) refined++;
         }
       } catch (error) {
-        results.push({ store_id: store.id, error: error?.code || error?.name || 'refiner_error' });
+        errors.push({ phase: 'refine', store_id: store.id, error: errCode(error) });
+        results.push({ store_id: store.id, error: errCode(error) });
       }
     }
   }
@@ -235,6 +268,8 @@ async function runReaper(db, { now, staleMs = DEFAULT_STALE_MS, limit = 20, refi
     reaped_domains: reapedTotal,
     terminalized_stores: terminalized,
     refined_stores: refined,
+    refine_considered: refineConsidered,
+    errors,
     results,
   };
 }
