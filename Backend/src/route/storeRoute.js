@@ -5,6 +5,7 @@ const { authenticateToken } = require('../middlewares/authMiddleware');
 
 router.get('/', authenticateToken, storeController.getStores);
 router.get('/integration-states', authenticateToken, storeController.getIntegrationStates);
+router.get('/journey', authenticateToken, storeController.getMerchantJourney);
 router.get('/shopify/diagnostics', authenticateToken, storeController.getShopifyDiagnostics);
 router.get('/:storeId/integration-state', authenticateToken, storeController.getIntegrationState);
 // Task 215 — authoritative sync-progress contract (rev-sync-progress-v1) and

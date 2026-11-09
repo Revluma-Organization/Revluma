@@ -318,11 +318,11 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 309 | Phase 4 | Verify desktop conversation layout. | NOT STARTED | — | — | — |
 | 310 | Phase 4 | Verify accessible keyboard interaction. | NOT STARTED | — | — | — |
 | 311 | Phase 4 | Verify accessible status announcements. | NOT STARTED | — | — | — |
-| 312 | Phase 4 | Verify first-time onboarding route. | NOT STARTED | — | — | — |
-| 313 | Phase 4 | Verify Shopify authorization return route. | NOT STARTED | — | — | — |
-| 314 | Phase 4 | Verify first briefing entry route. | NOT STARTED | — | — | — |
-| 315 | Phase 4 | Verify finding-to-Rev navigation. | NOT STARTED | — | — | — |
-| 316 | Phase 4 | Verify conversation return to Command Center. | NOT STARTED | — | — | — |
+| 312 | Phase 4 | Verify first-time onboarding route. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; CI/deployment/authenticated production journey pending |
+| 313 | Phase 4 | Verify Shopify authorization return route. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; CI/deployment/authenticated production journey pending |
+| 314 | Phase 4 | Verify first briefing entry route. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; CI/deployment/authenticated production journey pending |
+| 315 | Phase 4 | Verify finding-to-Rev navigation. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; CI/deployment/authenticated production journey pending |
+| 316 | Phase 4 | Verify conversation return to Command Center. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; CI/deployment/authenticated production journey pending |
 | 317 | Phase 4 | Verify design consistency across three workspaces. | NOT STARTED | — | — | — |
 | 318 | Phase 4 | Verify error copy uses plain language. | NOT STARTED | — | — | — |
 | 319 | Phase 4 | Verify responsive navigation. | NOT STARTED | — | — | — |
@@ -708,3 +708,7 @@ User-assigned Task 219 consolidates original Tasks 281–285 only, on branch `ar
 ## TASK 223 — Rev conversation submission, investigation loading and evidence presentation (2026-11-09)
 
 User-assigned Task 223 consolidates original Tasks 300–304 on branch `arena/1a609ce0-revluma`, baseline `5479a7f8`. Reports: [diagnostics](diagnostics/TASK-223-REV-CONVERSATION-SUBMISSION-LOADING-EVIDENCE-diagnostics.md), [implementation](implementation/TASK-223-REV-CONVERSATION-SUBMISSION-LOADING-EVIDENCE.md), [validation](validation/TASK-223-REV-CONVERSATION-SUBMISSION-LOADING-EVIDENCE.md). Decision: REV-DEC-0030. It adds stable UUID submission acceptance/replay with a tenant/conversation/role-scoped unique database constraint, acceptance-safe text/image retention, direct-API oversize rejection, strict final-envelope and CRLF handling, terminal failure persistence, and indeterminate compact investigation loading. Adaptive answers, categorical confidence, evidence provenance, finding continuity and read-only recommendations reuse upstream contracts. Exactly 131 new scenarios are defined (47 Backend, 84 Dashboard); focused Dashboard 75/75 new scenarios, retained focused page/stream 139/139, focused Backend 67/67, TypeScript/build/diff-check are green. Local full Backend/Prisma generation is blocked by unavailable `.prisma/client/default` and prohibited `binaries.prisma.sh` egress, so authoritative CI/migration results remain required. Status: **IMPLEMENTED, CI VERIFIED, MERGED, FRONTEND DEPLOYED — PARTIALLY VERIFIED / PRODUCTION BACKEND AND AUTHENTICATED ACTIVE-STORE ACCEPTANCE PENDING**. PR #378 merged as `5151cb178b910e4ead9196d29a8a0b34cf0e272a`; all final PR checks and post-merge Backend run 42573205823 passed. Vercel `dpl_Fvq1aqAh4rn2fTvU39NCB2rj9gX2` is READY/PROMOTED from the exact merge to `revluma.vercel.app`; public authentication routing is confirmed. Production backend revision/migration and authenticated active-store browser journeys are not established.
+
+## Task 225 — Onboarding and cross-workspace journey
+
+Branch `arena/88b8098a-revluma`; original Tasks 312–316. Reports: [diagnostics](diagnostics/TASK-225-ONBOARDING-CROSS-WORKSPACE-JOURNEY-diagnostics.md), [implementation](implementation/TASK-225-ONBOARDING-CROSS-WORKSPACE-JOURNEY.md), [validation](validation/TASK-225-ONBOARDING-CROSS-WORKSPACE-JOURNEY.md). Decision REV-DEC-0031. Adds `rev-merchant-journey-v1` over canonical Task 213 truth, explicit multi-store onboarding/readiness, and safe finding/return navigation without changing OAuth/tenant/read-only protections. 177 new scenarios; final CI/deployed revisions and authenticated active-store acceptance are separate gates. Status PARTIALLY VERIFIED pending those gates.

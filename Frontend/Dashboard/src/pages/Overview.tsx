@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useCommandCenter } from "@/hooks/useCommandCenter";
 import { FAILURE_MESSAGES, RETRYABLE_KINDS } from "@/lib/commandCenterError";
 import {
@@ -59,6 +60,12 @@ function BriefingFailureBanner({ failure, onRetry }: {
 
 export default function Overview() {
   const { data, loading, refreshing, failure, lastSuccessfulAt, announcement, refetch } = useCommandCenter();
+  const [searchParams] = useSearchParams();
+  const selectedFinding = searchParams.get("finding");
+  useEffect(() => {
+    if (!selectedFinding || !data?.findings.some(finding => finding.id === selectedFinding)) return;
+    document.getElementById("priority-finding")?.scrollIntoView({ block: "start" });
+  }, [selectedFinding, data]);
   return <main className={cc.page}>
     <div aria-live="polite" className="sr-only">{announcement}</div>
     <CommandCenterHeader data={data} refreshing={refreshing} lastSuccessfulAt={lastSuccessfulAt} onRefresh={() => void refetch(true)} />

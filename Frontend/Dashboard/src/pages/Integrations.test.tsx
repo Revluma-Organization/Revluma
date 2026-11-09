@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import Integrations from './Integrations';
 
 const storesResponse = (stores: unknown[]) => ({ ok: true, status: 200, data: { success: true, data: { stores } } });
+const journeyResponse = { ok: true, status: 200, data: { success: true, data: { contract_version: 'rev-merchant-journey-v1', organization_id: 'org-1', selected_store_id: null, selected: { state: 'authenticated_setup_required', title: 'Connect your Shopify store', explanation: 'Authorize read-only access.', next_route: '/dashboard/integrations', can_enter_workspace: false, store: null, required_resources: [], limited_capabilities: [] }, stores: [] } } };
 const statesResponse = (states: unknown[]) => ({ ok: true, status: 200, data: { success: true, data: { contract_version: 'rev-integration-state-v1', states } } });
 
 // A minimal-but-valid rev-integration-state-v1 block (server contract shape).
@@ -34,6 +35,7 @@ const connectedStore = {
 // independent sources (the UI joins them).
 function mockApi({ stores = [], states = [] }: { stores?: unknown[]; states?: unknown[] } = {}) {
   return vi.spyOn(api, 'get').mockImplementation((url: string) => {
+    if (String(url).includes('/stores/journey')) return Promise.resolve(journeyResponse);
     if (String(url).includes('/integration-states')) return Promise.resolve(statesResponse(states));
     return Promise.resolve(storesResponse(stores));
   });
@@ -101,7 +103,8 @@ describe('Task 213 — canonical integration state on the integrations page', ()
 
   it('fail-closed: a failed states endpoint with store records renders Status unknown', async () => {
     vi.spyOn(api, 'get').mockImplementation((url: string) => {
-      if (String(url).includes('/integration-states')) return Promise.reject(new Error('offline'));
+      if (String(url).includes('/stores/journey')) return Promise.resolve(journeyResponse);
+    if (String(url).includes('/integration-states')) return Promise.reject(new Error('offline'));
       return Promise.resolve(storesResponse([connectedStore]));
     });
     render(<MemoryRouter><Integrations /></MemoryRouter>);
@@ -111,7 +114,8 @@ describe('Task 213 — canonical integration state on the integrations page', ()
 
   it('per-store badge falls back to the store list additive block when polling has no state', async () => {
     vi.spyOn(api, 'get').mockImplementation((url: string) => {
-      if (String(url).includes('/integration-states')) return Promise.reject(new Error('offline'));
+      if (String(url).includes('/stores/journey')) return Promise.resolve(journeyResponse);
+    if (String(url).includes('/integration-states')) return Promise.reject(new Error('offline'));
       return Promise.resolve(storesResponse([{ ...connectedStore, integration_state: canonicalState('synchronizing') }]));
     });
     render(<MemoryRouter><Integrations /></MemoryRouter>);
@@ -134,7 +138,8 @@ describe('Shopify integrations store list (failure + retry)', () => {
     let complete: (value: ReturnType<typeof storesResponse>) => void;
     let storesCalls = 0;
     vi.spyOn(api, 'get').mockImplementation((url: string) => {
-      if (String(url).includes('/integration-states')) return Promise.resolve(statesResponse([]));
+      if (String(url).includes('/stores/journey')) return Promise.resolve(journeyResponse);
+    if (String(url).includes('/integration-states')) return Promise.resolve(statesResponse([]));
       storesCalls += 1;
       // First store-list call fails; the Retry call hangs until resolved.
       if (storesCalls === 1) return Promise.reject(new Error('offline'));
@@ -151,13 +156,14 @@ describe('Shopify integrations store list (failure + retry)', () => {
 
   it('reports a repeated retry failure', async () => {
     const get = vi.spyOn(api, 'get').mockImplementation((url: string) => {
-      if (String(url).includes('/integration-states')) return Promise.resolve(statesResponse([]));
+      if (String(url).includes('/stores/journey')) return Promise.resolve(journeyResponse);
+    if (String(url).includes('/integration-states')) return Promise.resolve(statesResponse([]));
       return Promise.reject(new Error('offline'));
     });
     render(<MemoryRouter><Integrations /></MemoryRouter>);
     fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
     // mount: /integration-states + /stores; retry click: /stores again.
-    await waitFor(() => expect(get).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(4));
     expect(await screen.findByRole('button', { name: 'Retry' })).toBeEnabled();
     expect(screen.queryByText('No Store Connected')).not.toBeInTheDocument();
   });

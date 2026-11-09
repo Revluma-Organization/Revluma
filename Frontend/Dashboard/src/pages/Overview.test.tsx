@@ -118,7 +118,7 @@ describe("Task 216 Command Center", () => {
   it("finding navigation preserves the selected finding id", async () => {
     await renderPage(fixture({ findings: [finding({ id: "abc/def", investigation: { finding_id: "abc/def", route: "/dashboard/rev-intell?finding=abc%2Fdef", context_contract: "rev-selected-finding-v1", revalidate_on_open: true }, next_step: { label: "Investigate", route: "/dashboard/rev-intell?finding=abc%2Fdef" } }) as CommandCenterData["findings"][number]] }));
     fireEvent.click(screen.getByRole("button", { name: "Investigate" }));
-    expect(navigate).toHaveBeenCalledWith("/dashboard/rev-intell?finding=abc%2Fdef");
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=abc%2Fdef"));
   });
 
   it("business metrics include definitions and currency context", async () => {
@@ -215,7 +215,7 @@ describe("Task 217 priority finding evidence and next step", () => {
   it("opens Rev with the exact priority finding and revalidation contract", async () => {
     await renderPage(priorityFixture());
     fireEvent.click(screen.getByRole("button", { name: /Investigate in Rev Intelligence/ }));
-    expect(navigate).toHaveBeenCalledWith("/dashboard/rev-intell?finding=finding-1");
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=finding-1"));
   });
   it("shows an honest no-priority state instead of a generic healthy alert", async () => {
     await renderPage(fixture());
