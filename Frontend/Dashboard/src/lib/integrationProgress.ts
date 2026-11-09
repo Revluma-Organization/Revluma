@@ -71,6 +71,24 @@ export interface SyncRetrySummary {
   backoff_exhausted?: boolean;
 }
 
+export interface SyncStoreStatusLimitation {
+  domain: string;
+  required: boolean;
+  status: string;
+  coverage: string;
+  detail: string | null;
+}
+
+// The canonical store status derived from the FULL domain ledger (all 35
+// domains) — deliberately separate from the 9-domain job progress contract, so a
+// sync whose tracked resources all succeeded but an extended resource failed can
+// still be shown as "completed with limitations" rather than a bare "Complete".
+export interface SyncStoreStatus {
+  status: string;
+  reason: string | null;
+  limitations: SyncStoreStatusLimitation[];
+}
+
 export interface SyncProgress {
   contract_version: string;
   store: { id: string | null; shop_domain: string | null };
@@ -101,6 +119,9 @@ export interface SyncProgress {
   };
   domains: SyncDomainProgress[];
   retry: SyncRetrySummary;
+  /** Optional for backward compatibility: older contracts omit it, in which case
+   *  the UI simply does not render the limitations block. */
+  store_status?: SyncStoreStatus;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -168,6 +189,21 @@ export function normalizeSyncProgress(raw: unknown): SyncProgress | null {
 
   const retry = raw.retry;
   if (!isObj(retry) || !isBool(retry.actionable)) return null;
+
+  // Canonical store status (Task 229 §5 #3) — optional; validated fail-closed when
+  // present so a malformed block yields null (an honest unknown), never a
+  // fabricated "complete".
+  const storeStatus = raw.store_status;
+  if (storeStatus !== undefined) {
+    if (!isObj(storeStatus) || typeof storeStatus.status !== "string" || storeStatus.status.length === 0) return null;
+    if (storeStatus.reason !== null && typeof storeStatus.reason !== "string") return null;
+    if (!Array.isArray(storeStatus.limitations)) return null;
+    for (const l of storeStatus.limitations) {
+      if (!isObj(l) || typeof l.domain !== "string" || typeof l.status !== "string") return null;
+      if (!isBool(l.required) || typeof l.coverage !== "string") return null;
+      if (l.detail !== null && typeof l.detail !== "string") return null;
+    }
+  }
 
   return raw as unknown as SyncProgress;
 }

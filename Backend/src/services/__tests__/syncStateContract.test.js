@@ -317,3 +317,59 @@ test('store: legacy ok/degraded statuses still derive correctly (shim)', () => {
   const res = C.deriveStoreSyncStatus(rows, 'running');
   assert.equal(res.status, 'initial_completed_with_limitations');
 });
+
+// ===========================================================================
+// deriveStoreStatusFromLedger — the single shared derivation the sync engine's
+// terminal write and the reaper refinement both use, so the persisted status is
+// always honest and the two code paths can never disagree.
+// ===========================================================================
+const REQ = ['products', 'orders', 'abandoned_checkouts'];
+const ledRow = (domain, status, extra = {}) => ({
+  domain, status,
+  records_discovered: 5, records_inserted: 5, records_updated: 0, records_deleted: 0,
+  pagination_complete: true, error_code: null, error_details: null,
+  last_succeeded_at: null, last_attempted_at: null, last_checked_at: null, retry_count: 0,
+  ...extra,
+});
+
+test('deriveStoreStatusFromLedger: clean ledger -> initial_completed (no limitations)', () => {
+  const ledger = [ledRow('products', 'ok'), ledRow('orders', 'ok'), ledRow('abandoned_checkouts', 'ok')];
+  const res = C.deriveStoreStatusFromLedger(ledger, 'completed', { requiredDomains: REQ });
+  assert.equal(res.status, 'initial_completed');
+  assert.equal(res.limitations.length, 0);
+});
+
+test('deriveStoreStatusFromLedger: the live D4 case — required complete + 4 extended failed -> completed_with_limitations', () => {
+  const failed = d => ledRow(d, 'failed', { records_discovered: 0, records_inserted: 0, pagination_complete: false, error_code: 'SHOPIFY_GRAPHQL_ERROR' });
+  const ledger = [
+    ledRow('products', 'ok'), ledRow('orders', 'ok'), ledRow('abandoned_checkouts', 'ok'),
+    failed('analytics.reports'), failed('content.redirects'), failed('online-store.menus'), failed('shop.policies'),
+  ];
+  const res = C.deriveStoreStatusFromLedger(ledger, 'completed', { requiredDomains: REQ });
+  assert.equal(res.status, 'initial_completed_with_limitations');
+  assert.deepEqual(res.limitations.map(l => l.domain).sort(),
+    ['analytics.reports', 'content.redirects', 'online-store.menus', 'shop.policies']);
+});
+
+test('deriveStoreStatusFromLedger: a required domain degraded -> with_limitations (never a bare completed)', () => {
+  const ledger = [
+    ledRow('products', 'degraded', { records_discovered: 0, pagination_complete: false, error_code: 'SHOPIFY_PRODUCTS_ACCESS_DENIED' }),
+    ledRow('orders', 'ok'), ledRow('abandoned_checkouts', 'ok'),
+  ];
+  const res = C.deriveStoreStatusFromLedger(ledger, 'completed', { requiredDomains: REQ });
+  assert.equal(res.status, 'initial_completed_with_limitations');
+});
+
+test('deriveStoreStatusFromLedger: all required failed without completion -> failed', () => {
+  const failed = d => ledRow(d, 'failed', { records_discovered: 0, pagination_complete: false, error_code: 'SHOPIFY_READ_ORDERS_NOT_GRANTED' });
+  const ledger = [failed('products'), failed('orders'), failed('abandoned_checkouts')];
+  const res = C.deriveStoreStatusFromLedger(ledger, 'completed', { requiredDomains: REQ });
+  assert.equal(res.status, 'failed');
+});
+
+test('deriveStoreStatusFromLedger: empty/invalid ledger -> null; missing requiredDomains throws', () => {
+  assert.equal(C.deriveStoreStatusFromLedger([], 'completed', { requiredDomains: REQ }), null);
+  assert.equal(C.deriveStoreStatusFromLedger(null, 'completed', { requiredDomains: REQ }), null);
+  assert.equal(C.deriveStoreStatusFromLedger(undefined, 'completed', { requiredDomains: REQ }), null);
+  assert.throws(() => C.deriveStoreStatusFromLedger([ledRow('products', 'ok')], 'completed', {}), /requiredDomains/);
+});

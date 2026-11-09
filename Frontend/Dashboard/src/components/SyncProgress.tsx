@@ -137,6 +137,14 @@ export function SyncProgressCard({
   const line = progressLine(overall, jobStatus);
   const showPercent = overall.percent !== null && overall.measurable;
 
+  // Task 229 §5 (#3): the canonical store status (full ledger) can read
+  // "completed with limitations" even when the 9-domain job contract is a clean
+  // "completed". Surface the real limitations instead of a bare "Complete".
+  const canonical = progress.store_status;
+  const canonicalLimitations = canonical?.limitations ?? [];
+  const completedWithLimitations =
+    jobStatus === "completed" && canonical?.status === "initial_completed_with_limitations";
+
   const showRetry =
     (jobStatus === "stalled" || jobStatus === "failed" || jobStatus === "partial") &&
     Boolean(retry.manual_retry_eligible);
@@ -158,8 +166,8 @@ export function SyncProgressCard({
       {/* Status line + honest progress bar */}
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span className={cn("text-sm font-semibold", jobTone(jobStatus))}>
-            {SYNC_JOB_STATUS_LABELS[jobStatus]}
+          <span className={cn("text-sm font-semibold", completedWithLimitations ? "text-amber-700 dark:text-amber-400" : jobTone(jobStatus))}>
+            {completedWithLimitations ? "Complete with limitations" : SYNC_JOB_STATUS_LABELS[jobStatus]}
           </span>
           <span className="truncate text-xs text-slate-500 dark:text-slate-400" title={line}>
             {line}
@@ -215,6 +223,29 @@ export function SyncProgressCard({
           );
         })}
       </ul>
+
+      {/* Task 229 §5 (#3): canonical limitations — surfaced so a completed sync
+          never reads as fully healthy when an extended data source failed. */}
+      {isTerminal && canonicalLimitations.length > 0 && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-900/50 dark:bg-amber-950/30">
+          <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+            {completedWithLimitations
+              ? `Completed with limitations — ${canonicalLimitations.length} data source${canonicalLimitations.length === 1 ? "" : "s"} could not be fully retrieved`
+              : `${canonicalLimitations.length} data source${canonicalLimitations.length === 1 ? "" : "s"} not fully retrieved`}
+          </p>
+          <ul className="mt-1.5 space-y-1" aria-label="Synchronization limitations">
+            {canonicalLimitations.map((l) => (
+              <li key={`${l.domain}:${l.coverage}`} className="flex min-w-0 items-start gap-2 text-[0.7rem] text-amber-800 dark:text-amber-200">
+                <span aria-hidden="true" className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                <span className="min-w-0 break-words">
+                  <span className="font-semibold">{domainLabel(l.domain)}</span>
+                  {l.detail ? <span className="text-amber-700/80 dark:text-amber-300/80"> — {l.detail}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Retry / reconnect action (touch target >= 44px) */}
       {(showRetry || showReconnect) && (

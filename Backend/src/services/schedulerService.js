@@ -1149,18 +1149,26 @@ async function runSyncStallReaper() {
     const startedAt = Date.now();
     try {
         const result = await runReaper(prisma, { now: Date.now() });
-        if (result.reaped_domains > 0 || result.terminalized_stores > 0) {
+        const repaired = result.reaped_domains > 0 || result.terminalized_stores > 0;
+        const refined = result.refined_stores > 0;
+        if (repaired || refined) {
             logger.warn('scheduler_sync_stall_reaper_repaired', {
                 considered: result.considered,
                 reaped_domains: result.reaped_domains,
                 terminalized_stores: result.terminalized_stores,
+                refined_stores: result.refined_stores,
+                refine_considered: result.refine_considered,
                 reaped: result.results.flatMap(r => r.reaped || []),
-                terminalized: result.results.filter(r => r.changed).map(r => r.store_id),
+                terminalized: result.results.filter(r => r.changed && !r.refined).map(r => r.store_id),
+                refined: result.results.filter(r => r.changed && r.refined).map(r => r.store_id),
+                errors: result.errors || [],
                 latency_ms: Date.now() - startedAt,
             });
         } else {
             logger.info('scheduler_sync_stall_reaper_completed', {
                 considered: result.considered,
+                refine_considered: result.refine_considered,
+                errors: result.errors || [],
                 latency_ms: Date.now() - startedAt,
             });
         }

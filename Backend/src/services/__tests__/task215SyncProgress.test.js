@@ -370,3 +370,29 @@ test('every domain is always present (closed set), required and optional', () =>
     assert.equal(d.required, REQUIRED_DOMAINS.includes(domain));
   }
 });
+
+test('store_status (Task 229 #3): 9 tracked domains complete + an extended domain failed -> canonical completed_with_limitations', () => {
+  const rows = [
+    ...REQUIRED_DOMAINS.map(d => row(d, { status: 'ok', records_discovered: 5, records_inserted: 5, pagination_complete: true, last_succeeded_at: iso(60) })),
+    row('customers', { status: 'ok', records_discovered: 5, records_inserted: 5, pagination_complete: true, last_succeeded_at: iso(60) }),
+    // EXTENDED domains (not in ALL_DOMAINS) failed — the live D4 case.
+    row('analytics.reports', { status: 'failed', error_code: 'SHOPIFY_GRAPHQL_ERROR', last_attempted_at: iso(60) }),
+    row('shop.policies', { status: 'failed', error_code: 'SHOPIFY_GRAPHQL_ERROR', last_attempted_at: iso(60) }),
+  ];
+  const c = build({ initial_sync_status: 'completed', status: 'active', sync_completed_at: iso(30) }, rows);
+  // The 9-domain job contract is a clean "completed" (tracked set all succeeded)…
+  assert.equal(c.job.status, 'completed');
+  // …but the canonical store status is honest: completed WITH limitations.
+  assert.equal(c.store_status.status, 'initial_completed_with_limitations');
+  const limited = c.store_status.limitations.map(l => l.domain);
+  assert.ok(limited.includes('analytics.reports'), 'extended limitation surfaced');
+  assert.ok(limited.includes('shop.policies'), 'extended limitation surfaced');
+  for (const l of c.store_status.limitations) assert.equal(l.required, false);
+});
+
+test('store_status (Task 229 #3): fully clean ledger -> initial_completed with no limitations', () => {
+  const rows = REQUIRED_DOMAINS.map(d => row(d, { status: 'ok', records_discovered: 5, records_inserted: 5, pagination_complete: true, last_succeeded_at: iso(60) }));
+  const c = build({ initial_sync_status: 'completed', status: 'active', sync_completed_at: iso(30) }, rows);
+  assert.equal(c.store_status.status, 'initial_completed');
+  assert.equal(c.store_status.limitations.length, 0);
+});

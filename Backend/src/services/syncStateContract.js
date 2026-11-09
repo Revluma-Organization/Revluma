@@ -587,6 +587,27 @@ function deriveStoreSyncStatus(domains, storeSync, { stalledRunning = false } = 
   return { status: SYNC_STATUS.NOT_STARTED, reason: 'undetermined_default', limitations: [] };
 }
 
+// Derive the canonical store sync status from a full (store, domain) ledger.
+// This is the ONE derivation both the sync engine's terminal write and the
+// reaper's honesty refinement must use, so the persisted status is always honest
+// and the two code paths can never disagree. `rows` is the full ledger (raw
+// engine rows); each row's `required` flag is inferred from `requiredDomains`.
+// Returns the contract derivation ({ status, reason, limitations }) or null when
+// the input is not a usable ledger (empty / not an array) — the caller then keeps
+// its prior (safe) value rather than fabricating a status.
+function deriveStoreStatusFromLedger(rows, currentStatus, { requiredDomains, stalledRunning = false } = {}) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length === 0) return null;
+  if (!Array.isArray(requiredDomains) || requiredDomains.length === 0) {
+    throw new Error('deriveStoreStatusFromLedger: requiredDomains must be a non-empty array');
+  }
+  const set = new Set(requiredDomains);
+  const withRequired = list.map(r => ({ ...r, required: set.has(r.domain) }));
+  const derived = deriveStoreSyncStatus(withRequired, currentStatus, { stalledRunning });
+  if (derived && typeof derived.status === 'string' && derived.status.length > 0) return derived;
+  return null;
+}
+
 // A row is a "limitation" when it is not a clean, fully-paginated completion.
 // This is deliberately broader than `isResourceComplete`: an unsupported-blocked
 // resource counts as complete ENOUGH not to block completion, but it still
@@ -684,6 +705,7 @@ module.exports = {
   retryEligible,
   deriveCoverageState,
   deriveStoreSyncStatus,
+  deriveStoreStatusFromLedger,
   projectResourceWork,
   isResourceComplete,
   isResourceTerminalFailure,
