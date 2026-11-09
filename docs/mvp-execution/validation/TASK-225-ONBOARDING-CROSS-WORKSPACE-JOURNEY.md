@@ -27,8 +27,12 @@ they are not counted in the 177.
 - `node --check` and `git diff --check`: passed.
 
 Final full Dashboard: **54 files, 963/963 tests passed** on the final local tree.
-Initial regression failures were corrected, not hidden. CI, commit, merge and
-deployment results are recorded below when available.
+Initial regression failures were corrected, not hidden. Final PR head `9236a2a` passed Backend, Prisma/bootstrap/security, Dashboard,
+Vercel preview and repository checks. PR **#381** merged at `2026-11-09T08:05:24Z`
+as **`1371597be8d55cb0815a1d5337fec5a5d3734541`**. Post-merge Backend run
+**42583455546** passed. Vercel production **`dpl_DPLfVzRyfD8uJNBNghgvQ23Re3Wo`**
+is **READY/PROMOTED** to `revluma.vercel.app` with `gitSource.sha` exactly the
+Task 225 merge SHA. No separate backend deployment revision was exposed.
 
 ## Production acceptance checklist
 
@@ -45,5 +49,4 @@ on the deployed revision:
 - Production backend revision, tenant/RLS behavior and absence of mock data.
 
 Public route checks and synthetic automated scenarios do not satisfy those gates.
-Status at implementation: **IMPLEMENTED AND LOCALLY VALIDATED — CI, DEPLOYMENT AND
-AUTHENTICATED PRODUCTION ACCEPTANCE PENDING**.
+Final status: **IMPLEMENTED, CI VERIFIED, MERGED, FRONTEND DEPLOYED — PARTIALLY VERIFIED / PRODUCTION BACKEND AND AUTHENTICATED ACTIVE-STORE ACCEPTANCE PENDING**.
