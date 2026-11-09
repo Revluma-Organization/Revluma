@@ -28,4 +28,4 @@ New scenario categories: API config/contracts 20; auth 25; Integrations 15; Comm
 
 Production bundle: main JS **1,097.77 kB / 320.03 kB gzip**, CSS **126.11 kB / 20.75 kB gzip**. The >500 kB chunk warning remains. Clean Dashboard install reports 11 moderate dependency advisories; neither issue is concealed or represented as resolved.
 
-Decision: REV-DEC-0033. Delivery, CI, exact deployment and live public smoke results are recorded in the validation report after execution. Authenticated active-store and real-browser acceptance remain explicitly blocked without genuine evidence.
+Decision: REV-DEC-0033. PR #385 merged as `ec592b97686bea930d9124475bd79ae02357557a`; Vercel `dpl_9AQBVa5WffFq1QCuuhoyArxJRqas` is READY/PROMOTED from that exact merge with `revluma.vercel.app` assigned. Full public/deployment evidence is in the validation report. Authenticated active-store and real-browser acceptance remain explicitly blocked without genuine evidence.
