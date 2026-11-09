@@ -34,7 +34,7 @@ Run from the repository unless a directory is stated.
 
 ## Final integrated CI / migration / deployment evidence
 
-PR **#378**, initial commit `be99f55`: Dashboard suite/build, `dashboard`, Vercel preview and task025–030 passed; all three backend-invoking checks failed on one regression in `revTenantIsolation.test.js`: `/rev/chat` routed `READ_ONLY` through middleware instead of its prior direct 403 JSON response. The shared validator call was wrapped with the compatible JSON error response. Local `node --test src/tests/revTenantIsolation.test.js` now passes **8/8**, and focused Backend remains **67/67**. A follow-up CI run is required; this is not yet a green-CI or deployment claim.
+PR **#378**, initial commit `be99f55`: Dashboard suite/build, `dashboard`, Vercel preview and task025–030 passed; all three backend-invoking checks failed on one regression in `revTenantIsolation.test.js`: `/rev/chat` routed `READ_ONLY` through middleware instead of its prior direct 403 JSON response. The shared validator call was wrapped with the compatible JSON error response. Local `node --test src/tests/revTenantIsolation.test.js` now passes **8/8**, and focused Backend remains **67/67**. Follow-up commit `2759d04`: **all PR checks passed** — `Backend test suite` (34s), `backend` (43s), `Prisma bootstrap, financial and security regressions` (2m44s), `Dashboard suite and production build` (1m46s), `dashboard` (2m31s), task025–030, Vercel preview and Vercel Preview Comments. This confirms CI migration/bootstrap and full Backend execution, not production migration/application or authenticated active-store behavior. Final documentation commit checks and post-merge/deployment identities are recorded below when available.
 
 ## Production acceptance boundary
 
