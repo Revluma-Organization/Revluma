@@ -742,6 +742,9 @@ export default function RevIntell() {
   const conversationRequestRef = useRef(0);
   const turnRequestRef = useRef(0);
   const turnPendingRef = useRef(false);
+  const draftSubmissionRef = useRef<{
+    id: string; message: string; conversationId: string | null; findingId?: string;
+  } | null>(null);
   const searchQueryRef = useRef("");
   const findingRequestRef = useRef(0);
   const inputEditedRef = useRef(false);
@@ -1175,9 +1178,22 @@ export default function RevIntell() {
       navigate(`/dashboard/rev-intell/${id}${turnFindingId ? `?finding=${encodeURIComponent(turnFindingId)}` : ""}`, { replace: true });
     };
     const trimmed = text.trim();
+    const previousSubmission = draftSubmissionRef.current;
+    const submissionId = previousSubmission
+      && previousSubmission.message === trimmed
+      && previousSubmission.conversationId === activeId
+      && previousSubmission.findingId === turnFindingId
+      ? previousSubmission.id : crypto.randomUUID();
+    // Retained only while acceptance is unknown. An explicit edit, accepted
+    // response, or intentional new turn gets its own idempotency scope.
+    draftSubmissionRef.current = {
+      id: submissionId, message: trimmed, conversationId: activeId, findingId: turnFindingId,
+    };
 
     inputEditedRef.current = true;
-    setInput("");
+    // Acceptance is authoritative. The draft and attachment remain available
+    // until the server has persisted the question (meta for SSE, a successful
+    // JSON envelope for image turns), including across retry/navigation races.
     setFindingRetryDraft(null);
     if (inputRef.current) inputRef.current.style.height = "auto";
     const sid = `r${Date.now()}-${turn}`;
@@ -1207,11 +1223,17 @@ export default function RevIntell() {
     };
 
     const capturedImage = imageAttachment;
-    setImageAttachment(null);
+    const acceptDraft = () => {
+      if (!isCurrent()) return;
+      draftSubmissionRef.current = null;
+      setInput("");
+      if (inputRef.current) inputRef.current.style.height = "auto";
+      if (capturedImage) setImageAttachment(null);
+    };
 
     if (capturedImage) {
       try {
-        const body: Record<string, unknown> = { message: trimmed };
+        const body: Record<string, unknown> = { message: trimmed, request_id: submissionId };
         if (activeId) body.conversation_id = activeId;
         if (turnFindingId) body.finding_id = turnFindingId;
         body.image_base64 = capturedImage.base64;
@@ -1222,7 +1244,7 @@ export default function RevIntell() {
         const data = (res as any)?.data ?? (res as any);
         if (!data?.success) {
           const persisted = typeof data?.conversation_id === "string";
-          if (persisted) adoptConversation(data.conversation_id);
+          if (persisted) { acceptDraft(); adoptConversation(data.conversation_id); }
           findingRejected(data?.error?.code);
           patch(message => ({
             ...message, isStreaming: false, hasError: true,
@@ -1231,6 +1253,7 @@ export default function RevIntell() {
             content: cleanError(data?.error?.code, data?.error?.message),
           }));
         } else {
+          acceptDraft();
           adoptConversation(data.conversation_id);
           void loadConversations();
           const { content, payload } = normaliseTurn(data);
@@ -1240,7 +1263,7 @@ export default function RevIntell() {
         const code = responseErrorCode(err);
         const failedTurn = err instanceof ApiError ? err.body as { conversation_id?: unknown } | undefined : undefined;
         const persisted = typeof failedTurn?.conversation_id === "string";
-        if (persisted) adoptConversation(failedTurn.conversation_id as string);
+        if (persisted) { acceptDraft(); adoptConversation(failedTurn.conversation_id as string); }
         findingRejected(code);
         const msg = code ? cleanError(code) : err instanceof ApiError
           ? cleanError(String((err as any).status), err.message)
@@ -1263,11 +1286,13 @@ export default function RevIntell() {
     try {
       const result = await streamRevAnswer({
         message: trimmed,
+        requestId: submissionId,
         conversationId: activeId,
         findingId: turnFindingId,
         signal: controller.signal,
         handlers: {
           onMeta: ({ conversation_id }) => {
+            acceptDraft();
             adoptConversation(conversation_id);
             if (conversation_id) patch(message => ({ ...message, persistence: "persisted" }));
           },
@@ -1294,6 +1319,7 @@ export default function RevIntell() {
                 persistence: message.persistence !== "persisted" && code && FINDING_ERRORS.includes(code) ? "not-persisted" : message.persistence }));
               return;
             }
+            acceptDraft();
             adoptConversation(payload.conversation_id);
             const { content, payload: normalised } = normaliseTurn(payload);
             patch(message => ({

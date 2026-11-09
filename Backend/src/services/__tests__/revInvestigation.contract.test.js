@@ -122,7 +122,8 @@ test('controller source enforces streaming, search, retry and read-only guards',
   const file = path.join(__dirname, '..', '..', 'controller', 'revController.js');
   const source = fs.readFileSync(file, 'utf8');
   assert.ok(source.includes('exports.chatStream'), 'streaming endpoint must exist');
-  assert.ok(source.includes("code: 'READ_ONLY'"), 'read-only guard must exist');
+  const submission = fs.readFileSync(path.join(__dirname, '..', 'revSubmission.js'), 'utf8');
+  assert.ok(source.includes('validateSubmission') && submission.includes("'READ_ONLY'"), 'read-only guard must exist in the shared submission validator');
   assert.ok(source.includes('reuse_user_message'), 'retry must reuse the user turn');
   assert.ok(source.includes('exports.retryConversation'), 'retry endpoint must exist');
   assert.ok(source.includes('rawSearch'), 'conversation search must exist');
