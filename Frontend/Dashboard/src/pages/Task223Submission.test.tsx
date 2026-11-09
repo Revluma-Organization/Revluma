@@ -164,7 +164,7 @@ describe('Task 223 acceptance-safe submission', () => {
     const view = renderPage();
     fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['image'], 'proof.png', { type: 'image/png' })] } });
     await screen.findByAltText('attachment'); typeQuestion('Inspect this'); clickSend();
-    await screen.findByText('Rev is momentarily unavailable. Try again in a moment.');
+    await screen.findByText('A supporting service did not respond. Verified information already shown remains available.');
     expect(screen.getByAltText('attachment')).toBeInTheDocument();
     expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ request_id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
   });

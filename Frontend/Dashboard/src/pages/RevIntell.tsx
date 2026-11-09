@@ -30,6 +30,8 @@ import {
   ThumbsUp, ThumbsDown, Volume2, ArrowLeft,
 } from "lucide-react";
 import { commandCenterReturnRoute } from "@/lib/workspaceNavigation";
+import { explainWorkspaceError, merchantMessage } from "@/lib/workspaceCommunication";
+import { workspaceDesign } from "@/lib/workspaceDesign";
 import revIntellLogo from "@/assets/images/rev-intell-logo.png";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
@@ -182,25 +184,22 @@ function responseErrorCode(error: unknown): string | undefined {
 // ── Error message mapper ──────────────────────────────────────────────────────
 
 function cleanError(code?: string, _raw?: string): string {
-  switch (code) {
-    case "INTELLIGENCE_TIMEOUT":      return "Rev is taking longer than usual. Try again.";
-    case "INTELLIGENCE_UNAVAILABLE":  return "Rev is momentarily unavailable. Try again in a moment.";
-    case "INTELLIGENCE_INVALID_RESPONSE": return "Rev had an issue preparing a response. Try again.";
-    case "INTELLIGENCE_AUTH_FAILED":  return "Rev intelligence is temporarily offline.";
-    case "INTELLIGENCE_NOT_CONFIGURED": return "Rev Intelligence is being set up. Check back shortly.";
-    case "RATE_LIMITED":              return "You're sending messages too quickly. Wait a moment.";
-    case "READ_ONLY":                 return "Rev Intelligence is read-only in this release. Ask it to explain or recommend instead of change.";
-    case "NOTHING_TO_RETRY":          return "There is nothing to regenerate in this conversation yet.";
-    case "INVALID_FINDING_ID":        return "That finding reference is not valid.";
-    case "FINDING_NOT_FOUND":         return "That finding is no longer available.";
-    case "FINDING_EVIDENCE_UNVERIFIED": return "That finding's evidence is not verified yet, so Rev will not investigate it as fact.";
-    case "STREAM_START_FAILED":       return "Rev could not start this response. Try again.";
-    case "STREAM_UNSUPPORTED":        return "This browser cannot receive streamed answers.";
-    case "UNAUTHORIZED":              return "Your session expired. Sign in again to continue.";
-    case "VALIDATION_ERROR":          return "Your message couldn't be sent. Please check and try again.";
-    default:                          return "Rev couldn't process this right now. Try again in a moment.";
-  }
+  const common = explainWorkspaceError(code ? { code, status: code === "UNAUTHORIZED" ? 401 : undefined } : { status: 500 });
+  const revSpecific: Record<string, string> = {
+    INTELLIGENCE_AUTH_FAILED: "Rev Intelligence isn’t available right now. Your store connection has not been changed; try again shortly.",
+    INTELLIGENCE_NOT_CONFIGURED: "Rev Intelligence is being set up. Check back shortly.",
+    READ_ONLY: merchantMessage("read_only").body,
+    NOTHING_TO_RETRY: "There is no earlier answer to retry yet.",
+    INVALID_FINDING_ID: "That finding link isn’t valid. Return to Command Center and choose a current finding.",
+    FINDING_NOT_FOUND: merchantMessage("not_found").body,
+    FINDING_EVIDENCE_UNVERIFIED: "Revluma hasn’t verified this finding’s evidence yet, so Rev won’t treat it as fact.",
+    STREAM_START_FAILED: "Rev couldn’t start this answer. Your question is preserved; try again.",
+    STREAM_UNSUPPORTED: "This browser can’t receive Rev’s live answer. Use a current browser and try again.",
+    VALIDATION_ERROR: merchantMessage("validation").body,
+  };
+  return revSpecific[code || ""] || common.body;
 }
+
 
 // ── Orb components ────────────────────────────────────────────────────────────
 
@@ -1576,7 +1575,7 @@ export default function RevIntell() {
   return (
     <MotionConfig reducedMotion="user">
     <style>{`
-      .rev-workspace :is(button,input):focus-visible, [data-rev-modal] :is(button,input):focus-visible { outline: 2px solid #8b7cff; outline-offset: 3px; }
+      .rev-workspace :is(button,input):focus-visible, [data-rev-modal] :is(button,input):focus-visible { outline: 2px solid ${workspaceDesign.color.focus}; outline-offset: 3px; }
       @media (prefers-reduced-motion: reduce) { .rev-workspace *, [data-rev-modal], [data-rev-modal] * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
     `}</style>
     <div className="rev-workspace relative flex overflow-hidden"

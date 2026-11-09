@@ -323,11 +323,11 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 314 | Phase 4 | Verify first briefing entry route. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; frontend deployed; authenticated production journey pending |
 | 315 | Phase 4 | Verify finding-to-Rev navigation. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; frontend deployed; authenticated production journey pending |
 | 316 | Phase 4 | Verify conversation return to Command Center. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; frontend deployed; authenticated production journey pending |
-| 317 | Phase 4 | Verify design consistency across three workspaces. | NOT STARTED | — | — | — |
-| 318 | Phase 4 | Verify error copy uses plain language. | NOT STARTED | — | — | — |
-| 319 | Phase 4 | Verify responsive navigation. | NOT STARTED | — | — | — |
-| 320 | Phase 4 | Verify accessibility focus indicators. | NOT STARTED | — | — | — |
-| 321 | Phase 4 | Verify contrast for key text. | NOT STARTED | — | — | — |
+| 317 | Phase 4 | Verify design consistency across three workspaces. | PARTIALLY VERIFIED | Task 226 shared tokens/primitives; 166 scenarios | Local/CI evidence; live browser pending | Authenticated production acceptance pending |
+| 318 | Phase 4 | Verify error copy uses plain language. | PARTIALLY VERIFIED | Closed backend-code/status mapping adopted in Integrations/Rev/journey | Sanitization and terminology tests | Live provider-error paths pending |
+| 319 | Phase 4 | Verify responsive navigation. | PARTIALLY VERIFIED | 12-width contract and retained drawer/sidebar suites | 320–1920 automated scenarios | Real-browser overflow/menu acceptance pending |
+| 320 | Phase 4 | Verify accessibility focus indicators. | PARTIALLY VERIFIED | Shared focus token, Radix dialog, keyboard regressions | Automated focus/keyboard/axe evidence | Manual keyboard/screen-reader production checks pending |
+| 321 | Phase 4 | Verify contrast for key text. | PARTIALLY VERIFIED | Computed core-palette WCAG ratios and non-color labels | Core token evidence | Rendered contrast in every production state pending |
 | 322 | Phase 4 | Verify production API endpoints wired. | NOT STARTED | — | — | — |
 | 323 | Phase 4 | Run frontend auth regression tests. | NOT STARTED | — | — | — |
 | 324 | Phase 4 | Run frontend build. | NOT STARTED | — | — | — |

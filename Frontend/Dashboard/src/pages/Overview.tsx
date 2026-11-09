@@ -66,7 +66,7 @@ export default function Overview() {
     if (!selectedFinding || !data?.findings.some(finding => finding.id === selectedFinding)) return;
     document.getElementById("priority-finding")?.scrollIntoView({ block: "start" });
   }, [selectedFinding, data]);
-  return <main className={cc.page}>
+  return <div data-command-center className={cc.page}>
     <div aria-live="polite" className="sr-only">{announcement}</div>
     <CommandCenterHeader data={data} refreshing={refreshing} lastSuccessfulAt={lastSuccessfulAt} onRefresh={() => void refetch(true)} />
     {failure && data && <BriefingFailureBanner failure={failure} onRetry={() => void refetch(true)} />}
@@ -80,5 +80,5 @@ export default function Overview() {
       <HealthIndicators data={data} />
       <div className="grid min-w-0 items-start gap-6 xl:grid-cols-2"><OperationalActivity data={data} /><EvidenceFreshness data={data} /></div>
     </> : failure ? <BriefingFailureBanner failure={failure} onRetry={() => void refetch(false)} /> : !loading ? <section className={cn(cc.surface, "p-6")}><h2 className={cc.sectionTitle}>No operational briefing is available</h2><p className={cn("mt-2", cc.metadata)}>No business information is asserted. Connect or synchronize an authorized store before relying on this workspace.</p></section> : null}
-  </main>;
+  </div>;
 }
