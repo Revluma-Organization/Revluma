@@ -969,6 +969,7 @@ model conversation_messages {
   recommendations   recommendations[]
   conversation_message_feedback conversation_message_feedback[]
 
+  @@unique([organization_id, conversation_id, role, correlation_id], map: "uq_conversation_message_submission")
   @@index([conversation_id, sequence_number], map: "idx_conv_msg_conversation")
   @@index([correlation_id], map: "idx_conv_msg_correlation")
   @@index([organization_id, created_at(sort: Desc)], map: "idx_conv_msg_org_created")

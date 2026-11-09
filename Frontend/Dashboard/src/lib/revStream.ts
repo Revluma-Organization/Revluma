@@ -255,6 +255,8 @@ export interface RevStreamRequest {
   conversationId?: string | null;
   findingId?: string | null;
   reuseUserMessage?: boolean;
+  /** Stable across retries of this logical submission. */
+  requestId?: string;
   signal?: AbortSignal;
   timeoutMs?: number;
   inactivityTimeoutMs?: number;
@@ -279,11 +281,11 @@ export function createSseParser(onEvent: (event: string, data: unknown) => void)
     push(chunk: string) {
       if (!chunk) return;
       buffer += chunk;
-      let boundary = buffer.indexOf("\n\n");
-      while (boundary !== -1) {
-        parseFrame(buffer.slice(0, boundary));
-        buffer = buffer.slice(boundary + 2);
-        boundary = buffer.indexOf("\n\n");
+      let boundary = /\r?\n\r?\n/.exec(buffer);
+      while (boundary) {
+        parseFrame(buffer.slice(0, boundary.index));
+        buffer = buffer.slice(boundary.index + boundary[0].length);
+        boundary = /\r?\n\r?\n/.exec(buffer);
       }
     },
     flush() {
@@ -322,9 +324,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Cancellation is signalled through `signal` (the Stop button aborts it).
  */
 export async function streamRevAnswer({
-  message, conversationId, findingId, reuseUserMessage, signal, handlers,
+  message, conversationId, findingId, reuseUserMessage, requestId, signal, handlers,
   timeoutMs = 130000, inactivityTimeoutMs = 45000,
 }: RevStreamRequest): Promise<{ conversationId: string | null; completed: boolean }> {
+  const submissionId = requestId ?? crypto.randomUUID();
   const authHeaders = await getStreamingAuthHeaders();
   const controller = new AbortController();
   let timedOut = false;
@@ -351,6 +354,7 @@ export async function streamRevAnswer({
       signal: controller.signal,
       body: JSON.stringify({
         message,
+        request_id: submissionId,
         ...(conversationId ? { conversation_id: conversationId } : {}),
         ...(findingId ? { finding_id: findingId } : {}),
         ...(reuseUserMessage ? { reuse_user_message: true } : {}),
@@ -426,11 +430,18 @@ export async function streamRevAnswer({
         handlers.onEvidence?.(data as unknown as NonNullable<RevAnswerPayload["evidence"]>);
         break;
       case "final": {
+        // A terminal server error cannot be reversed by trailing bytes.
+        if (streamError) break;
         const payload = data as unknown as RevAnswerPayload;
-        if (typeof payload.conversation_id === "string") {
-          resolvedConversationId = payload.conversation_id;
+        // Only a complete, well-formed final envelope is authoritative. Never
+        // render partial JSON or treat an empty/malformed final as success.
+        if (payload.success !== true || typeof payload.conversation_id !== "string"
+          || typeof payload.text !== "string" || typeof payload.response_type !== "string") {
+          streamError = new RevStreamError("MALFORMED_RESPONSE", "Rev returned an incomplete response. Your question is preserved; please retry.");
+          break;
         }
-        completed = payload.success !== false;
+        resolvedConversationId = payload.conversation_id;
+        completed = true;
         handlers.onFinal?.(payload);
         break;
       }
@@ -474,6 +485,10 @@ export async function streamRevAnswer({
   }
 
   if (streamError) throw streamError;
+  if (!completed) throw new RevStreamError(
+    "MALFORMED_RESPONSE",
+    "Rev closed the stream without a completed response. Your question is preserved; please retry.",
+  );
   return { conversationId: resolvedConversationId, completed };
 }
 

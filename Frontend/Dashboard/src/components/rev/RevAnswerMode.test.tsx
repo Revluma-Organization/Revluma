@@ -59,7 +59,7 @@ describe("response mode contract", () => {
     const view = render(<RevAnswerView payload={payload} streaming />);
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent("Reviewing orders and refunds");
-    expect(status).toHaveTextContent("1/2");
+    expect(status).not.toHaveTextContent(/\d+%|\d+\/\d+/);
     // The old card chrome is gone while streaming: progress is one quiet line.
     expect(screen.queryByRole("button", { name: /Investigating your store evidence/ })).not.toBeInTheDocument();
     const finished = ((payload.investigation as unknown as { steps?: Array<Record<string, unknown>> } | undefined)?.steps ?? [])

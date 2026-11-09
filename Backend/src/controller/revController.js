@@ -26,6 +26,7 @@ const { formatSseFrame } = require('../services/revStream');
 const { safePersistedNarrative } = require('../services/revClaimGuardrails');
 const { retryabilityForError, investigationOutcomeFromTransportError } = require('../services/revInvestigationOutcomes');
 const { withTimeout, TIMEOUT_POLICY_MS } = require('../services/revFailureContract');
+const { validateSubmission, acceptSubmission, replayBody } = require('../services/revSubmission');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -170,35 +171,23 @@ exports.getCommandCenter = async (req, res, next) => {
 // ── POST /api/v1/rev/chat ─────────────────────────────────────────────────────
 
 exports.chat = async (req, res, next) => {
-  const correlationId = uuidv4();
+  let correlationId = uuidv4();
+  let activeConvId = null;
+  let acceptedOrg = null;
+  let reuseUserMessage = false;
+  let revSequence = null;
   const startTime     = Date.now();
 
   try {
-    // 1. Validate input
-    const rawMessage = req.body?.message;
-    if (!rawMessage) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Message is required.' },
-      });
-    }
-    const message = sanitiseMessage(rawMessage);
-    if (!message || message.length < 1) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Message must not be empty.' },
-      });
-    }
-    if (req.body?.execute === true) {
-      return res.status(403).json({
-        success: false,
-        error: { code: 'READ_ONLY', message: 'Rev Intelligence is read-only. It cannot execute store changes.' },
-      });
-    }
+    // 1. Validate before persistence. Oversize questions are rejected, never
+    // silently truncated, and request_id is the stable idempotency key.
+    const validated = validateSubmission(req.body);
+    const message = validated.message;
+    correlationId = validated.requestId;
     const conversationId  = req.body?.conversation_id || null;
     const imageBase64     = req.body?.image_base64     || null;
     const imageMediaType  = req.body?.image_media_type || null;
-    const reuseUserMessage = req.body?.reuse_user_message === true;
+    reuseUserMessage = req.body?.reuse_user_message === true;
 
     // Validate image if provided
     const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -220,6 +209,7 @@ exports.chat = async (req, res, next) => {
 
     // 2. Resolve org from JWT — never from body
     const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    acceptedOrg = org;
 
     // Finding context is always resolved server-side under the authenticated organization.
     let intelligenceMessage = message;
@@ -247,43 +237,41 @@ exports.chat = async (req, res, next) => {
       messageLength:  message.length,
     });
 
-    // 3. Verify or create conversation
-    let activeConvId = conversationId;
-    if (conversationId) {
-      await verifyConversationOwnership(conversationId, org.id);
+    // 3–5. Persist acceptance before model work. Replaying the same request
+    // returns the owned persisted turn (or its in-progress state) without a
+    // second user row or investigation.
+    activeConvId = conversationId;
+    if (!reuseUserMessage) {
+      const acceptance = await acceptSubmission({
+        prisma, organizationId: org.id, userId: req.user.id,
+        message, requestId: correlationId, requestedConversationId: conversationId,
+      });
+      activeConvId = acceptance.conversationId;
+      if (acceptance.duplicate) {
+        const replay = replayBody(acceptance.accepted, correlationId);
+        if (!replay.completed) return res.status(409).json({
+          success: false, conversation_id: replay.conversationId, idempotent_replay: true,
+          error: { code: 'REV_TURN_IN_PROGRESS', message: 'This question was already accepted and is still being processed.' },
+        });
+        if (replay.failed) return res.status(503).json({
+          success: false, conversation_id: replay.conversationId, idempotent_replay: true,
+          error: { code: replay.errorCode || 'INTELLIGENCE_UNAVAILABLE', message: replay.errorMessage || 'Rev could not complete this response.' },
+        });
+        return res.status(200).json({
+          ...replay.content, success: true, conversation_id: replay.conversationId,
+          message_id: replay.messageId, response: replay.content, idempotent_replay: true,
+        });
+      }
     } else {
-      const newConvId = uuidv4();
-      await prisma.$executeRaw`
-        INSERT INTO conversations (id, organization_id, user_id, status, message_count, last_activity_at)
-        VALUES (${newConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid, 'active', 0, NOW())
-      `;
-      activeConvId = newConvId;
+      await verifyConversationOwnership(conversationId, org.id);
     }
 
-    // 4. Get next sequence number
     const seqResult = await prisma.$queryRaw`
       SELECT COALESCE(MAX(sequence_number), 0)::int as max_seq
       FROM conversation_messages
       WHERE conversation_id = ${activeConvId}::uuid
     `;
-    const nextSeq = (Number(seqResult[0]?.max_seq) || 0) + 1;
-
-    // 5. Persist user message BEFORE calling Python — message is never lost.
-    // A retry reuses the existing user message instead of duplicating the turn.
-    if (!reuseUserMessage) {
-      const userMsgId     = uuidv4();
-      const userContent   = JSON.stringify({ text: message });
-      await prisma.$executeRaw`
-        INSERT INTO conversation_messages (
-          id, conversation_id, organization_id, user_id,
-          role, content, sequence_number, correlation_id, has_error
-        ) VALUES (
-          ${userMsgId}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
-          'user', ${userContent}::jsonb, ${nextSeq}, ${correlationId}::uuid, false
-        )
-      `;
-    }
-    const revSequence = reuseUserMessage ? nextSeq : nextSeq + 1;
+    revSequence = (Number(seqResult[0]?.max_seq) || 0) + 1;
 
     const merchantContext = await require('../services/revMerchantContext').buildMerchantContext(prisma, org.id);
     const conversationContext = await _loadConversationContext(activeConvId, org.id);
@@ -477,6 +465,22 @@ exports.chat = async (req, res, next) => {
     });
 
   } catch (error) {
+    // An accepted turn must have a terminal replay outcome. Without this row a
+    // network/client retry would see an eternal in-progress submission.
+    if (activeConvId && acceptedOrg && !reuseUserMessage) {
+      try {
+        await _insertRevMessage({
+          organizationId: acceptedOrg.id, userId: req.user.id, conversationId: activeConvId,
+          sequenceNumber: revSequence, correlationId, content: { response_type: 'error', error: true, read_only: true },
+          hasError: true, errorCode: error.code || 'INTELLIGENCE_UNAVAILABLE',
+          errorMessage: error.publicMessage || 'Rev could not complete this response. Please retry.',
+          latencyMs: Date.now() - startTime,
+        });
+        await _touchConversation(activeConvId, { increment: 2 });
+      } catch (persistenceError) {
+        logger.error('rev_chat_failure_persistence_failed', { correlationId, errorType: persistenceError.name });
+      }
+    }
     next(error);
   }
 };
@@ -1192,23 +1196,14 @@ function _sseWriter(res) {
 }
 
 function _validateChatPayload(body) {
-  const rawMessage = body?.message;
-  if (!rawMessage) {
-    return { error: { status: 400, code: 'VALIDATION_ERROR', message: 'Message is required.' } };
+  try { return validateSubmission(body); }
+  catch (error) {
+    return { error: {
+      status: error.statusCode || 400,
+      code: error.code || 'VALIDATION_ERROR',
+      message: error.message || 'Message is invalid.',
+    } };
   }
-  const message = sanitiseMessage(rawMessage);
-  if (!message) {
-    return { error: { status: 400, code: 'VALIDATION_ERROR', message: 'Message must not be empty.' } };
-  }
-  if (body?.execute === true) {
-    return {
-      error: {
-        status: 403, code: 'READ_ONLY',
-        message: 'Rev Intelligence is read-only. It cannot execute store changes.',
-      },
-    };
-  }
-  return { message };
 }
 
 async function _resolveFindingMessage(req, org, message) {
@@ -1223,38 +1218,73 @@ async function _resolveFindingMessage(req, org, message) {
 
 // ── POST /api/v1/rev/stream ───────────────────────────────────────────────────
 exports.chatStream = async (req, res, next) => {
-  const correlationId = uuidv4();
+  let correlationId = uuidv4();
   const startedAt = Date.now();
   let sse = null;
   let activeConvId = null;
   let sequenceNumber = null;
   let finished = false;
+  let org = null;
+  let validated = null;
+  let reuseUserMessage = false;
 
   try {
-    const validated = _validateChatPayload(req.body);
+    validated = _validateChatPayload(req.body);
     if (validated.error) {
       return res.status(validated.error.status).json({
         success: false, error: { code: validated.error.code, message: validated.error.message },
       });
     }
-    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     const finding = await _resolveFindingMessage(req, org, validated.message);
     if (finding.error) {
       return res.status(finding.error.status).json({ success: false, error: finding.error });
     }
     const intelligenceMessage = finding.message;
 
+    correlationId = validated.requestId;
     const requestedConversationId = req.body?.conversation_id || null;
-    const reuseUserMessage = req.body?.reuse_user_message === true;
-    if (requestedConversationId) {
-      await verifyConversationOwnership(requestedConversationId, org.id);
-      activeConvId = requestedConversationId;
+    reuseUserMessage = req.body?.reuse_user_message === true;
+    if (!reuseUserMessage) {
+      const acceptance = await acceptSubmission({
+        prisma, organizationId: org.id, userId: req.user.id,
+        message: validated.message, requestId: correlationId,
+        requestedConversationId,
+      });
+      activeConvId = acceptance.conversationId;
+      if (acceptance.duplicate) {
+        const replay = replayBody(acceptance.accepted, correlationId);
+        if (!replay.completed) return res.status(409).json({
+          success: false, conversation_id: replay.conversationId, idempotent_replay: true,
+          error: { code: 'REV_TURN_IN_PROGRESS', message: 'This question was already accepted and is still being processed.' },
+        });
+        res.status(200);
+        res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        if (typeof res.flushHeaders === 'function') res.flushHeaders();
+        sse = _sseWriter(res);
+        finished = true;
+        sse.send('meta', { conversation_id: replay.conversationId, correlation_id: replay.requestId, read_only: true, idempotent_replay: true });
+        if (replay.failed) {
+          sse.send('error', {
+            conversation_id: replay.conversationId, code: replay.errorCode || 'INTELLIGENCE_UNAVAILABLE',
+            message: replay.errorMessage || 'Rev could not complete this response.',
+            retryable: true, idempotent_replay: true,
+          });
+        } else {
+          sse.send('final', {
+            ...replay.content, success: true, conversation_id: replay.conversationId,
+            message_id: replay.messageId, read_only: true, idempotent_replay: true,
+          });
+        }
+        sse.end();
+        return undefined;
+      }
     } else {
-      activeConvId = uuidv4();
-      await prisma.$executeRaw`
-        INSERT INTO conversations (id, organization_id, user_id, status, message_count, last_activity_at)
-        VALUES (${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid, 'active', 0, NOW())
-      `;
+      await verifyConversationOwnership(conversationId, org.id);
+      activeConvId = requestedConversationId;
     }
 
     const seqResult = await prisma.$queryRaw`
@@ -1262,22 +1292,8 @@ exports.chatStream = async (req, res, next) => {
       FROM conversation_messages
       WHERE conversation_id = ${activeConvId}::uuid
     `;
-    const nextSeq = (Number(seqResult[0]?.max_seq) || 0) + 1;
-    sequenceNumber = nextSeq;
-
-    if (!reuseUserMessage) {
-      await prisma.$executeRaw`
-        INSERT INTO conversation_messages (
-          id, conversation_id, organization_id, user_id,
-          role, content, sequence_number, correlation_id, has_error
-        ) VALUES (
-          ${uuidv4()}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
-          'user', ${JSON.stringify({ text: validated.message })}::jsonb, ${nextSeq},
-          ${correlationId}::uuid, false
-        )
-      `;
-    }
-    const revSequence = reuseUserMessage ? nextSeq : nextSeq + 1;
+    const revSequence = (Number(seqResult[0]?.max_seq) || 0) + 1;
+    sequenceNumber = revSequence;
 
     res.status(200);
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -1408,6 +1424,23 @@ exports.chatStream = async (req, res, next) => {
     });
     return undefined;
   } catch (error) {
+    if (org && activeConvId && sequenceNumber) {
+      try {
+        await _insertRevMessage({
+          organizationId: org.id, userId: req.user.id, conversationId: activeConvId,
+          sequenceNumber, correlationId,
+          content: { response_type: 'error', error: true, read_only: true },
+          hasError: true, errorCode: error.code || 'STREAM_FAILED',
+          errorMessage: 'Rev could not complete this response. Please retry.',
+          latencyMs: Date.now() - startedAt,
+        });
+        await _touchConversation(activeConvId, {
+          titleHint: _generateTitle(validated.message), increment: reuseUserMessage ? 1 : 2,
+        });
+      } catch (persistenceError) {
+        logger.error('rev_stream_failure_persistence_failed', { correlationId, errorType: persistenceError.name });
+      }
+    }
     if (sse) {
       finished = true;
       sse.send('error', {

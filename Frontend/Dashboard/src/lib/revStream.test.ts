@@ -96,7 +96,7 @@ describe("streamRevAnswer", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://api.example.test/api/v1/rev/stream");
     expect((init.headers as Record<string, string>).Accept).toBe("text/event-stream");
-    expect(JSON.parse(init.body as string)).toEqual({ message: "How did revenue move?" });
+    expect(JSON.parse(init.body as string)).toEqual({ message: "How did revenue move?", request_id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
   });
 
   it("sends conversation id and read-only turn options without an execute capability", async () => {
@@ -104,7 +104,7 @@ describe("streamRevAnswer", () => {
     vi.stubGlobal("fetch", fetchMock);
     await streamRevAnswer({ message: "Why?", conversationId: "conv-9", handlers: {} });
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body).toEqual({ message: "Why?", conversation_id: "conv-9" });
+    expect(body).toEqual({ message: "Why?", conversation_id: "conv-9", request_id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
     expect(body).not.toHaveProperty("execute");
   });
 
@@ -129,6 +129,7 @@ describe("streamRevAnswer", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({
       message: "My edited question", conversation_id: "conv-9",
       finding_id: "11111111-1111-4111-8111-111111111111", reuse_user_message: true,
+      request_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
     });
   });
 

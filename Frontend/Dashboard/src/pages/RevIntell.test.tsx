@@ -313,7 +313,9 @@ describe('finding investigation handoff', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     expect(streams[1].request).toMatchObject({ findingId: findingOne });
     expect(streams[1].request.reuseUserMessage).not.toBe(true);
-    expect(screen.getAllByText('Rejected question')).toHaveLength(1);
+    // Before acceptance the retained draft and pending turn both contain the
+    // question; acceptance removes the draft rather than duplicating the turn.
+    expect(screen.getAllByText('Rejected question')).toHaveLength(2);
     await act(async () => {
       streams[1].request.handlers.onFinal?.(answer('Recovered', 'Recovered finding answer'));
       streams[1].result.resolve({ conversationId: 'Recovered', completed: true });
@@ -338,7 +340,7 @@ describe('finding investigation handoff', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     expect(streams[0].request).toMatchObject({ findingId: findingOne, conversationId: 'A', message: 'Message from A' });
     expect(streams[0].request.reuseUserMessage).not.toBe(true);
-    expect(screen.getAllByText('Message from A')).toHaveLength(2);
+    expect(screen.getAllByText('Message from A')).toHaveLength(3);
     expect(screen.getByText('Previous finding answer')).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
@@ -353,7 +355,7 @@ describe('finding investigation handoff', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     expect(streams[1].request).toMatchObject({ findingId: findingOne });
     expect(streams[1].request.reuseUserMessage).not.toBe(true);
-    expect(screen.getAllByText('Recoverable question')).toHaveLength(2);
+    expect(screen.getAllByText('Recoverable question')).toHaveLength(3);
     expect(screen.getByText('Rev is momentarily unavailable. Try again in a moment.')).toBeInTheDocument();
   });
   it('shows the same two distinct finding turns after reloading persisted history', async () => {
@@ -401,9 +403,19 @@ describe('finding investigation handoff', () => {
       ? 'Rev is momentarily unavailable. Try again in a moment.' : 'Rev is taking a moment. Please try again shortly.');
     fireEvent.click(screen.getByRole('button', { name: outcome === 'rejected' ? 'Try again' : 'Ask again' }));
     expect(screen.getByLabelText('Question recovery')).toHaveTextContent('Reattach the original image');
-    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
-    fireEvent.keyDown(screen.getByPlaceholderText(/Ask (me|Rev)/), { key: 'Enter' });
-    expect(api.post).toHaveBeenCalledTimes(1); expect(streamRevAnswer).not.toHaveBeenCalled();
+    if (outcome === 'successful' || outcome === 'acknowledged failure') {
+      expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    } else {
+      // Rejected/uncertain submissions preserve the original attachment for a
+      // safe retry; an already accepted turn requires an explicit reattach.
+      expect(screen.getByAltText('attachment')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
+    }
+    if (outcome === 'successful' || outcome === 'acknowledged failure') {
+      fireEvent.keyDown(screen.getByPlaceholderText(/Ask (me|Rev)/), { key: 'Enter' });
+      expect(api.post).toHaveBeenCalledTimes(1);
+    }
+    expect(streamRevAnswer).not.toHaveBeenCalled();
     attach(); await screen.findByAltText('attachment');
     vi.mocked(api.post).mockResolvedValue(turnReply(answer('ImageCreated', 'Repeated image answer')));
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
@@ -483,7 +495,7 @@ describe('finding investigation handoff', () => {
     await act(async () => streams[0].request.handlers.onFinal?.(answer('Created', 'Late old finding answer')));
     expect(screen.queryByText('Late old finding answer')).not.toBeInTheDocument();
     expect(screen.queryByText('First finding question')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Second finding question')).toHaveLength(1);
+    expect(screen.getAllByText('Second finding question')).toHaveLength(2);
   });
 });
 

@@ -27,12 +27,10 @@ export function InvestigationTimeline({ steps: originalSteps, investigation, str
     // Progress copy names the check actually running right now (P4: honest
     // progress). Labels come from backend step metadata, never from a timer.
     const current = steps.find((step) => step.status === "running");
-    const done = steps.filter((step) => step.status === "completed").length;
     const muted = dark ? "#98A2B3" : "#667085";
     return (
-      <p role="status" aria-live="polite" style={{ margin: 0, fontSize: "0.76rem", color: muted }}>
-        {current ? `${textValue(current.label) || "Checking your store"}\u2026` : "Preparing checks\u2026"}
-        <span style={{ marginLeft: 6 }}>{done}/{steps.length}</span>
+      <p role="status" aria-live="polite" aria-busy={streaming} style={{ margin: 0, fontSize: "0.76rem", color: muted }}>
+        {current ? `${textValue(current.label) || "Checking your store"}\u2026` : "Investigation in progress\u2026"}
       </p>
     );
   }
