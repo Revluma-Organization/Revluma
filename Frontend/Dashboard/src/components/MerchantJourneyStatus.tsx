@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, RefreshCw, Store } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
+import { explainWorkspaceError, resourceLanguage, resourceName } from "@/lib/workspaceCommunication";
+import { workspaceDesign } from "@/lib/workspaceDesign";
+import { cn } from "@/lib/utils";
 
 export type MerchantJourney = {
   contract_version: "rev-merchant-journey-v1";
@@ -42,7 +45,7 @@ export function MerchantJourneyStatus({ workspace = false }: { workspace?: boole
     } catch (reason) {
       if (request !== generation.current) return;
       setJourney(null);
-      setError(reason instanceof ApiError && reason.status === 401 ? "Your session expired. Sign in again to verify setup." : "Setup status is temporarily unavailable. Retry before continuing; no completion is assumed.");
+      setError(explainWorkspaceError(reason, "setup status").body);
     } finally { if (request === generation.current) setLoading(false); }
   }, [requestedStore]);
   useEffect(() => { void load(); return () => { generation.current += 1; }; }, [load]);
@@ -58,12 +61,12 @@ export function MerchantJourneyStatus({ workspace = false }: { workspace?: boole
         <p role={error ? "alert" : "status"} aria-live="polite" className="mt-1 max-w-3xl text-sm leading-relaxed text-[#475467]">{loading ? "Revluma is checking authorization and synchronization separately." : error || journey?.selected.explanation}</p>
         {journey?.selected.store && <p className="mt-2 break-all text-xs text-[#667085]">{journey.selected.store.shop_domain}</p>}
         {journey && journey.selected.required_resources.length > 0 && !journey.selected.can_enter_workspace && <ul className="mt-3 flex flex-wrap gap-2 text-xs text-[#475467]" aria-label="Required synchronization resources">
-          {journey.selected.required_resources.map(resource => <li key={resource.resource} className="rounded-full bg-[#f2f4f7] px-2.5 py-1">{resource.resource.replaceAll("_", " ")}: {resource.state.replaceAll("_", " ")}</li>)}
+          {journey.selected.required_resources.map(resource => <li key={resource.resource} className="rounded-full bg-[#f2f4f7] px-2.5 py-1">{resourceName(resource.resource)}: {resourceLanguage(resource.state).label}</li>)}
         </ul>}
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
-        {(error || !loading) && <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[#d0d5dd] px-3 text-sm font-medium hover:bg-[#f9fafb]"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} />Refresh status</button>}
-        {journey && <Link to={journey.selected.next_route} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#1f06ac] px-4 text-sm font-semibold text-white hover:bg-[#18058c]">{journey.selected.can_enter_workspace ? "Open Command Center" : journey.selected.state === "authenticated_setup_required" ? "Connect Shopify" : "Review store setup"}<ArrowRight className="h-4 w-4" /></Link>}
+        {(error || !loading) && <button type="button" onClick={() => void load()} disabled={loading} className={cn(workspaceDesign.control.secondary, workspaceDesign.focus)}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} />Refresh status</button>}
+        {journey && <Link to={journey.selected.next_route} className={cn(workspaceDesign.control.primary, workspaceDesign.focus)}>{journey.selected.can_enter_workspace ? "Open Command Center" : journey.selected.state === "authenticated_setup_required" ? "Connect Shopify" : "Review store setup"}<ArrowRight className="h-4 w-4" /></Link>}
       </div>
     </div>
     {journey && journey.stores.length > 1 && <div className="mt-4 border-t border-[#eaecf0] pt-3"><label htmlFor="journey-store" className="text-xs font-medium text-[#475467]">Store</label><select id="journey-store" value={journey.selected_store_id || ""} onChange={event => { const next = new URLSearchParams(params); next.set("store_id", event.target.value); setParams(next); }} className="ml-2 min-h-11 max-w-full rounded-lg border border-[#d0d5dd] bg-white px-2 text-sm">{journey.stores.map(store => <option key={store.id} value={store.id}>{store.shop_domain} — {store.state.replaceAll("_", " ")}</option>)}</select></div>}

@@ -210,9 +210,9 @@ describe('Shopify integrations store list (failure + retry)', () => {
     render(<MemoryRouter><Integrations /></MemoryRouter>);
     fireEvent.click(await screen.findByRole('button', { name: 'View diagnostics' }));
     expect(await screen.findByText('Resource coverage')).toBeInTheDocument();
-    expect(screen.getByText(/products · required/)).toBeInTheDocument();
-    expect(screen.getByText(/ok · 8 retrieved/)).toBeInTheDocument();
-    expect(screen.getByText(/failed · SHOPIFY_AUTHORIZATION_REQUIRED/)).toBeInTheDocument();
+    expect(screen.getByText(/Products · required/)).toBeInTheDocument();
+    expect(screen.getByText(/Connected · 8 retrieved/)).toBeInTheDocument();
+    expect(screen.getByText(/Connection needs attention/)).toBeInTheDocument();
     expect(screen.getByText(/not progress estimates/)).toBeInTheDocument();
   });
 });
@@ -277,9 +277,9 @@ describe('Task 214 — secure reconnect, diagnostics and truthful resource state
     render(<MemoryRouter><Integrations /></MemoryRouter>);
     fireEvent.click(await screen.findByRole('button', { name: 'View diagnostics' }));
     expect(await screen.findByText('Resource coverage')).toBeInTheDocument();
-    expect(screen.getByText(/products · required/)).toBeInTheDocument();
-    expect(screen.getByText(/ok · 8 retrieved/)).toBeInTheDocument();
-    expect(screen.getByText(/failed · SHOPIFY_AUTHORIZATION_REQUIRED/)).toBeInTheDocument();
+    expect(screen.getByText(/Products · required/)).toBeInTheDocument();
+    expect(screen.getByText(/Connected · 8 retrieved/)).toBeInTheDocument();
+    expect(screen.getByText(/Connection needs attention/)).toBeInTheDocument();
     expect(screen.getByText(/not progress estimates/)).toBeInTheDocument();
   });
 });

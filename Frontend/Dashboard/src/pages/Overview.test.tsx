@@ -169,7 +169,7 @@ describe("Task 216 Command Center", () => {
   it("page sections fit a single-column mobile hierarchy without horizontal tables", async () => {
     await renderPage(fixture());
     expect(document.querySelectorAll("table")).toHaveLength(0);
-    expect(document.querySelector("main")?.className).toContain("overflow-x-clip");
+    expect(document.querySelector("[data-command-center]")?.className).toContain("overflow-x-clip");
     expect(screen.getByRole("button", { name: "Refresh briefing" })).toBeInTheDocument();
   });
 });
@@ -270,7 +270,7 @@ describe("Task 217 priority finding evidence and next step", () => {
     await renderPage(priorityFixture());
     expect(document.querySelectorAll("table")).toHaveLength(0);
     expect(screen.getByText("Inspect evidence, provenance and uncertainty").tagName).toBe("SUMMARY");
-    expect(document.querySelector("main")?.className).toContain("overflow-x-clip");
+    expect(document.querySelector("[data-command-center]")?.className).toContain("overflow-x-clip");
   });
   it("does not expose an invented numerical priority or confidence score", async () => {
     await renderPage(priorityFixture());

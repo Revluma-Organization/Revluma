@@ -356,7 +356,7 @@ describe('finding investigation handoff', () => {
     expect(streams[1].request).toMatchObject({ findingId: findingOne });
     expect(streams[1].request.reuseUserMessage).not.toBe(true);
     expect(screen.getAllByText('Recoverable question')).toHaveLength(3);
-    expect(screen.getByText('Rev is momentarily unavailable. Try again in a moment.')).toBeInTheDocument();
+    expect(screen.getByText('A supporting service did not respond. Verified information already shown remains available.')).toBeInTheDocument();
   });
   it('shows the same two distinct finding turns after reloading persisted history', async () => {
     const view = await openFinding(); send('Investigate this finding'); await finishFinding('First persisted answer');
@@ -400,7 +400,7 @@ describe('finding investigation handoff', () => {
       await screen.findByRole('heading', { name: 'Revenue decline' });
     } else if (outcome === 'successful') await screen.findByText('Image finding answer');
     else await screen.findByText(outcome === 'acknowledged failure'
-      ? 'Rev is momentarily unavailable. Try again in a moment.' : 'Rev is taking a moment. Please try again shortly.');
+      ? 'A supporting service did not respond. Verified information already shown remains available.' : 'Rev is taking a moment. Please try again shortly.');
     fireEvent.click(screen.getByRole('button', { name: outcome === 'rejected' ? 'Try again' : 'Ask again' }));
     expect(screen.getByLabelText('Question recovery')).toHaveTextContent('Reattach the original image');
     if (outcome === 'successful' || outcome === 'acknowledged failure') {

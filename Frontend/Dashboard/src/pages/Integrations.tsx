@@ -14,6 +14,10 @@ import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 import magentoLogo from "@/assets/magento-logo.png";
 import GlassmorphismCard from "@/components/GlassmorphismCard";
 import { createPortal } from "react-dom";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { explainWorkspaceError, resourceLanguage, resourceName } from "@/lib/workspaceCommunication";
+import { workspaceDesign } from "@/lib/workspaceDesign";
+import { WorkspaceStatus } from "@/components/workspace/WorkspaceStatus";
 
 import { useIntegrationStates } from "@/hooks/useIntegrationStates";
 import { MerchantJourneyStatus } from "@/components/MerchantJourneyStatus";
@@ -245,13 +249,10 @@ export default function Integrations() {
   }
 
   function getErrorMessage(e: unknown, fallback: string): string {
-    if (e instanceof ApiError) {
-      const body = e.body as { error?: string; message?: string } | null;
-      return body?.error || body?.message || fallback;
-    }
-    if (e instanceof Error && e.message) return e.message;
-    return fallback;
+    const explanation = explainWorkspaceError(e);
+    return explanation.body || fallback;
   }
+
 
   // Fetch initial statuses
   const fetchStatuses = useCallback(async (): Promise<ConnectedStore[] | null> => {
@@ -522,17 +523,7 @@ export default function Integrations() {
       )}
 
       {storeLoadError && (
-        <div role="alert" className="rounded-xl border border-red-500/25 bg-red-500/5 p-4 text-sm text-t2">
-          Could not load your saved store connections. Refresh the list before trying to connect a store again.
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => void fetchStatuses()}
-            className="ml-2 font-semibold text-t1 underline underline-offset-2"
-          >
-            {loading ? "Retrying…" : "Retry"}
-          </button>
-        </div>
+        <WorkspaceStatus state="error" title="Saved connections unavailable" message="Revluma couldn’t retrieve your saved store connections. Refresh the list before trying to connect a store again." onRetry={() => void fetchStatuses()} retryLabel={loading ? "Retrying…" : "Retry"} retryDisabled={loading} />
       )}
 
       {/* No-store warning -> Premium Empty State */}
@@ -767,8 +758,8 @@ export default function Integrations() {
                             <ul className="mt-3 space-y-2">
                               {(store.diagnostics?.synchronization.resources || []).map(resource => (
                                 <li key={resource.resource} className="flex items-start justify-between gap-3 text-xs">
-                                  <span className="font-medium">{resource.resource.replaceAll("_", " ")}{resource.required ? " · required" : " · optional"}</span>
-                                  <span className="text-right text-slate-500">{resource.status}{resource.retrieved_record_count !== null ? ` · ${resource.retrieved_record_count} retrieved` : ""}{resource.error_code ? ` · ${resource.error_code}` : ""}</span>
+                                  <span className="font-medium">{resourceName(resource.resource)}{resource.required ? " · required" : " · optional"}</span>
+                                  <span className="text-right text-slate-500">{resourceLanguage(resource.error_code || resource.status).label}{resource.retrieved_record_count !== null ? ` · ${resource.retrieved_record_count} retrieved` : ""}</span>
                                 </li>
                               ))}
                             </ul>
@@ -835,75 +826,22 @@ export default function Integrations() {
         })}
       </section>
 
-      {/* Shopify Prompt Modal */}
-      <AnimatePresence>
-        {shopifyModalOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
-              onClick={() => setShopifyModalOpen(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed left-1/2 top-1/2 z-50 w-full max-w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-bg p-6 shadow-2xl"
-            >
-              <button
-                onClick={() => setShopifyModalOpen(false)}
-                className="absolute right-4 top-4 text-t3 transition-colors hover:text-t1"
-              >
-                <X className="h-4 w-4" />
-              </button>
-
-              <div className="mb-5 flex items-center gap-3">
-                <LogoTile src="https://cdn.simpleicons.org/shopify/5C8F4D" alt="Shopify" size={10} />
-                <div>
-                  <h3 className="text-lg font-bold text-t1">Connect Shopify</h3>
-                  <p className="text-sm text-t3">Enter your store domain</p>
-                </div>
-              </div>
-
-              <form onSubmit={handleShopifySubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="flex items-center gap-1.5 text-sm font-medium text-t2">
-                    Shopify Domain
-                    <FieldInfo title="Shopify Domain">
-                      <p>The subdomain shown when you're logged into your Shopify admin, before <span className="text-t1">.myshopify.com</span>.</p>
-                      <p className="text-t3">Find it in Shopify Admin → Settings → Domains, or in your browser's address bar.</p>
-                    </FieldInfo>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="mystore"
-                      autoFocus
-                      required
-                      className="w-full rounded-md border border-border bg-bg-3 py-2.5 pl-3 pr-[110px] text-sm text-t1 outline-none focus:border-[#5C8F4D]/50"
-                      value={shopDomain}
-                      onChange={(e) => setShopDomain(e.target.value.replace(".myshopify.com", ""))}
-                    />
-                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-t4">
-                      .myshopify.com
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  disabled={!shopDomain.trim()}
-                  className="w-full rounded-md py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                  style={{ background: "#5C8F4D" }}
-                >
-                  Continue to Shopify
-                </button>
-              </form>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {/* Shared accessible dialog: labelled, keyboard-trapped and focus-restoring. */}
+      <Dialog open={shopifyModalOpen} onOpenChange={setShopifyModalOpen}>
+        <DialogContent className="max-w-[400px] rounded-2xl border-border bg-bg text-t1" aria-describedby="shopify-domain-description">
+          <div className="flex items-center gap-3 pr-8">
+            <LogoTile src="https://cdn.simpleicons.org/shopify/5C8F4D" alt="" size={10} />
+            <div><DialogTitle>Connect Shopify</DialogTitle><DialogDescription id="shopify-domain-description">Enter your store domain. You’ll review access on Shopify before connecting.</DialogDescription></div>
+          </div>
+          <form onSubmit={handleShopifySubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="shopify-domain" className="flex items-center gap-1.5 text-sm font-medium text-t2">Shopify store domain<FieldInfo title="Shopify store domain"><p>The subdomain shown in Shopify Admin before <span className="text-t1">.myshopify.com</span>.</p><p>Find it in Shopify Admin → Settings → Domains.</p></FieldInfo></label>
+              <div className="relative"><input id="shopify-domain" name="shopify-domain" type="text" autoComplete="off" placeholder="mystore" required className={cn(workspaceDesign.control.input, workspaceDesign.focus, "w-full bg-bg-3 pl-3 pr-[110px] text-t1")} value={shopDomain} onChange={event => setShopDomain(event.target.value.replace(".myshopify.com", ""))} /><span aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-t3">.myshopify.com</span></div>
+            </div>
+            <button type="submit" disabled={!shopDomain.trim()} className={cn(workspaceDesign.control.primary, workspaceDesign.focus, "w-full")}>Continue to Shopify</button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Connect success/failure feedback */}
       <GlassmorphismCard
