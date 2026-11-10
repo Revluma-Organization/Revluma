@@ -27,14 +27,14 @@
 //   - Only stores that are currently IN-FLIGHT (queued/starting/running) are
 //     reconciled; already-terminal stores are never regressed.
 //   - A `running` domain with a FRESH heartbeat (recent last_attempted_at) is
-//     left alone — we never reap a genuinely-working worker.
+//     left alone based on the recorded timestamps; this is not a worker lease.
 //   - Tenant isolation: every write is scoped to a single store id.
 //   - The store.status is only ever promoted 'syncing' -> 'active', never
 //     demoted.
 // ============================================================================
 
 const C = require('./syncStateContract');
-const { snapshot, recordFailure } = require('./syncDomainState');
+const { snapshot, recordStaleFailure } = require('./syncDomainState');
 const { REQUIRED_INITIAL_RESOURCES } = require('./integrationDiagnostics');
 
 // Matches the canonical running-stall window (REV-DEC-0021).
@@ -71,7 +71,7 @@ function staleRunningDomains(rows, { now, staleMs = DEFAULT_STALE_MS } = {}) {
     const st = C.toCanonicalStatus(row.status, { scope: 'resource' });
     if (st !== C.RESOURCE_STATUS.RUNNING && st !== C.RESOURCE_STATUS.STARTING) continue;
     // A running domain with no recorded attempt time has been "running" since
-    // it was written — treat its last_checked_at as the heartbeat, and if that
+    // it was written — use last_checked_at as a fallback timestamp, and if that
     // is also missing, it is stale by definition.
     const heartbeat = toMs(row.last_attempted_at) ?? toMs(row.last_checked_at);
     const stale = heartbeat == null || (nowMs - heartbeat) >= staleMs;
@@ -84,19 +84,7 @@ function staleRunningDomains(rows, { now, staleMs = DEFAULT_STALE_MS } = {}) {
 // terminal failure, preserving discovered/persisted counts + pagination so the
 // recovery driver can retry it (bounded) or a future sync can complete it.
 async function reapStaleDomain(db, storeId, row, { now } = {}) {
-  const error = {
-    code: 'SYNC_STALE_TIMEOUT',
-    name: 'SYNC_STALE_TIMEOUT',
-    message: `Sync domain ${row.domain} made no progress beyond the stall window`,
-  };
-  const report = {
-    discovered: row.records_discovered,
-    inserted: row.records_inserted,
-    updated: row.records_updated,
-    pagesCompleted: row.pages_completed,
-    paginationComplete: Boolean(row.pagination_complete),
-  };
-  return recordFailure(storeId, row.domain, error, report, db);
+  return recordStaleFailure(storeId, row, now == null ? new Date() : new Date(now), db);
 }
 
 function inFlightWhere() {
@@ -167,7 +155,7 @@ async function reconcileStore(db, store, rows, { now, staleMs = DEFAULT_STALE_MS
   }
 
   // (2) Re-read the ledger so the derivation sees the reaped statuses.
-  const freshRows = toReap.length ? await snapshot(store.id, db) : rows;
+  const freshRows = toReap.length ? await snapshot(store.id, db, { strict: true }) : rows;
   const withRequired = (freshRows || []).map(r => ({ ...r, required: REQUIRED_SET.has(r.domain) }));
   const derived = C.deriveStoreSyncStatus(withRequired, store.initial_sync_status, { stalledRunning: false });
   result.derived_status = derived.status;
@@ -191,10 +179,22 @@ async function reconcileStore(db, store, rows, { now, staleMs = DEFAULT_STALE_MS
     if (!wasTerminal) data.sync_completed_at = new Date(nowMs);
     // Promote a stuck 'syncing' store back to 'active'; never demote.
     if (store.status === 'syncing') data.status = 'active';
-    await db.stores.update({ where: { id: store.id }, data });
-    result.changed = true;
-    result.refined = wasTerminal;
-    result.limitations = derived.limitations || [];
+    // Never terminalize or clear the job ID based on an obsolete store scan.
+    // This protects a newly started job, but does not replace a resource lease.
+    const saved = await db.stores.updateMany({
+      where: {
+        id: store.id, status: store.status,
+        initial_sync_status: store.initial_sync_status,
+        current_sync_job_id: store.current_sync_job_id ?? null,
+        updated_at: store.updated_at ?? null,
+      },
+      data,
+    });
+    if (saved.count === 1) {
+      result.changed = true;
+      result.refined = wasTerminal;
+      result.limitations = derived.limitations || [];
+    }
   }
   return result;
 }
