@@ -19,6 +19,16 @@ function makeDb({ stores, domains }) {
   for (const d of domains) states.set(`${d.store_id}:${d.domain}`, { ...d });
   const db = {
     store_sync_domain_states: {
+      async updateMany({ where, data }) {
+        const row = states.get(`${where.store_id}:${where.domain}`);
+        const same = (a, b) => (a == null && b == null) || (a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b);
+        if (!row || !['status', 'last_attempted_at', 'last_checked_at', 'updated_at'].every(k => same(row[k], where[k]))) return { count: 0 };
+        for (const [k, v] of Object.entries(data)) {
+          if (v && typeof v === 'object' && 'increment' in v) row[k] = (Number(row[k]) || 0) + v.increment;
+          else row[k] = v;
+        }
+        return { count: 1 };
+      },
       async upsert({ where, update, create }) {
         const key = `${where.store_id_domain.store_id}:${where.store_id_domain.domain}`;
         const existing = states.get(key);
@@ -53,10 +63,12 @@ function makeDb({ stores, domains }) {
         if (q.take != null) list = list.slice(0, q.take);
         return list;
       },
-      async update({ where, data }) {
+      async updateMany({ where, data }) {
         const s = stores.find(x => x.id === where.id);
+        const same = (a, b) => (a == null && b == null) || (a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b);
+        if (!s || !['status', 'initial_sync_status', 'current_sync_job_id', 'updated_at'].every(k => same(s[k], where[k]))) return { count: 0 };
         Object.assign(s, data);
-        return { ...s };
+        return { count: 1 };
       },
     },
   };
@@ -308,7 +320,11 @@ function makeDbWithFailingInFlightFinder(stores, domains) {
         if (where.take != null) list = list.slice(0, where.take);
         return list;
       },
-      async update({ where, data }) { const s = stores.find(x => x.id === where.id); Object.assign(s, data); return { ...s }; },
+      async updateMany({ where, data }) {
+        const s = stores.find(x => x.id === where.id);
+        if (!s || s.status !== where.status || s.initial_sync_status !== where.initial_sync_status || (s.current_sync_job_id ?? null) !== where.current_sync_job_id || (s.updated_at?.getTime() ?? null) !== (where.updated_at?.getTime() ?? null)) return { count: 0 };
+        Object.assign(s, data); return { count: 1 };
+      },
     },
   };
 }
@@ -372,4 +388,48 @@ test('runReaper: honesty refinement is NOT throttled behind the 20-oldest batch 
   assert.equal(out.refine_considered, N, 'all 25 misreported stores considered in one pass (not capped at 20)');
   assert.equal(out.refined_stores, N, 'a recently-updated store is not queued behind the batch');
   assert.ok(stores.every(s => s.initial_sync_status === 'initial_completed_with_limitations'));
+});
+
+test('reaper CAS does not overwrite a resource that completed after the stale scan', async () => {
+  const row = { ...okRow(S1, 'orders'), status:'running', last_attempted_at:STALE, last_checked_at:STALE, updated_at:STALE };
+  const {db,states}=makeDb({stores:[],domains:[row]});
+  const observed={...row};
+  Object.assign(states.get(`${S1}:orders`),{status:'ok',last_succeeded_at:NOW,updated_at:NOW,pagination_complete:true});
+  assert.equal(await R.reapStaleDomain(db,S1,observed,{now:NOW}),false);
+  assert.equal(states.get(`${S1}:orders`).status,'ok');
+});
+
+test('reaper CAS does not fail a newer attempt that starts after the stale scan', async () => {
+  const row = { ...okRow(S1, 'orders'), status:'running', last_attempted_at:STALE, last_checked_at:STALE, updated_at:STALE };
+  const {db,states}=makeDb({stores:[],domains:[row]});
+  const observed={...row};
+  Object.assign(states.get(`${S1}:orders`),{last_attempted_at:NOW,updated_at:NOW});
+  assert.equal(await R.reapStaleDomain(db,S1,observed,{now:NOW}),false);
+  assert.equal(states.get(`${S1}:orders`).status,'running');
+});
+
+test('reaper CAS preserves counts and checkpoint while classifying an unchanged stale resource', async () => {
+  const row = { ...okRow(S1, 'orders'), status:'running', last_attempted_at:STALE, last_checked_at:STALE, updated_at:STALE, checkpoint:{cursor:'synthetic'},records_discovered:5 };
+  const {db,states}=makeDb({stores:[],domains:[row]});
+  assert.equal(await R.reapStaleDomain(db,S1,{...row},{now:NOW}),true);
+  const saved=states.get(`${S1}:orders`);
+  assert.equal(saved.status,'failed');assert.equal(saved.error_code,'SYNC_STALE_TIMEOUT');
+  assert.equal(saved.records_discovered,5);assert.deepEqual(saved.checkpoint,{cursor:'synthetic'});
+});
+
+test('reaper CAS does not hide a database failure as a successful recovery', async () => {
+  const row = { ...okRow(S1, 'orders'), status:'running', last_attempted_at:STALE, last_checked_at:STALE, updated_at:STALE };
+  const {db}=makeDb({stores:[],domains:[row]});
+  db.store_sync_domain_states.updateMany=async()=>{throw Object.assign(new Error('offline'),{code:'DB_DOWN'});};
+  await assert.rejects(R.reapStaleDomain(db,S1,row,{now:NOW}),{code:'DB_DOWN'});
+});
+
+test('reaper does not terminalize a store when a new sync job replaced its scan', async () => {
+  const store={id:S1,status:'syncing',initial_sync_status:'running',current_sync_job_id:'old-job',updated_at:STALE};
+  const rows=[okRow(S1,'products'),okRow(S1,'orders'),okRow(S1,'abandoned_checkouts')];
+  const {db,stores}=makeDb({stores:[{...store}],domains:rows});
+  stores[0].current_sync_job_id='new-job';stores[0].updated_at=NOW;
+  const result=await R.reconcileStore(db,store,rows,{now:NOW});
+  assert.equal(result.changed,false);assert.equal(stores[0].current_sync_job_id,'new-job');
+  assert.equal(stores[0].initial_sync_status,'running');
 });

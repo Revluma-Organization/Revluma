@@ -123,6 +123,34 @@ async function beginAttempt(storeId, domain, db = defaultDb()) {
   }
 }
 
+// Reap only the exact resource observation that was inspected. A completed or
+// restarted attempt must not be overwritten by a stale reaper scan. This is a
+// metadata CAS, not a lease or fencing token for the worker's business writes.
+async function recordStaleFailure(storeId, row, now = new Date(), db = defaultDb()) {
+  assertDomain(row.domain);
+  const code = 'SYNC_STALE_TIMEOUT';
+  const details = `Sync domain ${row.domain} made no progress beyond the stall window`;
+  const cc = contractColumns(C.RESOURCE_STATUS.FAILED, {
+    code, details, discovered: row.records_discovered, inserted: row.records_inserted,
+    updated: row.records_updated, paginationComplete: false,
+    succeededAt: row.last_succeeded_at, retryCount: (Number(row.retry_count) || 0) + 1,
+  });
+  const result = await db.store_sync_domain_states.updateMany({
+    where: {
+      store_id: storeId, domain: row.domain, status: row.status,
+      last_attempted_at: row.last_attempted_at ?? null,
+      last_checked_at: row.last_checked_at ?? null,
+      updated_at: row.updated_at ?? null,
+    },
+    data: {
+      status: 'failed', ...cc, error_code: code, error_details: details,
+      error_since: row.error_since || now, retry_count: { increment: 1 },
+      last_checked_at: now, updated_at: now, pagination_complete: false,
+    },
+  });
+  return result.count === 1;
+}
+
 async function recordSuccess(storeId, domain, report = {}, db = defaultDb()) {
   assertDomain(domain);
   const now = new Date();
@@ -395,6 +423,7 @@ module.exports = {
   recordSuccess,
   recordDegraded,
   recordFailure,
+  recordStaleFailure,
   snapshot,
   mergeCheckpoint,
   domainForSetupStage,
