@@ -212,3 +212,7 @@ Vercel connector after merge.
 ### Task 227 — Frontend production wiring and release acceptance (original Tasks 322–325)
 
 [Diagnosis](diagnostics/TASK-227-FRONTEND-PRODUCTION-WIRING-RELEASE-ACCEPTANCE-diagnostics.md), [implementation](implementation/TASK-227-FRONTEND-PRODUCTION-WIRING-RELEASE-ACCEPTANCE.md) and [validation](validation/TASK-227-FRONTEND-PRODUCTION-WIRING-RELEASE-ACCEPTANCE.md) record production-safe API/auth wiring, bounded request lifecycles, tenant-safe workspace contracts, Shopify-only controls, correlation/security headers and 161 new scenarios. Final Dashboard evidence is 1,385/1,385 tests with clean typecheck, zero lint errors and production build. PR #385 merged as `ec592b97686bea930d9124475bd79ae02357557a`; production `dpl_9AQBVa5WffFq1QCuuhoyArxJRqas` is READY/PROMOTED from that exact source with `revluma.vercel.app` assigned. The unavailable authenticated active-store/real-browser acceptance gates and older backend revision are tracked separately. Decision REV-DEC-0033; Task 228 was not started.
+
+## Task 234 — in progress
+
+Partial read-only and error-response hardening; tenant isolation, privacy, production verification and full acceptance remain open. See [diagnostics](diagnostics/tasks/234.md), [implementation](implementation/tasks/234.md), and [validation](validation/tasks/234.md).

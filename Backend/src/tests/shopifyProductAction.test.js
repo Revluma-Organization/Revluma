@@ -24,23 +24,10 @@ test('product reads require exact GID and a string description', async () => {
   await assert.rejects(adapter.readProduct(store, id, async () => ({ product: null })), error => error.code === 'PRODUCT_NOT_READABLE');
 });
 
-test('description mutation is fixed-query and requires verified returned content', async () => {
-  const calls = [];
-  const graphql = async (_store, query, variables) => {
-    calls.push({ query, variables });
-    return { productUpdate: { product: { id, title: 'Product', descriptionHtml: variables.input.descriptionHtml }, userErrors: [] } };
-  };
-  const result = await adapter.updateProductDescription(store, id, '<p>After</p>', graphql);
-  assert.equal(result.description, '<p>After</p>');
-  assert.deepEqual(calls[0].variables, { input: { id, descriptionHtml: '<p>After</p>' } });
-  assert.equal(calls[0].query, adapter.UPDATE_MUTATION);
-  assert.equal(calls[0].query.includes('productUpdate'), true);
-});
-
-test('userErrors are rejected while transport or missing confirmation is uncertain', async () => {
-  await assert.rejects(adapter.updateProductDescription(store, id, 'new', async () => ({ productUpdate: { product: null, userErrors: [{ message: 'denied' }] } })), error => error.code === 'SHOPIFY_PRODUCT_UPDATE_REJECTED');
-  await assert.rejects(adapter.updateProductDescription(store, id, 'new', async () => { throw Object.assign(new Error('socket'), { code: 'ECONNRESET' }); }), error => error.code === 'SHOPIFY_MUTATION_OUTCOME_UNCERTAIN');
-  await assert.rejects(adapter.updateProductDescription(store, id, 'new', async () => ({ productUpdate: { product: { id, descriptionHtml: 'different' }, userErrors: [] } })), error => error.code === 'SHOPIFY_MUTATION_OUTCOME_UNCERTAIN');
+test('direct description updates reject before invoking any GraphQL transport', async () => {
+  let calls = 0;
+  await assert.rejects(adapter.updateProductDescription(store, id, '<p>After</p>', async () => { calls++; }), error => error.code === 'COMMERCE_ACTIONS_DISABLED');
+  assert.equal(calls, 0);
 });
 
 test('collections reader paginates and maps smart rules without persistence claims', async () => {

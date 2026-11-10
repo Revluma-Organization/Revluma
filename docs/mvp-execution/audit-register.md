@@ -723,3 +723,7 @@ User-assigned Task 227 consolidates original Tasks 322–325 on branch `arena/13
 ## Task 230 — in progress
 
 Original Tasks 336–340: investigation/navigation audit and partial fixes are recorded in [diagnosis](diagnostics/TASK-230-MERCHANT-INVESTIGATION.md), [implementation](implementation/TASK-230-MERCHANT-INVESTIGATION.md), and [validation](validation/TASK-230-MERCHANT-INVESTIGATION.md). Real merchant acceptance, the 180-scenario category matrix, and CI/deployment remain open; no finding is marked production verified.
+
+## Task 234 — in progress
+
+Partial read-only and error-response hardening; tenant isolation, privacy, production verification and full acceptance remain open. See [diagnostics](diagnostics/tasks/234.md), [implementation](implementation/tasks/234.md), and [validation](validation/tasks/234.md).

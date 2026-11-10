@@ -70,7 +70,7 @@ function publicAction(row) {
     idempotency_key: row.idempotency_key,
     confirmation_hash: row.request_hash,
     preview: row.preview_json,
-    rollback_available: row.status === 'executed',
+    rollback_available: false, // MVP read-only policy also prohibits rollback writes.
     status: row.status,
     confirmation_expires_at: row.confirmation_expires_at,
     confirmed_at: row.confirmed_at,

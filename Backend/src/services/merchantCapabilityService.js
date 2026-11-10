@@ -36,6 +36,7 @@ async function getMerchantCoverage(storeId, organizationId, deps = {}) {
     },
     actions: {
       enabled_by_environment: actionsEnabled(deps.env),
+      execution_disabled_reason: 'read_only_mvp',
       supported: [{ action_type: 'product_update_description', preview_scope: 'read_products', execution_scope: 'write_products', preview_available: grantedScopes.includes('read_products'), execution_available: actionsEnabled(deps.env) && grantedScopes.includes('write_products'), safeguards: ['preview', 'explicit_confirmation', 'current_state_revalidation', 'audit', 'uncertainty_reconciliation', 'guarded_rollback'] }],
     },
     sidekick: { deployable: false, reason: 'Managed installation and token exchange are not implemented. The local tool contract is a foundation only.' },

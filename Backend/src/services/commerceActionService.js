@@ -9,7 +9,8 @@ const {
 } = require('./commerceActionPolicy');
 
 const STALE_EXECUTION_MS = 5 * 60 * 1000;
-function actionsEnabled(env = process.env) { return env.COMMERCE_ACTIONS_ENABLED === 'true'; }
+// Merchant-facing writes are outside the read-only MVP, regardless of legacy flags.
+function actionsEnabled() { return false; }
 function safeErrorCode(error) { return String(error?.code || error?.name || 'commerce_action_failed').slice(0, 100); }
 
 async function storeForOrganization(db, storeId, organizationId) {

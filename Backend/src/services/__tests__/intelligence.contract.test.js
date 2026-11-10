@@ -49,7 +49,7 @@ const { toPythonEvent, FEATURE_FIELDS } = require('../featureWorkerService');
     max_actions_per_store_24h: 100,
     kill_switch: false,
   });
-  assert.strictEqual(automationPermitted(policy, { consent_email: true }, 10), true);
+  assert.strictEqual(automationPermitted(policy, { consent_email: true }, 10), false, 'read-only MVP overrides legacy opt-in');
   assert.strictEqual(automationPermitted(policy, { consent_email: false }, 10), false);
   delete process.env.BETA_AUTOMATION_KILL_SWITCH;
   assert.strictEqual(
