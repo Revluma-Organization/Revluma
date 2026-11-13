@@ -84,61 +84,22 @@ test('confirmation fails closed when production gate or live write scope is abse
   const db = database(); const state = { description: 'before' }; const { graphql } = graphqlFor(state);
   const action = await preview(db, graphql);
   await assert.rejects(service.confirmAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql, env: {} }), error => error.code === 'COMMERCE_ACTIONS_DISABLED');
-  await assert.rejects(service.confirmAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql: graphqlFor(state, { scopes: ['read_products'] }).graphql, env: { COMMERCE_ACTIONS_ENABLED: 'true' } }), error => error.code === 'REQUIRED_SCOPE_NOT_GRANTED');
+  await assert.rejects(service.confirmAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql: graphqlFor(state, { scopes: ['read_products'] }).graphql, env: { COMMERCE_ACTIONS_ENABLED: 'true' } }), error => error.code === 'COMMERCE_ACTIONS_DISABLED');
   assert.equal(db.rows[0].status, 'awaiting_confirmation'); assert.equal(state.description, 'before');
 });
 
-test('confirmation revalidates content and never overwrites a concurrent edit', async () => {
-  const db = database(); const state = { description: 'before' }; const { graphql } = graphqlFor(state);
-  const action = await preview(db, graphql);
-  state.description = 'merchant edited meanwhile';
-  await assert.rejects(service.confirmAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql, env: { COMMERCE_ACTIONS_ENABLED: 'true' } }), error => error.code === 'PRODUCT_CHANGED_SINCE_PREVIEW');
-  assert.equal(db.rows[0].status, 'awaiting_confirmation'); assert.equal(state.description, 'merchant edited meanwhile');
+test('confirmation remains disabled with the legacy enable flag and live write scope', async () => {
+  const db = database(); const state = { description: 'before' }; const transport = graphqlFor(state);
+  const action = await preview(db, transport.graphql); const beforeCalls = transport.calls.length;
+  await assert.rejects(service.confirmAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql: transport.graphql, env: { COMMERCE_ACTIONS_ENABLED: 'true' } }), error => error.code === 'COMMERCE_ACTIONS_DISABLED');
+  assert.equal(transport.calls.length, beforeCalls); assert.equal(state.description, 'before'); assert.equal(db.rows[0].status, 'awaiting_confirmation');
 });
 
-test('execute and rollback verify each response and create an audit chain', async () => {
-  const db = database(); const state = { description: 'before' }; const { graphql } = graphqlFor(state); const env = { COMMERCE_ACTIONS_ENABLED: 'true' };
-  const action = await preview(db, graphql);
-  const executed = await service.confirmAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql, env });
-  assert.equal(executed.status, 'executed'); assert.equal(state.description, body.description); assert.equal(executed.rollback_available, true);
-  const rolledBack = await service.rollbackAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql, env });
-  assert.equal(rolledBack.status, 'rolled_back'); assert.equal(state.description, 'before');
-  assert.deepEqual(db.audits.map(item => item.action), ['commerce_action_preview_created', 'commerce_action_confirmed', 'commerce_action_executed', 'commerce_action_rollback_started', 'commerce_action_rolled_back']);
-});
-
-test('rollback refuses to overwrite changes made after execution', async () => {
-  const db = database(); const state = { description: 'before' }; const { graphql } = graphqlFor(state); const env = { COMMERCE_ACTIONS_ENABLED: 'true' };
-  const action = await preview(db, graphql);
-  await service.confirmAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql, env });
-  state.description = 'new merchant edit';
-  await assert.rejects(service.rollbackAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql, env }), error => error.code === 'PRODUCT_CHANGED_SINCE_EXECUTION');
-  assert.equal(state.description, 'new merchant edit'); assert.equal(db.rows[0].status, 'executed');
-});
-
-test('ambiguous transport becomes uncertain, is not retried, and reconciles to executed', async () => {
-  const db = database(); const state = { description: 'before' }; const env = { COMMERCE_ACTIONS_ENABLED: 'true' };
-  const action = await preview(db, graphqlFor(state).graphql);
-  const uncertainTransport = graphqlFor(state, { transportFailure: true });
-  const result = await service.confirmAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql: uncertainTransport.graphql, env });
-  assert.equal(result.status, 'execution_uncertain');
-  assert.equal(uncertainTransport.calls.filter(call => call.query === UPDATE_MUTATION).length, 1);
-  state.description = body.description; // Provider committed despite the lost response.
-  const reconciled = await service.reconcileAction(action.id, context, { db, graphql: graphqlFor(state).graphql });
-  assert.equal(reconciled.status, 'executed');
-  const replay = await service.confirmAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql: graphqlFor(state).graphql, env });
-  assert.equal(replay.status, 'executed');
-});
-
-test('reconciliation stops on a third unexpected value and definite userErrors fail', async () => {
-  const db = database(); const state = { description: 'before' }; const env = { COMMERCE_ACTIONS_ENABLED: 'true' };
-  const first = await preview(db, graphqlFor(state).graphql);
-  const uncertain = await service.confirmAction(first.id, { confirmation_hash: first.confirmation_hash }, context, { db, graphql: graphqlFor(state, { missingConfirmation: true }).graphql, env });
-  assert.equal(uncertain.status, 'execution_uncertain'); state.description = 'unexpected';
-  await assert.rejects(service.reconcileAction(first.id, context, { db, graphql: graphqlFor(state).graphql }), error => error.code === 'ACTION_RECONCILIATION_CONFLICT');
-
-  const second = await preview(db, graphqlFor(state).graphql, { idempotency_key: 'preview-key-000002', description: 'another' });
-  const rejected = await service.confirmAction(second.id, { confirmation_hash: second.confirmation_hash }, context, { db, graphql: graphqlFor(state, { userError: true }).graphql, env });
-  assert.equal(rejected.status, 'failed'); assert.equal(rejected.error_code, 'SHOPIFY_PRODUCT_UPDATE_REJECTED');
+test('rollback cannot execute a mutation even for a historical executed action', async () => {
+  const db = database(); const state = { description: 'before' }; const transport = graphqlFor(state);
+  const action = await preview(db, transport.graphql); db.rows[0].status = 'executed'; const beforeCalls = transport.calls.length;
+  await assert.rejects(service.rollbackAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql: transport.graphql, env: { COMMERCE_ACTIONS_ENABLED: 'true' } }), error => error.code === 'COMMERCE_ACTIONS_DISABLED');
+  assert.equal(transport.calls.length, beforeCalls); assert.equal(state.description, 'before'); assert.equal(db.rows[0].status, 'executed');
 });
 
 test('crash recovery reconciles only stale executing rows, never an active mutation', async () => {
@@ -150,16 +111,6 @@ test('crash recovery reconciles only stale executing rows, never an active mutat
   db.rows[0].updated_at = new Date(Date.now() - 6 * 60 * 1000);
   const recovered = await service.reconcileAction(action.id, context, { db, graphql });
   assert.equal(recovered.status, 'executed');
-});
-
-test('a definite rollback rejection may be retried after scope and current-state checks', async () => {
-  const db = database(); const state = { description: 'before' }; const { graphql } = graphqlFor(state); const env = { COMMERCE_ACTIONS_ENABLED: 'true' };
-  const action = await preview(db, graphql);
-  await service.confirmAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql, env });
-  const rejected = await service.rollbackAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql: graphqlFor(state, { userError: true }).graphql, env });
-  assert.equal(rejected.status, 'rollback_failed');
-  const recovered = await service.rollbackAction(action.id, { confirmation_hash: action.confirmation_hash }, context, { db, graphql, env });
-  assert.equal(recovered.status, 'rolled_back'); assert.equal(state.description, 'before');
 });
 
 test('cross-tenant action reads and confirmations are not permitted', async () => {

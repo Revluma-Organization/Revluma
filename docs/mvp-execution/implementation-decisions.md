@@ -197,3 +197,7 @@ Task 227 centralizes HTTPS non-local production API configuration, 30-second bou
 ## Task 230 — bounded return context (in progress)
 
 Only a sanitized local Command Center return hint and optional finding identifier may cross workspace URLs; these are navigation hints, not authorization or evidence. Dynamic data is fetched again and selected findings must exist in the server response before restoring position. A newer Command Center request owns its own loading and failure state. Explicit router decisions about whether a question is a follow-up take precedence over broad interrogative-word heuristics. This decision does not certify full topic-change or live cross-workspace behavior.
+
+## Task 234 — in progress
+
+Partial read-only and error-response hardening; tenant isolation, privacy, production verification and full acceptance remain open. See [diagnostics](diagnostics/tasks/234.md), [implementation](implementation/tasks/234.md), and [validation](validation/tasks/234.md).

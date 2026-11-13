@@ -47,7 +47,7 @@ test('current-state guard rejects concurrent product edits', () => {
 test('public action omits internal requested user, provider payload, and rollback internals', () => {
   const result = publicAction({ id: 'id', organization_id: 'secret-tenant', requested_by_user_id: 'user', provider_result: { secret: true }, rollback_json: { description: 'old' }, input_json: { description: 'new' }, request_hash: 'hash', status: 'executed' });
   assert.equal(result.confirmation_hash, 'hash');
-  assert.equal(result.rollback_available, true);
+  assert.equal(result.rollback_available, false);
   assert.equal(result.organization_id, undefined);
   assert.equal(result.requested_by_user_id, undefined);
   assert.equal(result.provider_result, undefined);

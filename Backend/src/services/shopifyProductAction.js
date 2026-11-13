@@ -43,26 +43,10 @@ async function readProduct(store, id, graphql) {
   return { id: product.id, title: String(product.title || ''), description: product.descriptionHtml };
 }
 
-async function updateProductDescription(store, id, description, graphql) {
-  let data;
-  try {
-    data = await graph(store, UPDATE_MUTATION, { input: { id, descriptionHtml: description } }, graphql);
-  } catch (cause) {
-    // A transport or top-level GraphQL failure is ambiguous: Shopify may have
-    // committed before the connection failed. Callers must reconcile, not retry.
-    const error = new CommerceActionError('SHOPIFY_MUTATION_OUTCOME_UNCERTAIN', 'Shopify did not confirm the mutation outcome. Reconcile the product before any further action.', 502);
-    error.causeCode = cause?.code || null;
-    throw error;
-  }
-  const payload = data?.productUpdate;
-  if (Array.isArray(payload?.userErrors) && payload.userErrors.length) {
-    throw new CommerceActionError('SHOPIFY_PRODUCT_UPDATE_REJECTED', 'Shopify rejected the product update without applying it.', 422);
-  }
-  const product = payload?.product;
-  if (!product || product.id !== id || product.descriptionHtml !== description) {
-    throw new CommerceActionError('SHOPIFY_MUTATION_OUTCOME_UNCERTAIN', 'Shopify did not return a product matching the intended update. Reconciliation is required.', 502);
-  }
-  return { id: product.id, title: String(product.title || ''), description: product.descriptionHtml };
+async function updateProductDescription() {
+  // Defense in depth: callers cannot bypass the service gate by injecting a
+  // GraphQL transport or calling this adapter directly.
+  throw new CommerceActionError('COMMERCE_ACTIONS_DISABLED', 'Shopify mutations are disabled in the read-only MVP.', 503);
 }
 
 function collectionNode(node) {

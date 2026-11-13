@@ -2,7 +2,7 @@ const logger = require('../utils/logger');
 
 module.exports = (err, req, res, next) => {
   const isProd = process.env.NODE_ENV === 'production';
-  const exposeErrorDetails = process.env.EXPOSE_ERROR_DETAILS === 'true';
+  const exposeErrorDetails = !isProd && process.env.EXPOSE_ERROR_DETAILS === 'true';
 
   // Keep provider payloads, connection strings, and other exception details out
   // of production logs while retaining stable diagnostic context.
@@ -58,9 +58,6 @@ module.exports = (err, req, res, next) => {
 
   return res.status(statusCode).json({
     success: false,
-    error: exposeErrorDetails || statusCode !== 500
-      ? err.message
-      : 'An unexpected server error occurred',
-    ...(exposeErrorDetails ? { stack: err.stack } : {}),
+    error: statusCode < 500 ? err.message : 'An unexpected server error occurred',
   });
 };

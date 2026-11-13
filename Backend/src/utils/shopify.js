@@ -148,10 +148,10 @@ const buildInstallUrl = ({ shop, state }) => {
   const configuredScopes = String(process.env.SHOPIFY_SCOPES || '')
     .split(',')
     .map((scope) => scope.trim())
-    .filter(Boolean);
+    .filter((scope) => /^read_[a-z0-9_]+$/.test(scope));
   // write_discounts was previously forced here although Revluma ships an
-  // observation-first product that must not request mutation access it
-  // cannot honestly use. It is now opt-in via SHOPIFY_SCOPES only.
+  // observation-first product that must not request mutation access. Legacy
+  // write scopes in SHOPIFY_SCOPES are excluded.
   // Every scope requested below is exercised by merged code and nothing
   // write-scoped is ever forced. Optional commerce scopes remain configurable;
   // legal policies and navigation are requested because their readers are live.
