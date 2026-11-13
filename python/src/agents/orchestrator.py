@@ -67,7 +67,6 @@ ALLOWED_ACTION_TOOLS = {
     "view_carts",
     "view_customers",
     "view_revenue",
-    "create_campaign",
     "view_analytics",
     "view_products",
     "view_checkout",

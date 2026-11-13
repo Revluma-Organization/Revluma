@@ -26,6 +26,7 @@ from src.intelligence.morning_briefing import (
     _build_opportunities,
     _load_overnight_actions,
     _fallback_briefing,
+    _apply_orchestrator_priority,
     STABLE_DELTA_THRESHOLD_PCT,
 )
 
@@ -450,6 +451,24 @@ class TestBriefingModeIntegration(unittest.TestCase):
             "Review the verified revenue anomaly.",
         )
         self.assertEqual(briefing.todays_priority["action_tool"], "view_revenue")
+
+
+def test_orchestrator_priority_rejects_mutating_actions():
+    existing = {
+        "description": "Review recorded performance.",
+        "estimated_impact": "Impact not established.",
+        "action_label": "View analytics",
+        "action_tool": "view_analytics",
+        "action_params": {},
+    }
+    orchestration = MagicMock(
+        success=True,
+        response_type="analysis",
+        recommendation="Launch a campaign.",
+        implication="",
+        actions=[{"label": "Launch campaign", "tool": "create_campaign", "params": {}}],
+    )
+    assert _apply_orchestrator_priority(existing, orchestration) == existing
 
 
 # ── Fallback briefing tests ───────────────────────────────────────────────────
