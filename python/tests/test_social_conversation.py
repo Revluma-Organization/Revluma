@@ -100,18 +100,18 @@ def test_how_is_my_store_doing_still_overview():
     assert classify_investigation("how are sales performing?", {})["intent"] in STORE_INTENTS
 
 
-def test_wellbeing_reply_is_mutual_and_data_free():
+def test_wellbeing_reply_is_brief_honest_and_data_free():
     text = _result("How are you doing?")["text"]
-    assert "thanks for asking" in text
-    assert "?" in text and "working on today" in text
+    assert "I'm here and ready to help" in text
+    assert "?" in text
     assert not re.search(r"\d|\$|USD", text), text
-    for term in ("evidence", "investigation", "recorded order", "coverage"):
+    for term in ("evidence", "investigation", "recorded order", "coverage", "doing well"):
         assert term not in text.lower(), (term, text)
 
 
 def test_thanks_and_farewell_replies():
-    assert "Anytime," in _result("thank you!")["text"]
-    assert "See you later" in _result("bye!")["text"]
+    assert _result("thank you!")["text"] == "You're welcome."
+    assert _result("bye!")["text"] == "Goodbye. Take care."
 
 
 def test_social_payload_is_quiet_conversational_with_no_tools():
@@ -127,15 +127,14 @@ def test_social_payload_is_quiet_conversational_with_no_tools():
     assert mode == RESPONSE_MODE_CONVERSATIONAL
 
 
-def test_unsignalled_chatter_gets_a_conversational_offer_not_a_capability_wall():
+def test_unsignalled_chatter_gets_a_concise_conversational_offer():
     classification = classify_investigation("what's on your mind?", {})
     assert classification["intent"] == INTENT_GENERAL
     result = _conversation_result(
         "what's on your mind?", classification, investigation_id="inv-x",
         store_context={}, user_id="user-1",
         window={"start": "2026-10-28", "end": "2026-11-04", "timezone": "UTC"})
-    assert result["text"].startswith("I'm all ears,")
-    assert result["text"].endswith("What's on your mind today?")
+    assert result["text"] == "I'm here. What would you like to understand or investigate?"
 
 
 def test_identical_fact_sentences_cite_together_instead_of_repeating():

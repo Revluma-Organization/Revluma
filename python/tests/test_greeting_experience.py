@@ -1,22 +1,13 @@
-"""Greeting experience (merchant complaint 2026-11-04, GREET-001).
+"""Greeting experience contract.
 
 A merchant saying hello is not asking for an investigation. These tests pin:
-- whole-message greetings (with an addressee, punctuation or emoji) classify
-  as INTENT_GREETING and never fall through to the evidence engine;
-- the greeting answer greets back, addresses the merchant as the boss,
-  checks in on them, and closes with a single open invitation — never a
-  capability menu (GREET-002, merchant directive 2026-11-05: a capability
-  wall on "hello" reads as a sales pitch; what Rev can do is answered when
-  asked, via INTENT_CAPABILITY);
-- the nickname is stable per user, honours a stated preference and switches
-  to the feminine pool on a feminine signal;
-- the greeting payload stays conversational, quiet and chrome-free: no
-  tools, no steps, no facts, no follow-up chips.
+- whole-message greetings classify as INTENT_GREETING and bypass evidence tools;
+- the fallback greeting is short and natural, with no capability pitch;
+- a form of address is used only when explicitly requested;
+- the greeting payload stays conversational and contains no findings or tools.
 """
 
 from src.agents.investigation import (
-    BOSS_NAMES,
-    FEMININE_BOSS_NAMES,
     INTENT_GREETING,
     RESPONSE_MODE_CONVERSATIONAL,
     _boss_name,
@@ -75,23 +66,15 @@ def test_business_questions_are_not_swallowed_by_the_greeting_rule():
         assert classify_investigation(message, {})["intent"] != INTENT_GREETING, message
 
 
-def test_greeting_answer_greets_checks_in_then_opens_the_door():
+def test_greeting_answer_is_natural_and_brief():
     result = _result("Hello chat")
     text = result["text"]
-    first, _, second = text.partition("\n\n")
-    # Paragraph 1: greet back as the boss and check in on them.
-    assert any(f"Hey {name}" in first for name in BOSS_NAMES), first
-    assert "?" in first and any(word in first.lower() for word in
-                                ("day", "things", "well", "happening")), first
-    # Paragraph 2 (GREET-002): one open invitation, never a capability wall.
-    assert "ready" in second and ("working on" in second or "on your mind" in second), second
+    assert text == "Hi, good to see you. What would you like to look at?"
+    assert "\n\n" not in text
+    assert len(text) <= 80
     for marker in ("I can help with your store's revenue", "starting point",
                    "data coverage", "inventory and", "ecommerce advice"):
         assert marker not in text, marker
-    # Brevity: two short paragraphs, at most three sentences, chat-length.
-    assert text.count("\n\n") == 1, text
-    assert sum(text.count(char) for char in ".?!") <= 3, text
-    assert len(text) <= 240, text
 
 
 def test_greeting_payload_is_quiet_conversational_with_no_chrome():
@@ -109,19 +92,11 @@ def test_greeting_payload_is_quiet_conversational_with_no_chrome():
     assert mode == RESPONSE_MODE_CONVERSATIONAL
 
 
-def test_nickname_is_stable_per_user_and_varies_across_users():
-    first = _boss_name("hello", "user-stable")
-    second = _boss_name("hello", "user-stable")
-    assert first == second and first in BOSS_NAMES
-    seen = {_boss_name("hello", f"user-{i}") for i in range(40)}
-    assert len(seen) > 1, "every merchant would get the same nickname"
-
-
-def test_stated_preference_and_feminine_signal_choose_the_pool():
+def test_only_explicit_address_preferences_are_used():
     assert _boss_name("hello, call me Queen", "u") == "Queen"
     assert _boss_name("hey, call me mama", "u") == "Mama"
-    assert _boss_name("hello i'm a woman building my brand", "u") in FEMININE_BOSS_NAMES
-    assert _boss_name("hello", "u") in BOSS_NAMES
+    assert _boss_name("hello I'm a woman building my brand", "u") == ""
+    assert _boss_name("hello", "u") == ""
 
 
 def test_greeting_copy_carries_no_internal_notation():

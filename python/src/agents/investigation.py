@@ -108,6 +108,7 @@ from ..intelligence.investigation_outcomes import (
     validate_outcome,
 )
 from .base_agent import AgentResult, normalize_specialist_status
+from .rev_system_prompt import build_rev_prompt
 from .tools import ToolAuthorizationError, catalog, run_tool
 
 logger = logging.getLogger("rev.investigation")
@@ -369,19 +370,7 @@ GREETING_PATTERN = re.compile(
     r"(?:\s+(?:there|chat|rev|revluma|friend|friends|everyone|everybody|team"
     r"|guys|people|world|boss|chief|king|queen|captain))?$")
 
-# The merchant is the boss. The default pool is the product owner's chosen
-# energy; a stated preference ("call me Queen") or a feminine self-reference
-# switches to the feminine pool. Selection is stable per user, never random
-# per render, so the nickname does not flicker between turns.
-BOSS_NAMES = ("Chief", "Don", "Big Chief", "King", "Chairman", "Mogul",
-              "Top G", "Emperor", "The General", "Sovereign")
-FEMININE_BOSS_NAMES = ("Queen", "Chairwoman", "Lady Boss", "Business Queen",
-                       "The Matriarch", "The Powerhouse", "The Visionary",
-                       "The Deal Maker", "Empress", "Your Majesty")
-FEMININE_SIGNAL_PATTERN = re.compile(
-    r"\b(?:i(?:'m| am)(?: a| an)? (?:woman|lady|girl|female|queen|mama|madam|miss)"
-    r"|call me (?:queen|madam|mama|miss|ms\.?|mrs\.?|lady|girl|empress)"
-    r"|i identify as (?:a |an )?(?:woman|female|girl))\b", re.I)
+# Use a form of address only when the merchant explicitly requested one.
 PREFERRED_NAME_PATTERN = re.compile(r"\bcall me ([A-Za-z][\w'-]{1,24})\b", re.I)
 # A social message is addressed to Rev, not to the store: wellbeing checks,
 # thanks and farewells. It never runs the evidence pipeline. A store-domain
@@ -472,14 +461,6 @@ def _is_emotional_expression(text: str) -> bool:
         and not QUESTION_STRUCTURE_PATTERN.search(text or "")
 
 
-GREETING_CHECKINS = (
-    "How's your day going?",
-    "How are things with you today?",
-    "Hope the day is treating you well — how's it going?",
-    "Good to have you back — what's happening with you today?",
-)
-
-
 def _dynamic_conversational(message: str, classification: dict, intent: str,
                             user_id: str, routed: dict, goal: str | None = None) -> str:
     """Generated conversational language: one fast-model call with history,
@@ -487,24 +468,24 @@ def _dynamic_conversational(message: str, classification: dict, intent: str,
     the provider is unavailable (never a fabricated business answer)."""
     from . import responder
     name = _boss_name(message, user_id)
+    address_hint = (f"Use the stated preferred name {name!r} if natural. " if name
+                    else "Do not invent a nickname or title. ")
     kind = classification.get("social_kind")
     if goal is None:
         if intent == INTENT_GREETING:
-            goal = (f"greet the merchant back warmly, address them as {name} once, "
-                    "ask how they are doing, and open the door to business naturally "
-                    "in at most three sentences total, without listing what you can "
-                    "do unless they asked")
+            goal = ("greet the merchant back briefly and naturally; do not force a check-in, "
+                    "capability list, or follow-up question. " + address_hint)
         elif kind == "ack":
-            goal = f"acknowledge briefly as {name} and keep the conversation open"
+            goal = "acknowledge briefly and naturally. " + address_hint
         elif kind == "farewell":
-            goal = f"say a warm goodbye to {name} without introducing anything new"
+            goal = "say a brief, natural goodbye without introducing anything new. " + address_hint
         elif kind == "wellbeing":
-            goal = (f"answer how Rev is doing in one or two sentences, address them "
-                    f"as {name}, and return the question about their day")
+            goal = ("Answer honestly without claiming human feelings or experiences; keep it brief "
+                    "and do not force a return question. " + address_hint)
         elif intent == INTENT_IDENTITY:
             goal = "explain plainly what Rev is and invite the merchant to share what they are working on"
         else:
-            goal = f"reply naturally to the merchant as {name}, matching their energy"
+            goal = "reply naturally and briefly, matching the merchant's energy. " + address_hint
     understanding = routed.get("understanding_obj") or _synthetic_understanding(
         "greeting" if intent == INTENT_GREETING else "casual", goal)
     try:
@@ -519,10 +500,9 @@ def _dynamic_conversational(message: str, classification: dict, intent: str,
         if intent == INTENT_GREETING:
             return _static_greeting(message, user_id)
         if intent == INTENT_IDENTITY:
-            return ("I'm Rev, Revluma's operational intelligence analyst. I read your "
-                    "connected store's records, verify the evidence, and explain what "
-                    "changed, what it might mean, and what is still unknown. What are "
-                    "you working on today?")
+            return ("I'm Rev, Revluma's commercial intelligence assistant. I analyze authorized "
+                    "Shopify evidence when it is available, explain what it supports and what "
+                    "remains uncertain, and recommend next steps. I don't make store changes.")
         if kind is None and intent == INTENT_GENERAL:
             return _static_general_offer(message, user_id)
         return _social_reply(kind or "wellbeing", message, user_id)
@@ -531,21 +511,15 @@ def _dynamic_conversational(message: str, classification: dict, intent: str,
 
 def _static_greeting(message: str, user_id: str) -> str:
     name = _boss_name(message, user_id)
-    checkin = GREETING_CHECKINS[sum((user_id or message).encode()) % len(GREETING_CHECKINS)]
-    # GREET-002 (merchant directive 2026-11-05): a hello is not a sales pitch.
-    # The degraded greeting keeps the warm shape merchants preferred — greet,
-    # check in, one open invitation — and never dumps the capability menu.
-    # What Rev can do is answered when asked (INTENT_CAPABILITY).
-    return (f"Hey {name}, good to see you. {checkin}\n\n"
-            "Whenever you're ready, tell me what you're working on or what's "
-            "on your mind, and we'll dig into it together.")
+    address = f" {name}" if name else ""
+    # A brief greeting is enough; do not turn casual conversation into a pitch.
+    return f"Hi{address}, good to see you. What would you like to look at?"
 
 
 def _static_general_offer(message: str, user_id: str) -> str:
     name = _boss_name(message, user_id)
-    return (f"I'm all ears, {name}. Ask me anything about your store's revenue, checkout, "
-            "customers, products, inventory or data coverage and I'll investigate the "
-            "recorded evidence for you. What's on your mind today?")
+    address = f", {name}" if name else ""
+    return (f"I'm here{address}. What would you like to understand or investigate?")
 
 
 def _dynamic_knowledge(message: str, user_id: str, routed: dict) -> str:
@@ -560,10 +534,8 @@ def _dynamic_knowledge(message: str, user_id: str, routed: dict) -> str:
     except Exception:
         text = ""
     if not text or text.startswith("I'm temporarily unable"):
-        name = _boss_name(message, user_id)
-        return (f"Good question, {name}. General ecommerce practice has a lot to say "
-                "here, but I'd rather check what your own records show before I advise. "
-                "Want me to investigate it in your store?")
+        return ("I couldn't generate a reliable explanation just now. If you share the specific "
+                "decision or part of the concept you want to understand, I can take another pass.")
     return text
 
 
@@ -584,30 +556,25 @@ def _dynamic_clarification(message: str, user_id: str, routed: dict) -> str:
 
 
 def _social_reply(kind: str, message: str, user_id: str) -> str:
-    """A mutual-conversation answer: Rev is asked about itself, thanked or
-    bid goodbye — no store data is pulled and none is implied."""
+    """Brief social replies that do not imply live store access or human feelings."""
     name = _boss_name(message, user_id)
+    address = f", {name}" if name else ""
     if kind == "thanks":
-        return (f"Anytime, {name} — that's what I'm here for. If there's anything "
-                "else you'd like me to look at, just say the word.")
+        return f"You're welcome{address}."
     if kind == "farewell":
-        return (f"See you later, {name}. Your store's records will be right here "
-                "whenever you're ready to look at them again.")
-    return (f"I'm doing well, {name} — thanks for asking. I don't have good days or "
-            "bad ones, but I'm always ready to dig into your store's records. How's "
-            "your side of the screen — what are we working on today?")
+        return f"Goodbye{address}. Take care."
+    return f"I'm here and ready to help{address}. What would you like to look at?"
 
 
 def _boss_name(message: str, user_id: str) -> str:
-    """The honorific for this merchant: stated preference, then feminine
-    signal, then the default pool — deterministic per user."""
+    """Return a form of address only when the merchant explicitly requests it."""
     preferred = PREFERRED_NAME_PATTERN.search(message or "")
-    if preferred:
-        token = preferred.group(1).strip()
-        return token[:1].upper() + token[1:]
-    pool = (FEMININE_BOSS_NAMES if FEMININE_SIGNAL_PATTERN.search(message or "")
-            else BOSS_NAMES)
-    return pool[sum((user_id or message or "rev").encode()) % len(pool)]
+    if not preferred:
+        return ""
+    token = preferred.group(1).strip()
+    return token[:1].upper() + token[1:]
+
+
 IDENTITY_PATTERN = re.compile(
     r"\b(?:who are you|what are you|what is rev|tell me about yourself|your name)\b", re.I)
 CAPABILITY_PATTERN = re.compile(
@@ -3140,19 +3107,22 @@ def _compose_narrative(*, message: str, intent: str, window: dict, facts: list[d
         "The merchant opened with a friendly social clause before the business question. "
         "Acknowledge it in one short, warm sentence before presenting the analysis. "
         if social_opener else "")
-    prompt = (
-        "You are Rev, Revluma's commerce intelligence analyst. Answer the merchant's question "
-        "using ONLY the verified evidence supplied. Do not add numbers, causes, benchmarks or "
-        "actions that are not present. Clearly separate what is verified from what is not. "
-        + social_line +
-        "State limitations. Never claim an action was executed: Rev is read-only in this release.\n\n"
-        f"{UNTRUSTED_DATA_PREAMBLE}\n\n"
-        f"Merchant question: {message}\n\n"
-        f"{UNTRUSTED_OPEN}\n"
-        f"{_neutralise_untrusted_markers(json.dumps(evidence_payload, default=str)[:12000])}\n"
-        f"{UNTRUSTED_CLOSE}\n\n"
-        "Write concise markdown with '##' section headings. Use bullet points for evidence and "
-        "number the recommended next steps. Do not repeat the raw JSON."
+    prompt = build_rev_prompt(
+        "Answer the merchant's question using only the supplied investigation evidence and "
+        "application-generated findings. Do not add metrics, sources, causes, benchmarks, or "
+        "actions that are not supplied. State verified observations directly; present supplied "
+        "hypotheses as hypotheses and identify relevant unknowns or limitations. Preserve the "
+        "period, currency, data freshness, coverage, and evidence references where supplied. "
+        "Do not claim that a finding is fixed or an action executed. "
+        + social_line + "\n\n"
+        + f"{UNTRUSTED_DATA_PREAMBLE}\n\n"
+        + f"Merchant question: {message}\n\n"
+        + f"{UNTRUSTED_OPEN}\n"
+        + f"{_neutralise_untrusted_markers(json.dumps(evidence_payload, default=str)[:12000])}\n"
+        + f"{UNTRUSTED_CLOSE}\n\n"
+        + "Answer directly and use concise markdown. Use headings or bullets only when they make "
+        + "the finding easier to understand; do not force a report template or list every observation. "
+        + "Do not repeat the raw JSON."
     )
     try:
         timeout = deadline.operation_seconds("response_composition", 25.0) if deadline else 25.0

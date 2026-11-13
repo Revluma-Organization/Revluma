@@ -714,12 +714,12 @@ Limit serialized `context_payload` to 16 KiB. Exclude PII, credentials, headers,
 cookies, provider payloads, and free-form order notes. Verify membership and
 conversation ownership. Use a stable trigger occurrence key for retries.
 
-Python returns proposals only. Backend may execute only these tools through
-tenant- and role-checked handlers: `view_carts`, `view_customers`,
-`view_revenue`, `create_campaign`, `view_analytics`, `view_products`, and
-`view_checkout`. Mutating actions require idempotency and either explicit
-per-action confirmation or a verified `beta_automation` opt-in whose limits
-cover that exact action.
+Rev returns recommendations and read-only navigation proposals only. Allowlisted
+view tools (`view_carts`, `view_customers`, `view_revenue`, `view_analytics`,
+`view_products`, and `view_checkout`) may navigate to evidence; they must not
+mutate merchant data. Rev does not execute campaigns or any other merchant-side
+operation. Any future mutation capability must be designed and authorized as a
+separate product boundary, not exposed through Rev's recommendation actions.
 
 ### Image review contract
 

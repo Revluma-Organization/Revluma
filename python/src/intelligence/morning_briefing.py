@@ -272,7 +272,6 @@ def _apply_orchestrator_priority(priority: dict, orchestration) -> dict:
         "view_carts",
         "view_customers",
         "view_revenue",
-        "create_campaign",
         "view_analytics",
         "view_products",
         "view_checkout",

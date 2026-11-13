@@ -315,3 +315,15 @@ and allows only allowlisted base64 image media types up to 8 MiB.
 - Gemini grounding sources are filtered to `https://` only and capped at five;
   when none survive, the answer says so explicitly rather than implying
   grounding.
+
+---
+
+## 12. Shared Rev operating prompt
+
+The compact, shared merchant-facing language contract lives in
+`python/src/agents/rev_system_prompt.py` and is documented in
+[`REV-MASTER-SYSTEM-PROMPT.md`](REV-MASTER-SYSTEM-PROMPT.md). It informs
+conversational and knowledge responses, structured analysis, and
+evidence-grounded narratives. It does **not** grant permissions or replace
+deterministic routing, authorization, evidence checks, mutation guards, or
+output validation; those remain code-enforced.

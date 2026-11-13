@@ -33,17 +33,17 @@ def test_unverified_store_is_never_called_connected():
     assert "is connected in Revluma!" not in reply
 
 
-def test_greeting_prompt_is_warm_and_preserves_history(monkeypatch):
+def test_greeting_prompt_is_brief_and_preserves_history(monkeypatch):
     captured = []
-    monkeypatch.setattr(responder, "_call", lambda model, prompt, max_tokens, timeout: captured.append(prompt) or "Hey, Captain! I'm doing well. How are you doing today?")
+    monkeypatch.setattr(responder, "_call", lambda model, prompt, max_tokens, timeout: captured.append(prompt) or "Hi, good to see you.")
     result = responder.compose_conversational(
         "Hey Rev, how are you?",
         SimpleNamespace(intent="greeting", goal="greet"),
         "Merchant: Yesterday we discussed retention.", [], True,
     )
-    assert "Captain" in result
+    assert result == "Hi, good to see you."
     assert "Yesterday we discussed retention" in captured[0]
-    assert "greet back" in captured[0].lower()
+    assert "greet them back briefly" in captured[0].lower()
     assert "do not force" in captured[0].lower()
 
 
@@ -55,5 +55,5 @@ def test_preferred_title_instruction_present(monkeypatch):
         SimpleNamespace(intent="preference", goal="preferred address"),
         "", [], True,
     )
-    assert "Honor an explicitly stated preferred title" in prompts[0]
+    assert "Honor an explicitly stated form-of-address preference" in prompts[0]
     assert "Please call me Commander" in prompts[0]
