@@ -93,7 +93,7 @@ def test_knowledge_question_uses_configured_provider_not_hardcoded_anthropic(mon
     )
     assert "checkout starts" in reply
     assert len(calls) == 1
-    assert calls[0][0] == responder.DEEP_MODEL
+    assert calls[0][0] == responder.DEEP_ROLE
     assert "revenue leaks" in calls[0][1]
 
 

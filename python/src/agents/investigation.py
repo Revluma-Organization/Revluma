@@ -392,6 +392,10 @@ SOCIAL_FAREWELL_PATTERN = re.compile(
     r"|goodnight|have a (?:good|great) (?:one|day|night|weekend)"
     r"|nice talking to you|good talking to you)\b"
     r"|\blater\b(?!(?: (?:than|this|today|tonight|week|month|year)))", re.I)
+GENERAL_DEFINITION_PATTERN = re.compile(
+    r"^\s*(?:what\s+is|what's|whats|define|explain|meaning\s+of)\b", re.I)
+STORE_REFERENCE_PATTERN = re.compile(
+    r"\b(?:my|our|your|we|us|in\s+the\s+store|connected\s+store)\b", re.I)
 BUSINESS_NOUN_PATTERN = re.compile(
     r"\bstore|shop|shopify|business|revenue|sales|order|customer|client|cart"
     r"|checkout|product|inventory|stock|coverage|sync|finding|refund|chargeback"
@@ -528,9 +532,14 @@ def _dynamic_knowledge(message: str, user_id: str, routed: dict) -> str:
         "knowledge", "explain the concept practically and offer to check the store",
         response_mode="explanation")
     try:
-        text = responder.compose_knowledge(
+        knowledge_args = (
             message, understanding, routed.get("history_text") or "",
             routed.get("memories") or [], bool(routed.get("has_store")))
+        if routed.get("correlation_id"):
+            text = responder.compose_knowledge(
+                *knowledge_args, correlation_id=routed["correlation_id"])
+        else:
+            text = responder.compose_knowledge(*knowledge_args)
     except Exception:
         text = ""
     if not text or text.startswith("I'm temporarily unable"):
@@ -1267,7 +1276,8 @@ _DOMAIN_INTENTS = {
 }
 
 
-def route_message(message: str, context: dict | None, store_context: dict | None) -> dict:
+def route_message(message: str, context: dict | None, store_context: dict | None,
+                  correlation_id: str | None = None) -> dict:
     """Resolve what the merchant means before any tool runs.
 
     L1 deterministic safeguards keep trivial messages fast and security
@@ -1278,9 +1288,12 @@ def route_message(message: str, context: dict | None, store_context: dict | None
     """
     text = (message or "").strip()
     lower = text.lower()
+    correlation_id = (correlation_id if isinstance(correlation_id, str)
+                      and re.fullmatch(r"[A-Za-z0-9._:-]{1,100}", correlation_id) else None)
     routing: dict = {"classification": None, "understanding": None,
                      "understanding_obj": None, "source": None,
-                     "gate": None, "social_opener": False, "topic_change": False}
+                     "gate": None, "social_opener": False, "topic_change": False,
+                     "correlation_id": correlation_id}
 
     if re.search(r"\bmobile\b|\bphone\b|\bios\b|\bandroid\b", lower):
         segment = "mobile"
@@ -1357,6 +1370,17 @@ def route_message(message: str, context: dict | None, store_context: dict | None
     if is_followup and not topic_change and inherited_intent in STORE_INTENTS:
         return done({"intent": inherited_intent, "segment": None, "followup": True,
                      "inherited_intent": inherited_intent}, "fast_path")
+    # Clear, context-free definitions do not need a model routing call and can
+    # never open Shopify evidence tools. Keep store-referential or metric-named
+    # questions on the normal understanding path (e.g. "What is my revenue?").
+    if GENERAL_DEFINITION_PATTERN.search(text) and keyword_intent is None \
+            and not STORE_REFERENCE_PATTERN.search(text):
+        understanding = _synthetic_understanding(
+            "knowledge", "answer a general definition", response_mode="direct_answer")
+        routing["understanding"] = understanding.to_dict()
+        routing["understanding_obj"] = understanding
+        return done({"intent": INTENT_KNOWLEDGE, "segment": None, "followup": False},
+                    "deterministic_knowledge")
     # Advice-seeking phrasings ("how do I reduce cart abandonment?") name a
     # domain but ask for expertise, not a data pull: they reach the model.
     store_ref = re.search(r"\b(?:my|our|we|us|store|shop)\b", lower)
@@ -1378,7 +1402,10 @@ def route_message(message: str, context: dict | None, store_context: dict | None
 
     # L2: model understanding for everything the safeguards do not settle.
     from .understanding import understand
-    understanding = understand(text, _model_history(context))
+    if correlation_id:
+        understanding = understand(text, _model_history(context), correlation_id=correlation_id)
+    else:
+        understanding = understand(text, _model_history(context))
     routing["understanding"] = understanding.to_dict()
     routing["understanding_obj"] = understanding
 
@@ -4166,7 +4193,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     conversation_context = load_conversation_context(
         organization_id, user_id, conversation_id, db, context_payload=context_payload)
     store_context = resolve_store_context(organization_id, db)
-    routed = route_message(message, conversation_context, store_context)
+    routed = route_message(
+        message, conversation_context, store_context,
+        correlation_id=(context_payload or {}).get("correlation_id"),
+    )
     routed["history_text"] = _history_text(conversation_context)
     routed["memories"] = _memories_for(organization_id, user_id, db)
     routed["has_store"] = (store_context or {}).get("store_count", 0) > 0
@@ -4190,6 +4220,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "confidence": (routed["understanding"] or {}).get("confidence"),
             "topic_change": routed["topic_change"],
             "social_opener": routed["social_opener"],
+            "correlation_id": routed.get("correlation_id"),
         },
     )
     window = resolve_reporting_period(
