@@ -1,0 +1,39 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {randomUUID}=require('node:crypto');
+const {prisma}=require('../configs/database');
+const {upsertOrder,upsertAbandonedCart}=require('../services/commerceWebhookService');
+if(process.env.TASK019_ISOLATED_DB!=='true'||!/^postgres(?:ql)?:\/\/[^@]+@(?:127\.0\.0\.1|localhost):5432\/task019\b/.test(process.env.DATABASE_URL||''))throw Error('Disposable localhost task019 PostgreSQL and explicit opt-in required');
+const tag=randomUUID().slice(0,8),uid=randomUUID(),org=randomUUID(),a=randomUUID(),b=randomUUID(),stores=[{id:a,platform:'shopify'},{id:b,platform:'shopify'}],results=[];let n=0;
+const tok=x=>`CART_${tag}_${x}`;
+async function cart(store,key,t,attrs={}){return upsertAbandonedCart(store,{cart_token:t,created_at:new Date(Date.now()-60000).toISOString(),updated_at:new Date(Date.now()-30000).toISOString(),total_price:'25',currency:'USD',...attrs})}
+async function order(store,key,t,attrs={}){const p={id:`order-${tag}-${++n}`,created_at:new Date().toISOString(),total_price:'25',currency:'USD',customer:{id:`customer-${tag}-${key}`},...attrs};if(t!==undefined)p.cart_token=t;await upsertOrder(store,'shopify',p);return prisma.orders.findUniqueOrThrow({where:{store_id_external_order_id:{store_id:store.id,external_order_id:String(p.id)}}})}
+async function state(c){return prisma.abandoned_carts.findUniqueOrThrow({where:{id:c.id}})}
+async function check(id,description,fn){try{await fn();results.push({id,description,status:'PASS'})}catch(e){results.push({id,description,status:'FAIL',error:String(e.message).slice(0,250)})}}
+async function run(){try{
+await prisma.users.create({data:{id:uid,full_name:'Task019 Synthetic',email:`task019-${tag}@example.invalid`}});
+await prisma.organizations.create({data:{id:org,owner_id:uid,company_name:'Task019',industry:'other',country:'US',slug:`task019-${tag}`}});
+await prisma.stores.createMany({data:[{id:a,organization_id:org,platform:'shopify',shop_domain:`task019-${tag}.myshopify.com`},{id:b,organization_id:org,platform:'shopify',shop_domain:`task019-${tag}-b.myshopify.com`}]});
+await check('TC019-01','unique cart token',async()=>{const c=await cart(stores[0],'01',tok('01'));assert.equal((await order(stores[0],'01',tok('01'))).abandoned_cart_id,c.id)});
+await check('TC019-02','no stronger identifiers',async()=>{const c=await cart(stores[0],'02',tok('02'));assert.equal((await order(stores[0],'02',tok('02'),{checkout_id:null,checkout_token:null})).abandoned_cart_id,c.id)});
+await check('TC019-03','incorrect cart token',async()=>{const c=await cart(stores[0],'03',tok('03a'));assert.equal((await order(stores[0],'03',tok('03b'))).abandoned_cart_id,null);assert.equal((await state(c)).status,'pending')});
+await check('TC019-04','multiple distinct carts',async()=>{const x=await cart(stores[0],'04a',tok('04a')),y=await cart(stores[0],'04b',tok('04b')),z=await cart(stores[0],'04c',tok('04c'));assert.equal((await order(stores[0],'04',tok('04b'))).abandoned_cart_id,y.id);for(const c of [x,z])assert.equal((await state(c)).status,'pending')});
+await check('TC019-05','duplicate cart token ambiguous',async()=>{const c=await cart(stores[0],'05',tok('05'));await prisma.abandoned_carts.create({data:{store_id:a,external_cart_id:c.external_cart_id,cart_value:25,currency:'USD',status:'pending',abandoned_at:new Date(),updated_at:new Date()}});assert.equal((await order(stores[0],'05',tok('05'))).abandoned_cart_id,null)});
+await check('TC019-06','same customer shared cart token',async()=>{const customer={id:`shared-${tag}`};const c=await cart(stores[0],'06',tok('06'),{customer});await prisma.abandoned_carts.create({data:{store_id:a,external_cart_id:c.external_cart_id,cart_value:25,currency:'USD',status:'pending',abandoned_at:new Date(),updated_at:new Date()}});assert.equal((await order(stores[0],'06',tok('06'),{customer})).abandoned_cart_id,null)});
+await check('TC019-07','similar orders distinct cart tokens',async()=>{const x=await cart(stores[0],'07a',tok('07a')),y=await cart(stores[0],'07b',tok('07b'));assert.equal((await order(stores[0],'07',tok('07a'))).abandoned_cart_id,x.id);assert.equal((await state(y)).status,'pending')});
+await check('TC019-08','cross-merchant collision',async()=>{const x=await cart(stores[0],'08a',tok('08')),y=await cart(stores[1],'08b',tok('08'));assert.equal((await order(stores[0],'08',tok('08'))).abandoned_cart_id,x.id);assert.equal((await state(y)).status,'pending')});
+await check('TC019-09','missing cart token',async()=>{assert.equal((await order(stores[0],'09',undefined)).abandoned_cart_id,null)});
+await check('TC019-10','null cart token',async()=>{assert.equal((await order(stores[0],'10',null)).abandoned_cart_id,null)});
+await check('TC019-11','empty cart token',async()=>{assert.equal((await order(stores[0],'11','')).abandoned_cart_id,null)});
+await check('TC019-12','whitespace cart token',async()=>{assert.equal((await order(stores[0],'12','  ')).abandoned_cart_id,null)});
+await check('TC019-13','case sensitive',async()=>{const c=await cart(stores[0],'13',tok('AbC'));assert.equal((await order(stores[0],'13',tok('abc'))).abandoned_cart_id,null);assert.equal((await state(c)).status,'pending')});
+await check('TC019-14','prefix collision',async()=>{const x=await cart(stores[0],'14a',tok('abc')),y=await cart(stores[0],'14b',tok('abcdef'));assert.equal((await order(stores[0],'14',tok('abc'))).abandoned_cart_id,x.id);assert.equal((await state(y)).status,'pending')});
+await check('TC019-15','conflicting checkout ID',async()=>{const x=await cart(stores[0],'15a',tok('15a')),y=await cart(stores[0],'15b',tok('15b'));const o=await order(stores[0],'15',tok('15b'),{checkout_id:x.external_cart_id});assert.equal(o.abandoned_cart_id,null);for(const c of [x,y])assert.equal((await state(c)).status,'pending')});
+await check('TC019-16','conflicting checkout token',async()=>{const x=await cart(stores[0],'16a',tok('16a')),y=await cart(stores[0],'16b',tok('16b'));const o=await order(stores[0],'16',tok('16b'),{checkout_token:x.external_cart_id});assert.equal(o.abandoned_cart_id,null);for(const c of [x,y])assert.equal((await state(c)).status,'pending')});
+await check('TC019-17','repeated matching deterministic',async()=>{const c=await cart(stores[0],'17',tok('17'));for(let i=0;i<3;i++)assert.equal((await order(stores[0],'17',tok('17'))).abandoned_cart_id,c.id)});
+await check('TC019-18','order arrives before checkout',async()=>{const t=tok('18'),o=await order(stores[0],'18',t);assert.equal(o.abandoned_cart_id,null);const c=await cart(stores[0],'18',t);assert.equal((await prisma.orders.findUniqueOrThrow({where:{id:o.id}})).abandoned_cart_id,c.id,'late checkout should reconcile prior order without replay')});
+await check('TC019-19','persisted relationship',async()=>{const c=await cart(stores[0],'19',tok('19')),o=await order(stores[0],'19',tok('19'));assert.equal(o.abandoned_cart_id,c.id);assert.equal((await prisma.orders.findUniqueOrThrow({where:{id:o.id}})).abandoned_cart_id,c.id)});
+await check('TC019-20','checkout completion effects',async()=>{const x=await cart(stores[0],'20a',tok('20a')),y=await cart(stores[0],'20b',tok('20b'));await order(stores[0],'20',tok('20b'));assert.equal((await state(y)).status,'recovered');assert.equal((await state(x)).status,'pending')});
+}finally{await prisma.stores.deleteMany({where:{id:{in:[a,b]}}});await prisma.organizations.deleteMany({where:{id:org}});await prisma.users.deleteMany({where:{id:uid}});await prisma.$disconnect()}
+console.log('TASK019_RESULTS='+JSON.stringify(results));console.log('TASK019_SUMMARY='+JSON.stringify({passed:results.filter(x=>x.status==='PASS').length,failed:results.filter(x=>x.status==='FAIL').length,total:results.length}));if(results.some(x=>x.status==='FAIL'))process.exitCode=1}
+run().catch(e=>{console.error(e);process.exitCode=1});
