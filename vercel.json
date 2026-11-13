@@ -3,6 +3,23 @@
   "buildCommand": "cd Frontend/Dashboard && npm run build -- --outDir ../dashboard --emptyOutDir",
   "outputDirectory": "Frontend",
   "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/features.html",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/features",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/features/:path*",
+      "destination": "/",
+      "permanent": true
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
