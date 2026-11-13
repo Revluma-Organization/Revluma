@@ -22,4 +22,4 @@ No migrations, provider credentials, tenant authorization, evidence schemas, Sho
 - `python/tests/test_rev_failure_routing.py` and `python/tests/test_rev_analysis_fast_fallback.py` — assert fast/deep roles rather than the old misleading model-name constants.
 - Task 234 diagnosis, validation, audit-register and decision records.
 
-The observed local implementation does **not** prove the historical production failure's cause. The corrected PR head passed required CI: Rev Python run `43472119596`, release-candidate run `43472119639` (including real-PostgreSQL Python and Backend regressions), Dashboard/build, Vercel and Preview Comments. The code paths and evidence boundary are documented in `diagnostics/TASK-234-REV-INTELLIGENCE-ARCHITECTURE.md`.
+The observed local implementation does **not** prove the historical production failure's cause. The corrected PR head passed required CI: Rev Python run `43472691397`, release-candidate run `43472691396` (including real-PostgreSQL Python and Backend regressions), Dashboard/build, Vercel and Preview Comments. The code paths and evidence boundary are documented in `diagnostics/TASK-234-REV-INTELLIGENCE-ARCHITECTURE.md`.
