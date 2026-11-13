@@ -5,6 +5,16 @@
   "cleanUrls": true,
   "redirects": [
     {
+      "source": "/company/about.html",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/company/about",
+      "destination": "/",
+      "permanent": true
+    },
+    {
       "source": "/features.html",
       "destination": "/",
       "permanent": true
