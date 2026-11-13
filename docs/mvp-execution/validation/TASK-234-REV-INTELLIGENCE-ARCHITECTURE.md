@@ -1,6 +1,6 @@
 # Task 234 — validation: Rev Intelligence architecture
 
-**Status:** local regression verification passed; CI, affected-service deployment identity, incident attribution and authenticated production acceptance are not verified.
+**Status:** local regressions and required PR CI passed; affected-service deployment identity, incident attribution and authenticated production acceptance are not verified.
 
 **Revision under test:** active branch `arena/29f26490-revluma`, based on `510517fb3a3af6021c16cfc2156bef0279985914`.
 
@@ -30,7 +30,7 @@
 - Additional focused run of the new architecture tests, provider gateway, Task 209 orchestration, conversational routing and Rev investigation: **138 passed** before the final role-name cleanup; the larger 540-test run above includes the final changes.
 - `python3 -m compileall -q` on all changed Python modules and the new test module: passed. `git diff --check`: passed at the source-change checkpoint; rerun after final documentation updates before delivery.
 
-The test environment was created locally with a minimal dependency set. A full `python/tests` collection was attempted and did not complete because the sandbox lacked the full repository dependency set (`mlflow`, and initially `scikit-learn`); this is an environment/collection limitation, not a passing full-suite claim. No complete Backend, Dashboard, real-PostgreSQL, live provider, browser, CI, or production test is claimed by this report.
+The local test environment used a minimal dependency set. A full `python/tests` collection was attempted and did not complete because the sandbox lacked the full repository dependency set (`mlflow`, and initially `scikit-learn`); this is an environment/collection limitation, not a passing local full-suite claim. The full Python/real-PostgreSQL, Backend, Dashboard/build and Vercel PR CI checks passed on the corrected PR head as recorded below. Live-provider, authenticated browser and production Rev behavior remain untested.
 
 ## Test assertions added
 
@@ -49,4 +49,4 @@ The test environment was created locally with a minimal dependency set. A full `
 
 ## CI feedback
 
-The first PR check run exposed two stale test assertions that referenced the removed vendor-name constants (`responder.DEEP_MODEL` / `FAST_MODEL`) in `test_rev_analysis_fast_fallback.py`; the same test was the only annotated Python failure in both the Rev Python job and the release-candidate Python/PostgreSQL job. Updated that test to assert the explicit `DEEP_ROLE` / `FAST_ROLE` contract; the corrected test passes locally (**2 passed**). Initial run IDs: Rev Python `43471438244`, release-candidate verification `43471438246`; their failure annotations identify this assertion only. Dashboard suite/build, Vercel, and Vercel Preview Comments passed. The hosted log archive was not retrievable through the sandbox's GitHub connection, so no extra assertion about unannotated test output is made. A fresh CI run after the test correction is required; no CI-green or merge claim is made yet.
+The first PR check run exposed two stale test assertions that referenced the removed vendor-name constants (`responder.DEEP_MODEL` / `FAST_MODEL`) in `test_rev_analysis_fast_fallback.py`; the same test was the only annotated Python failure in both the Rev Python job and the release-candidate Python/PostgreSQL job. Updated that test to assert the explicit `DEEP_ROLE` / `FAST_ROLE` contract; the corrected test passes locally (**2 passed**). Initial run IDs: Rev Python `43471438244`, release-candidate verification `43471438246`. The corrected PR head passed Rev Python run `43472119596` and release-candidate verification `43472119639`, including the full Python suite with disposable PostgreSQL, Prisma bootstrap/schema drift, Backend tests, financial/security regressions, Dashboard suite/build, Vercel and Preview Comments. These are CI results for the PR head, not live provider or production Rev acceptance. The hosted log archive from the initial failed run was not retrievable through the sandbox's GitHub connection; the check-run annotation identified the stale test assertion, and the corrected run is green.

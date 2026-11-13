@@ -1,6 +1,6 @@
 # Task 234 — Rev Intelligence architecture: implementation record
 
-**Status:** implemented and locally verified; production incident attribution and authenticated production acceptance remain pending.
+**Status:** implemented, locally and CI verified; production incident attribution and authenticated production acceptance remain pending.
 
 **Baseline:** `510517fb3a3af6021c16cfc2156bef0279985914`, active branch `arena/29f26490-revluma`.
 
@@ -22,4 +22,4 @@ No migrations, provider credentials, tenant authorization, evidence schemas, Sho
 - `python/tests/test_rev_failure_routing.py` and `python/tests/test_rev_analysis_fast_fallback.py` — assert fast/deep roles rather than the old misleading model-name constants.
 - Task 234 diagnosis, validation, audit-register and decision records.
 
-The observed local implementation does **not** prove the historical production failure's cause. The code paths and evidence boundary are documented in `diagnostics/TASK-234-REV-INTELLIGENCE-ARCHITECTURE.md`.
+The observed local implementation does **not** prove the historical production failure's cause. The corrected PR head passed required CI: Rev Python run `43472119596`, release-candidate run `43472119639` (including real-PostgreSQL Python and Backend regressions), Dashboard/build, Vercel and Preview Comments. The code paths and evidence boundary are documented in `diagnostics/TASK-234-REV-INTELLIGENCE-ARCHITECTURE.md`.
