@@ -33,3 +33,9 @@ After merge and deployment, record the deployed revisions and execute authentica
 5. no cross-tenant/reference leakage, merchant writes or unsupported causal language.
 
 No production success is claimed in this local record. The retired store must not be used.
+
+## Executed production checks and remaining failures
+
+After PR #342 merged, Vercel `dpl_GuP1yWh2N8re7rEXkbf57sUTmYxc` became READY/PROMOTED at `6f37978f`. Read-only Supabase queries verified the active store profile (`America/New_York`, USD), 17 completely acquired products, 26 variants and three locations, and four Gift Card variants with separate inventory item IDs and per-location quantity objects. The store had no findings and no inventory-item/inventory-level domain-ledger rows. No merchant writes or fixtures were introduced.
+
+Backend `/ready` was reachable and reported database/Python readiness, but `node_build=ade43ca96a71` does not include Task 202. Python SHA is not exposed. An authenticated Rev request path could not be exercised with the available connections. Therefore the production acceptance list above is **not satisfied**: deployed backend/Python revisions, direct/latest finding behavior, Rev product/inventory answers, real request-path temporal comparisons and tenant isolation remain unverified. CI's real PostgreSQL test is database integration evidence, not production verification.
