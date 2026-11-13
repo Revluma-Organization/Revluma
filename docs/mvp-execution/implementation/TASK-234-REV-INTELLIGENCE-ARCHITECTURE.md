@@ -19,7 +19,7 @@ No migrations, provider credentials, tenant authorization, evidence schemas, Sho
 - `python/src/agents/responder.py` — select fast/deep roles instead of vendor model-name constants; correlate deep knowledge composition and emit safe failure category metadata.
 - `python/src/agents/model_gateway.py` — Anthropic model configuration, typed provider errors and safe correlated provider telemetry; Gemini correlation metadata.
 - `python/tests/test_task234_rev_architecture.py` — general-definition routing/no-tool runtime tests and provider model/error/logging tests.
-- `python/tests/test_rev_failure_routing.py` — assert the deep role rather than the old misleading model-name constant.
+- `python/tests/test_rev_failure_routing.py` and `python/tests/test_rev_analysis_fast_fallback.py` — assert fast/deep roles rather than the old misleading model-name constants.
 - Task 234 diagnosis, validation, audit-register and decision records.
 
 The observed local implementation does **not** prove the historical production failure's cause. The code paths and evidence boundary are documented in `diagnostics/TASK-234-REV-INTELLIGENCE-ARCHITECTURE.md`.
