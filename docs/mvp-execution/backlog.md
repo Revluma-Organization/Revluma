@@ -280,7 +280,7 @@
 - [ ] **TASK 231** — Verify orchestration routes checkout question.
 - [ ] **TASK 232** — Verify orchestration routes integration question.
 - [ ] **TASK 233** — Verify mixed-domain question coordination.
-- [ ] **TASK 234** — Ensure one coherent Rev response.
+- [ ] **TASK 234** — Ensure one coherent Rev response. *(source diagnosis/implementation/validation: [diagnostics](diagnostics/TASK-234-REV-INTELLIGENCE-ARCHITECTURE.md), [implementation](implementation/TASK-234-REV-INTELLIGENCE-ARCHITECTURE.md), [validation](validation/TASK-234-REV-INTELLIGENCE-ARCHITECTURE.md); production acceptance remains open)*
 - [x] **TASK 235** — Verify situation section when appropriate. *(consolidated into TASK 210 — adaptive sections: each of the four headings appears only when its profile selects it; see `implementation/TASK-210-ADAPTIVE-ANSWER-STRUCTURE-CONFIDENCE.md`)*
 - [x] **TASK 236** — Verify insight section when appropriate. *(consolidated into TASK 210 — adaptive sections)*
 - [x] **TASK 237** — Verify implication section when appropriate. *(consolidated into TASK 210 — adaptive sections)*

@@ -20,7 +20,8 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger("rev.understanding")
 
-UNDERSTANDING_MODEL = "claude-sonnet-4-6"  # Sonnet for accurate intent classification
+# Concrete provider/model selection is centralized in model_gateway; routing
+# code selects only the ``fast``/``deep`` role, never an assumed vendor model.
 
 # response_mode drives the frontend rendering
 MODE_CONVERSATIONAL = "conversational"   # plain text, natural
@@ -132,7 +133,8 @@ EXAMPLES:
 
 def understand(message: str, history: list[dict],
                image_base64: str | None = None,
-               image_media_type: str | None = None) -> Understanding:
+               image_media_type: str | None = None,
+               correlation_id: str | None = None) -> Understanding:
     """
     Understand the merchant message. Never raises.
     Falls back to a safe conversational reading if the model is unavailable.
@@ -159,19 +161,26 @@ def understand(message: str, history: list[dict],
                 break
             prompt = text_prompt if attempt == 0 else text_prompt + "\nThe previous output was invalid. Return one complete JSON object matching every required field and type; no markup or extra text."
             raw = generate(prompt, role="fast", max_tokens=700, timeout=remaining,
-                           image_base64=image_base64, image_media_type=image_media_type)
+                           image_base64=image_base64, image_media_type=image_media_type,
+                           correlation_id=correlation_id)
             parsed = _parse(raw)
             if parsed:
                 logger.info("understanding_ok", extra={
                     "intent": parsed.intent, "store": parsed.requires_store_data,
                     "mode": parsed.response_mode, "repair_attempt": attempt,
+                    "correlation_id": correlation_id,
                 })
                 return parsed
-            logger.warning("understanding_parse_failed attempt=%d", attempt + 1)
+            logger.warning("understanding_parse_failed attempt=%d correlation_id=%s",
+                           attempt + 1, correlation_id)
         return _safe_fallback(message, history, "malformed_output")
 
     except Exception as e:
-        logger.warning("understanding_failed", extra={"error_type": type(e).__name__})
+        logger.warning("understanding_failed", extra={
+            "error_type": type(e).__name__,
+            "failure_category": getattr(e, "category", None),
+            "correlation_id": correlation_id,
+        })
         return _safe_fallback(message, history, type(e).__name__)
 
 

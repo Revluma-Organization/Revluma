@@ -211,7 +211,9 @@ def test_comparison_uses_equal_length_previous_period_per_currency():
     assert (second["end"] - second["start"]) == (first["end"] - first["start"])
 
 
-def test_no_store_returns_clarification_without_invented_statistics():
+def test_no_store_returns_clarification_without_invented_statistics(monkeypatch):
+    from src.agents import responder
+    monkeypatch.setattr(responder, "_call", lambda *args, **kwargs: "Please connect a store so I can check its recorded data.")
     db = FakeDB()
     db.add("SELECT s.id, s.platform, s.status, s.last_synced_at", [])
     db.add("SELECT id, last_synced_at, status", [])
@@ -226,7 +228,9 @@ def test_no_store_returns_clarification_without_invented_statistics():
     assert "$" not in result["text"]
 
 
-def test_read_only_boundary_never_executes_or_claims_execution():
+def test_read_only_boundary_never_executes_or_claims_execution(monkeypatch):
+    from src.agents import responder
+    monkeypatch.setattr(responder, "_call", lambda *args, **kwargs: "I can't execute store changes, but I can explain the steps for you.")
     db = workspace_db()
     for message in ("Change the price of my best seller to 20 dollars",
                     "Refund order 1042 and email the customer",
@@ -427,7 +431,9 @@ def test_checkout_investigation_does_not_invent_abandonment_causes():
     assert "payment failure" in json.dumps(result["hypotheses"]).lower()
 
 
-def test_correction_invalidates_previous_memory_and_asks_for_the_truth():
+def test_correction_invalidates_previous_memory_and_asks_for_the_truth(monkeypatch):
+    from src.agents import responder
+    monkeypatch.setattr(responder, "_call", lambda *args, **kwargs: "That finding is superseded. What is the correct revenue figure?")
     db = workspace_db()
     result = run_investigation(ORG, USER, "That's wrong, the revenue didn't fall.",
                                db=db, now=NOW, persist=False)

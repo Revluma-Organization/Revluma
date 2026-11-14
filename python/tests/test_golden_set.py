@@ -38,6 +38,19 @@ from src.agents.investigation import (
 )
 from src.intelligence.evidence import STATUS_AVAILABLE
 
+
+@pytest.fixture(autouse=True)
+def _stub_optional_conversational_narrative(monkeypatch):
+    """Keep the deterministic golden contract suite independent of providers."""
+    from src.agents import responder
+
+    monkeypatch.setattr(
+        responder,
+        "compose_conversational",
+        lambda *_args, **_kwargs: "Hello. What would you like to explore?",
+    )
+
+
 WINDOW = {"start": "2026-10-25T00:00:00Z", "end": "2026-11-01T00:00:00Z"}
 WINDOW_COMPARED = {
     **WINDOW,

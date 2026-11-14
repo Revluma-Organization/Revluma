@@ -19,8 +19,8 @@ from .rev_system_prompt import REV_SYSTEM_PROMPT, build_rev_prompt
 
 logger = logging.getLogger("rev.responder")
 
-FAST_MODEL = "claude-haiku-4-5-20251001"
-DEEP_MODEL = "claude-sonnet-4-6"
+FAST_ROLE = "fast"
+DEEP_ROLE = "deep"
 
 BANNED = [
     "happy to help", "i'd be happy to", "certainly!", "absolutely!",
@@ -48,10 +48,13 @@ def sanitise(text: str) -> str:
     return text.strip()
 
 
-def _call(model: str, prompt: str, max_tokens: int, timeout: float) -> str:
+def _call(role: str, prompt: str, max_tokens: int, timeout: float,
+          correlation_id: str | None = None) -> str:
     from .model_gateway import generate
-    role = "fast" if model == FAST_MODEL else "deep"
-    return generate(prompt, role=role, max_tokens=max_tokens, timeout=timeout)
+    if role not in {FAST_ROLE, DEEP_ROLE}:
+        raise ValueError("Unsupported model role")
+    return generate(prompt, role=role, max_tokens=max_tokens, timeout=timeout,
+                    correlation_id=correlation_id)
 
 
 # ── Conversational / identity / capability / feedback ─────────────────────────
@@ -111,7 +114,7 @@ def compose_conversational(message: str, understanding, history_text: str,
                 role="fast", max_tokens=300, timeout=10.0,
                 image_base64=image_base64, image_media_type=image_media_type,
             ))
-        return sanitise(_call(FAST_MODEL, prompt, 300, 10.0))
+        return sanitise(_call(FAST_ROLE, prompt, 300, 10.0))
     except Exception as exc:
         logger.error(
             "responder_conversational_failed",
@@ -121,8 +124,9 @@ def compose_conversational(message: str, understanding, history_text: str,
                 "provider_request_id": getattr(exc, "request_id", None),
             },
         )
-        # Never misrepresent a failed provider call as a successful answer.
-        return _static_conversational(message, understanding)
+        # Propagate the typed provider failure to the execution boundary; a
+        # canned greeting must never be persisted as a successful model answer.
+        raise
 
 
 def _static_conversational(message: str, understanding) -> str:
@@ -136,7 +140,8 @@ def _static_conversational(message: str, understanding) -> str:
 def compose_knowledge(message: str, understanding, history_text: str,
                       memories: list[dict], has_store: bool,
                       image_base64: str | None = None,
-                      image_media_type: str | None = None) -> str:
+                      image_media_type: str | None = None,
+                      correlation_id: str | None = None) -> str:
     """
     Answer general commerce and Shopify questions using appropriately qualified
     conceptual guidance. Store-specific questions must be investigated through
@@ -189,13 +194,20 @@ def compose_knowledge(message: str, understanding, history_text: str,
 
     # Route through the configured provider; never bypass the model gateway.
     try:
-        return sanitise(_call(DEEP_MODEL, prompt, 1200, 25.0))
+        if correlation_id:
+            generated = _call(DEEP_ROLE, prompt, 1200, 25.0,
+                              correlation_id=correlation_id)
+        else:
+            generated = _call(DEEP_ROLE, prompt, 1200, 25.0)
+        return sanitise(generated)
     except Exception as exc:
         logger.error("responder_knowledge_primary_failed provider_status=%s error_type=%s",
                      getattr(exc, "status", "unknown"), type(exc).__name__,
                      extra={"error_type": type(exc).__name__,
-                            "provider_status": str(getattr(exc, "status", "unknown"))})
-        return "I'm temporarily unable to generate a response. Please try again shortly."
+                            "failure_category": getattr(exc, "category", None),
+                            "provider_status": str(getattr(exc, "status", "unknown")),
+                            "correlation_id": correlation_id})
+        raise
 
 
 # ── Capability ────────────────────────────────────────────────────────────────
@@ -231,9 +243,9 @@ def compose_clarification(message: str, understanding, history_text: str) -> str
         + "obvious ones. Do not apologise. One or two sentences maximum."
     )
     try:
-        return sanitise(_call(FAST_MODEL, prompt, 120, 8.0))
+        return sanitise(_call(FAST_ROLE, prompt, 120, 8.0))
     except Exception:
-        return "Say a bit more about what you're after and I'll dig in."
+        raise
 
 
 # ── Store-data-needed but no store ────────────────────────────────────────────
@@ -294,7 +306,7 @@ def compose_needs_store(message: str, understanding, history_text: str) -> str:
         + f"Goal: {understanding.goal}"
     )
     try:
-        return sanitise(_call(FAST_MODEL, prompt, 350, 10.0))
+        return sanitise(_call(FAST_ROLE, prompt, 350, 10.0))
     except Exception as exc:
         logger.error(
             "responder_needs_store_failed",
@@ -369,9 +381,9 @@ def compose_analysis(message: str, understanding, state_json: str, agent_json: s
     # Deep Gemini timed out twice in production (28 seconds) while the fast
     # Gemini model answered in <1 second. Retry once on the configured fast
     # model, using the SAME evidence and constraints, not a fabricated template.
-    for attempt, (model, timeout) in enumerate(((DEEP_MODEL, 14.0), (FAST_MODEL, 10.0)), 1):
+    for attempt, (role, timeout) in enumerate(((DEEP_ROLE, 14.0), (FAST_ROLE, 10.0)), 1):
         try:
-            raw = _call(model, prompt, 700, timeout)
+            raw = _call(role, prompt, 700, timeout)
             parsed = _parse_analysis(raw)
             if parsed:
                 for f in ("situation", "insight", "implication", "recommendation"):

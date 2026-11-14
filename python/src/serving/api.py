@@ -778,6 +778,8 @@ class OrchestrateRequest(BaseModel):
     customer_id: str | None = Field(None, min_length=36, max_length=36)
     message: str = Field(..., min_length=1, max_length=2000)
     conversation_id: str | None = None
+    correlation_id: str | None = Field(None, min_length=36, max_length=36)
+    execution_id: str | None = Field(None, min_length=36, max_length=36)
     image_base64: str | None = None
     image_media_type: str | None = None
     trigger_type: str = Field("conversation", pattern="^(conversation|alert|scheduler)$")
@@ -834,9 +836,22 @@ def _next_occurrence_utc(target_hour: int, target_day: int, tz_offset_hours: int
 # Orchestration and scheduled briefing endpoints
 # ---------------------------------------------------------------------------
 @app.post("/orchestrate", dependencies=[Depends(verify_internal_caller)])
-async def orchestrate_endpoint(req: OrchestrateRequest, x_contract_version: str | None = Header(default=None)):
+async def orchestrate_endpoint(
+    req: OrchestrateRequest,
+    x_contract_version: str | None = Header(default=None),
+    x_correlation_id: str | None = Header(default=None),
+    x_execution_id: str | None = Header(default=None),
+):
     if x_contract_version != '1.0' or req.contract_version != '1.0':
         raise HTTPException(status_code=400, detail='Intelligence contract version mismatch')
+    trace_payload = _rev_trace_payload({
+        **req.context_payload,
+        "correlation_id": req.correlation_id or x_correlation_id or req.context_payload.get("correlation_id"),
+        "execution_id": req.execution_id or x_execution_id or req.context_payload.get("execution_id"),
+    })
+    correlation_id = trace_payload["correlation_id"]
+    execution_id = trace_payload["execution_id"]
+    from src.agents.model_gateway import ModelProviderError
     db = _Session()
     try:
         result = await run_in_threadpool(
@@ -850,20 +865,52 @@ async def orchestrate_endpoint(req: OrchestrateRequest, x_contract_version: str 
                 image_media_type=req.image_media_type,
                 trigger_type=req.trigger_type,
                 trigger_priority=req.trigger_priority,
-                context_payload=req.context_payload,
+                context_payload=trace_payload,
+                correlation_id=correlation_id,
+                execution_id=execution_id,
             )
         )
         if not result.to_dict().get('success', False):
-            logger.error("orchestrate_failed correlation_id=%s", getattr(result, "correlation_id", None))
-            raise HTTPException(status_code=503, detail="Intelligence response unavailable; please retry.")
+            logger.error("orchestrate_failed correlation_id=%s execution_id=%s",
+                         correlation_id, execution_id)
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "INTELLIGENCE_UNAVAILABLE",
+                        "message": "Rev could not complete this response. Please try again shortly.",
+                        "correlation_id": correlation_id, "execution_id": execution_id},
+                headers={"X-Correlation-ID": correlation_id, "X-Execution-ID": execution_id},
+            )
         return result.to_dict()
     except HTTPException:
         raise
+    except ModelProviderError as exc:
+        retryable = exc.category in {"timeout", "rate_limited", "provider_unavailable", "connection_failed"}
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "PROVIDER_FAILURE",
+                "message": ("Rev could not complete this response because the configured AI provider remained unavailable within its retry budget. Please try again shortly."
+                            if retryable else
+                            "Rev could not complete this response because the configured AI provider rejected the request. Please contact support."),
+                "retryable": retryable, "failure": getattr(exc, "failure", None),
+                "correlation_id": correlation_id, "execution_id": execution_id,
+            },
+            headers={"X-Correlation-ID": correlation_id, "X-Execution-ID": execution_id},
+        ) from exc
     except PermissionError:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    except Exception:
-        logger.exception("orchestrate_unhandled_error")
-        raise HTTPException(status_code=503, detail="Intelligence response unavailable; please retry.")
+        raise HTTPException(status_code=404, detail="Conversation not found",
+                            headers={"X-Correlation-ID": correlation_id,
+                                     "X-Execution-ID": execution_id})
+    except Exception as exc:
+        logger.error("orchestrate_unhandled_error error_type=%s correlation_id=%s execution_id=%s",
+                     type(exc).__name__, correlation_id, execution_id)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "INTELLIGENCE_UNAVAILABLE",
+                    "message": "Rev could not complete this response. Please try again shortly.",
+                    "correlation_id": correlation_id, "execution_id": execution_id},
+            headers={"X-Correlation-ID": correlation_id, "X-Execution-ID": execution_id},
+        ) from exc
     finally:
         db.close()
 
@@ -1397,6 +1444,15 @@ def _sse_frame(event: dict) -> str:
     return f"event: {event.get('event', 'message')}\ndata: {payload}\n\n"
 
 
+def _rev_trace_payload(payload: dict | None) -> dict:
+    from src.intelligence.trace_context import new_trace
+    result = dict(payload or {})
+    correlation_id, execution_id = new_trace(
+        result.get("correlation_id"), result.get("execution_id"))
+    result.update(correlation_id=correlation_id, execution_id=execution_id)
+    return result
+
+
 @app.get("/rev/tools", dependencies=[Depends(verify_internal_caller)])
 def rev_tool_catalog():
     """Read-only tool catalog. Exposes capabilities, never credentials or SQL."""
@@ -1416,6 +1472,11 @@ async def rev_investigate(req: InvestigateRequest):
     if req.contract_version != "1.0":
         raise HTTPException(status_code=400, detail="Intelligence contract version mismatch")
 
+    trace_payload = _rev_trace_payload(req.context_payload)
+    correlation_id = trace_payload["correlation_id"]
+    execution_id = trace_payload["execution_id"]
+    from src.agents.model_gateway import ModelProviderError
+
     def _run():
         # Create and close the session on the thread that uses it. A
         # SQLAlchemy Session is not thread-safe, and run_in_threadpool moves
@@ -1425,7 +1486,7 @@ async def rev_investigate(req: InvestigateRequest):
             return run_investigation(
                 req.organization_id, req.user_id, req.message,
                 conversation_id=req.conversation_id, db=db,
-                context_payload=req.context_payload,
+                context_payload=trace_payload,
             )
         finally:
             try:
@@ -1439,20 +1500,47 @@ async def rev_investigate(req: InvestigateRequest):
         evidence = result.get("evidence") or {}
         errors = validate_collection((evidence.get("items") or []) + (evidence.get("comparison_items") or []))
         if errors:
-            logger.error("rev_response_evidence_rejected codes=%s", ",".join(errors))
+            from src.intelligence.operational_metrics import record_counter
+            record_counter("rev_validation_failures_total", labels={"stage": "evidence_response"})
+            logger.error("rev_response_evidence_rejected codes=%s correlation_id=%s execution_id=%s",
+                         ",".join(errors), correlation_id, execution_id)
             raise ValueError("Intelligence response evidence failed contract validation")
         return {"contract_version": CONTRACT_VERSION, **result}
+    except ModelProviderError as exc:
+        retryable = exc.category in {"timeout", "rate_limited", "provider_unavailable", "connection_failed"}
+        failure = getattr(exc, "failure", None)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "PROVIDER_FAILURE",
+                "message": ("Rev could not complete this response because the configured AI provider remained unavailable within its retry budget. Please try again shortly."
+                            if retryable else
+                            "Rev could not complete this response because the configured AI provider rejected the request. Please contact support."),
+                "retryable": retryable, "failure": failure,
+            },
+            headers={"X-Correlation-ID": correlation_id,
+                     "X-Execution-ID": execution_id},
+        ) from exc
     except InvestigationCancelled:
         # The client went away mid-investigation. Nothing is persisted and
         # there is nobody left to answer.
         raise HTTPException(status_code=499, detail="Investigation cancelled")
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception:
-        logger.exception("rev_investigation_unhandled_error")
+        from src.intelligence.operational_metrics import record_counter
+        record_counter("rev_validation_failures_total", labels={"stage": "investigation_response"})
+        logger.warning("rev_investigation_validation_failed error_type=%s correlation_id=%s execution_id=%s",
+                       type(exc).__name__, correlation_id, execution_id)
+        raise HTTPException(status_code=422, detail="Intelligence response failed validation.",
+                            headers={"X-Correlation-ID": correlation_id,
+                                     "X-Execution-ID": execution_id}) from exc
+    except Exception as exc:
+        logger.error("rev_investigation_unhandled_error error_type=%s correlation_id=%s execution_id=%s",
+                     type(exc).__name__, correlation_id, execution_id)
         raise HTTPException(
             status_code=503,
             detail="Intelligence response unavailable; please retry.",
+            headers={"X-Correlation-ID": correlation_id,
+                     "X-Execution-ID": execution_id},
         )
 
 
@@ -1470,6 +1558,9 @@ def rev_stream(req: InvestigateRequest):
 
     if req.contract_version != "1.0":
         raise HTTPException(status_code=400, detail="Intelligence contract version mismatch")
+    trace_payload = _rev_trace_payload(req.context_payload)
+    correlation_id = trace_payload["correlation_id"]
+    execution_id = trace_payload["execution_id"]
 
     def generate():
         # Closing the generator (client disconnect, Stop) runs the finally in
@@ -1478,7 +1569,7 @@ def rev_stream(req: InvestigateRequest):
         for event in stream_investigation(
             req.organization_id, req.user_id, req.message,
             conversation_id=req.conversation_id,
-            context_payload=req.context_payload,
+            context_payload=trace_payload,
             session_factory=_Session,
         ):
             yield _sse_frame(event)
@@ -1490,8 +1581,17 @@ def rev_stream(req: InvestigateRequest):
             "Cache-Control": "no-cache, no-transform",
             "X-Accel-Buffering": "no",
             "Connection": "keep-alive",
+            "X-Correlation-ID": correlation_id,
+            "X-Execution-ID": execution_id,
         },
     )
+
+
+@app.get("/internal/rev/metrics", dependencies=[Depends(verify_internal_caller)])
+def rev_operational_metrics():
+    """Internal-only low-cardinality metrics snapshot; never exposes request IDs."""
+    from src.intelligence.operational_metrics import snapshot
+    return snapshot()
 
 
 @app.post("/rev/memory/invalidate", dependencies=[Depends(verify_internal_caller)])
