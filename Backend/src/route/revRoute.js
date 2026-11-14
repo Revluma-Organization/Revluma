@@ -75,6 +75,9 @@ const feedbackLimiter = rateLimit({
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
+// Internal metrics scraper. Controller requires the server-to-server internal key.
+router.get('/internal/metrics',              revController.internalMetrics);
+
 // Command Center — authoritative, read-only operational briefing
 router.get('/command-center',             authenticateToken,               revController.getCommandCenter);
 

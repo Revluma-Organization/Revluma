@@ -26,18 +26,22 @@ def test_generic_question_remains_conversational():
 
 
 def test_provider_failure_does_not_return_misleading_small_talk(monkeypatch):
+    from src.agents.model_gateway import ModelProviderError
+    import pytest
+
     def unavailable(*args, **kwargs):
-        raise RuntimeError("private-customer@example.com")
+        raise ModelProviderError("anthropic", 503, category="provider_unavailable")
 
     monkeypatch.setattr(responder, "_call", unavailable)
-    reply = responder.compose_conversational(
-        "Please explain what is happening in my store",
-        SimpleNamespace(intent="casual", goal="conversation"),
-        "", [], True,
-    )
-    assert "temporarily unable to generate a response" in reply
-    assert "What do you want to look at?" not in reply
-    assert "private-customer@example.com" not in reply
+    with pytest.raises(ModelProviderError) as caught:
+        responder.compose_conversational(
+            "Please explain what is happening in my store",
+            SimpleNamespace(intent="casual", goal="conversation"),
+            "", [], True,
+        )
+    assert "provider_unavailable" in str(caught.value)
+    assert "What do you want to look at?" not in str(caught.value)
+    assert "private-customer@example.com" not in str(caught.value)
 
 
 def test_known_greeting_still_has_safe_fallback():
@@ -98,16 +102,20 @@ def test_knowledge_question_uses_configured_provider_not_hardcoded_anthropic(mon
 
 
 def test_knowledge_provider_failure_never_returns_unrelated_shopify_definition(monkeypatch):
+    from src.agents.model_gateway import ModelProviderError
+    import pytest
+
     def unavailable(*args, **kwargs):
-        raise RuntimeError("provider unavailable")
+        raise ModelProviderError("anthropic", 503, category="provider_unavailable")
     monkeypatch.setattr(responder, "_call", unavailable)
-    reply = responder.compose_knowledge(
-        "Explain three ways to identify revenue leaks in my Shopify store",
-        SimpleNamespace(intent="strategy", response_mode="explanation", goal="identify revenue leaks"),
-        "", [], True,
-    )
-    assert "temporarily unable to generate" in reply
-    assert "Shopify is a cloud-based" not in reply
+    with pytest.raises(ModelProviderError) as caught:
+        responder.compose_knowledge(
+            "Explain three ways to identify revenue leaks in my Shopify store",
+            SimpleNamespace(intent="strategy", response_mode="explanation", goal="identify revenue leaks"),
+            "", [], True,
+        )
+    assert caught.value.category == "provider_unavailable"
+    assert "Shopify is a cloud-based" not in str(caught.value)
 
 
 def test_revenue_leak_question_is_not_capability_request():

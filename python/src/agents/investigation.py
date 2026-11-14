@@ -64,6 +64,7 @@ from ..intelligence.finding_prioritization import (
     prioritize_findings,
 )
 from ..intelligence.query import release_read_transaction, safe_query
+from ..intelligence.operational_metrics import record_counter
 from ..intelligence.claim_guardrails import (
     direct_action_or_recovery_answer,
     initialise_action_states,
@@ -471,6 +472,7 @@ def _dynamic_conversational(message: str, classification: dict, intent: str,
     memories and an address hint; static fallbacks keep replies honest when
     the provider is unavailable (never a fabricated business answer)."""
     from . import responder
+    from .model_gateway import ModelProviderError
     name = _boss_name(message, user_id)
     address_hint = (f"Use the stated preferred name {name!r} if natural. " if name
                     else "Do not invent a nickname or title. ")
@@ -496,9 +498,13 @@ def _dynamic_conversational(message: str, classification: dict, intent: str,
         text = responder.compose_conversational(
             message, understanding, routed.get("history_text") or "",
             routed.get("memories") or [], bool(routed.get("has_store")))
+    except ModelProviderError:
+        raise
     except Exception:
         text = ""
     if not text or text.startswith("I'm temporarily unable"):
+        # Deterministic local phrasing remains a non-provider path only; typed
+        # provider exhaustion escapes to the recoverable execution boundary.
         # Provider degradation keeps the §13 greeting contract instead of
         # surfacing a system notice as if it were conversation.
         if intent == INTENT_GREETING:
@@ -528,6 +534,7 @@ def _static_general_offer(message: str, user_id: str) -> str:
 
 def _dynamic_knowledge(message: str, user_id: str, routed: dict) -> str:
     from . import responder
+    from .model_gateway import ModelProviderError
     understanding = routed.get("understanding_obj") or _synthetic_understanding(
         "knowledge", "explain the concept practically and offer to check the store",
         response_mode="explanation")
@@ -540,6 +547,8 @@ def _dynamic_knowledge(message: str, user_id: str, routed: dict) -> str:
                 *knowledge_args, correlation_id=routed["correlation_id"])
         else:
             text = responder.compose_knowledge(*knowledge_args)
+    except ModelProviderError:
+        raise
     except Exception:
         text = ""
     if not text or text.startswith("I'm temporarily unable"):
@@ -550,12 +559,15 @@ def _dynamic_knowledge(message: str, user_id: str, routed: dict) -> str:
 
 def _dynamic_clarification(message: str, user_id: str, routed: dict) -> str:
     from . import responder
+    from .model_gateway import ModelProviderError
     understanding = routed.get("understanding_obj") or _synthetic_understanding(
         "clarification_needed", "ask which reading the merchant meant",
         response_mode="clarification", confidence=0.4)
     try:
         text = responder.compose_clarification(message, understanding,
                                                routed.get("history_text") or "")
+    except ModelProviderError:
+        raise
     except Exception:
         text = ""
     if not text or text.startswith("I'm temporarily unable"):
@@ -1016,10 +1028,16 @@ def resolve_reporting_period(message: str, now: datetime | None = None,
         start = _local_midnight_utc(local_date, tz)
         end = now
         label = "Today"
-    elif inherited and inherited.get("start") and inherited.get("end"):
-        start = datetime.fromisoformat(str(inherited["start"]).replace("Z", "+00:00"))
-        end = datetime.fromisoformat(str(inherited["end"]).replace("Z", "+00:00"))
-        label = inherited.get("label") or "Inherited reporting period"
+    elif inherited:
+        # Persisted context stores the resolved window under `period`; older
+        # callers may still pass that window directly. Read both shapes so an
+        # elliptical follow-up restores the original dates instead of silently
+        # falling back to the default rolling seven-day window.
+        inherited_window = inherited.get("period") if isinstance(inherited.get("period"), dict) else inherited
+        if inherited_window.get("start") and inherited_window.get("end"):
+            start = datetime.fromisoformat(str(inherited_window["start"]).replace("Z", "+00:00"))
+            end = datetime.fromisoformat(str(inherited_window["end"]).replace("Z", "+00:00"))
+            label = inherited_window.get("label") or "Inherited reporting period"
 
     if start is None or end is None:
         start, end = now - timedelta(days=7), now
@@ -1371,10 +1389,17 @@ def route_message(message: str, context: dict | None, store_context: dict | None
         return done({"intent": inherited_intent, "segment": None, "followup": True,
                      "inherited_intent": inherited_intent}, "fast_path")
     # Clear, context-free definitions do not need a model routing call and can
-    # never open Shopify evidence tools. Keep store-referential or metric-named
-    # questions on the normal understanding path (e.g. "What is my revenue?").
-    if GENERAL_DEFINITION_PATTERN.search(text) and keyword_intent is None \
-            and not STORE_REFERENCE_PATTERN.search(text):
+    # never open Shopify evidence tools. A domain word such as AOV/revenue may
+    # be the concept being defined; only merchant reference, metric lookup, or
+    # a concrete reporting period converts the question to a store request.
+    store_ref = re.search(r"\b(?:my|our|we|us|store|shop)\b", lower)
+    metric_query = re.search(r"\b(?:how (?:much|many)|show me|count|total"
+                             r"|what (?:is|was|are|were) (?:my|our|the))\b", lower)
+    period_lookup = re.search(r"\b(?:today|yesterday|this|last|past|previous|current)\s+"
+                              r"(?:day|week|month|quarter|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"
+                              r"|\b(?:in|during)\s+20\d{2}\b", lower)
+    if GENERAL_DEFINITION_PATTERN.search(text) and not STORE_REFERENCE_PATTERN.search(text) \
+            and not metric_query and not period_lookup:
         understanding = _synthetic_understanding(
             "knowledge", "answer a general definition", response_mode="direct_answer")
         routing["understanding"] = understanding.to_dict()
@@ -1520,6 +1545,8 @@ def load_conversation_context(organization_id: str, user_id: str,
         WHERE id = :conversation_id::uuid AND organization_id = :org_id::uuid
         LIMIT 1
     """, {"conversation_id": conversation_id, "org_id": organization_id})
+    if error:
+        record_counter("rev_conversation_restoration_failures_total", labels={"stage": "context_window"})
     if not error and rows:
         row = rows[0]
         if context["summary"] is None:
@@ -1567,6 +1594,8 @@ def load_conversation_context(organization_id: str, user_id: str,
         ORDER BY sequence_number DESC
         LIMIT 6
     """, {"conversation_id": conversation_id, "org_id": organization_id})
+    if history_error:
+        record_counter("rev_conversation_restoration_failures_total", labels={"stage": "history"})
     if not history_error:
         turns = []
         for row in reversed(history):
@@ -3112,7 +3141,7 @@ def _compose_narrative(*, message: str, intent: str, window: dict, facts: list[d
         if on_failure:
             on_failure("timeout", "response_composition")
         return deterministic, False
-    from .model_gateway import generate
+    from .model_gateway import ModelProviderError, generate
     evidence_payload = {
         "intent": intent,
         "period": window,
@@ -3154,6 +3183,12 @@ def _compose_narrative(*, message: str, intent: str, window: dict, facts: list[d
     try:
         timeout = deadline.operation_seconds("response_composition", 25.0) if deadline else 25.0
         candidate = generate(prompt, role="deep", max_tokens=900, timeout=timeout)
+    except ModelProviderError as exc:
+        logger.warning("rev_narrative_provider_exhausted category=%s status=%s",
+                       exc.category, exc.status)
+        if on_failure:
+            on_failure(exc.category, "response_composition")
+        raise
     except Exception as exc:
         logger.info("rev_narrative_unavailable error_type=%s", type(exc).__name__)
         if on_failure:
@@ -3192,6 +3227,7 @@ def _persist_conversation_state(organization_id: str, conversation_id: str | Non
         )
         db.commit()
     except Exception as exc:
+        record_counter("rev_persistence_failures_total", labels={"stage": "conversation_state"})
         logger.error("rev_state_persist_failed error_type=%s", type(exc).__name__)
 
 
@@ -3335,6 +3371,7 @@ def persist_investigation_context(organization_id: str, user_id: str,
         )
         db.commit()
     except Exception as exc:
+        record_counter("rev_persistence_failures_total", labels={"stage": "conversation_context"})
         logger.error(
             "rev_context_persist_failed stage=conversation_context error_type=%s "
             "organization_id=%s conversation_id=%s",
@@ -3388,6 +3425,7 @@ def persist_investigation_context(organization_id: str, user_id: str,
         )
         db.commit()
     except Exception as exc:
+        record_counter("rev_persistence_failures_total", labels={"stage": "merchant_memory"})
         logger.error(
             "rev_memory_persist_failed stage=merchant_memory error_type=%s "
             "organization_id=%s conversation_id=%s",
@@ -4112,7 +4150,7 @@ def _clarification_result(message: str, classification: dict, *, investigation_i
     return result
 
 
-def run_investigation(organization_id: str, user_id: str, message: str, *,
+def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
                       conversation_id: str | None = None, db: Any,
                       context_payload: dict | None = None,
                       now: datetime | None = None,
@@ -4140,7 +4178,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     merchant_context = (context_payload or {}).get("merchant_context")
     external_items = validate_context_evidence(merchant_context, organization_id) if merchant_context is not None else []
     now = ensure_utc(now or utc_now(), field="now")
-    investigation_id = str(uuid.uuid4())
+    investigation_id = (context_payload or {}).get("execution_id") or str(uuid.uuid4())
     execution_policy = (context_payload or {}).get("execution_policy") or {}
     deadline = InvestigationDeadline.start(execution_policy.get("overall_timeout_ms"))
     reliability_failures: list[dict] = []
@@ -4153,9 +4191,22 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         reliability_failures.append(failure)
         record_failure(failure, correlation_id=(context_payload or {}).get("correlation_id"),
                        investigation_id=investigation_id)
+        try:
+            from ..intelligence.operational_metrics import record_counter
+            if stage in {"evidence_retrieval", "specialist_execution"} or category in {"evidence_retrieval_failed", "specialist_failed"}:
+                record_counter("rev_tool_failures_total", labels={"stage": stage[:48], "category": category})
+            if "validation" in stage or category == "schema_validation_failed":
+                record_counter("rev_validation_failures_total", labels={"stage": stage[:48], "category": category})
+        except Exception:
+            pass
         return failure
 
     def _emit(event: dict) -> None:
+        if isinstance(event, dict):
+            payload = event.get("data")
+            if isinstance(payload, dict):
+                payload.setdefault("correlation_id", (context_payload or {}).get("correlation_id"))
+                payload.setdefault("execution_id", investigation_id)
         if event.get("event") == "final" and isinstance(event.get("data"), dict):
             data = event["data"]
             if data.get("orchestration") is None:
@@ -4398,6 +4449,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         investigation_id=investigation_id, organization_id=organization_id,
         store_ids=(store_context or {}).get("store_ids") or [], period=window,
         available_tools={entry["name"] for entry in catalog()})
+    orchestration["correlation_id"] = (context_payload or {}).get("correlation_id")
+    orchestration["execution_id"] = investigation_id
+    question_understanding["correlation_id"] = (context_payload or {}).get("correlation_id")
+    question_understanding["execution_id"] = investigation_id
     tools = list(orchestration["tools"])
     result = _base_result(message=message, intent=intent, window=window,
                           investigation_id=investigation_id, store_context=store_context,
@@ -4576,7 +4631,8 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                 tool_result = run_tool(tool, organization_id, db, params, now=now)
                 break
             except ToolAuthorizationError:
-                logger.error("rev_tool_authorization_failed tool=%s", tool)
+                logger.error("rev_tool_authorization_failed tool=%s correlation_id=%s execution_id=%s",
+                             tool, (context_payload or {}).get("correlation_id"), investigation_id)
                 tool_result = None
                 _record("authorization_failed", "evidence_retrieval", partial=bool(tool_results))
                 tool_failures[tool] = {"outcome": "permission_insufficient", "error_class": "authorization", "retry_eligible": False}
@@ -4585,7 +4641,8 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                 skipped.append(f"{TOOL_STEP_LABELS.get(tool, tool)}: not authorised.")
                 break
             except Exception as exc:  # defensive: partial results must survive
-                logger.warning("rev_tool_exception tool=%s error_type=%s", tool, type(exc).__name__)
+                logger.warning("rev_tool_exception tool=%s error_type=%s correlation_id=%s execution_id=%s",
+                               tool, type(exc).__name__, (context_payload or {}).get("correlation_id"), investigation_id)
                 tool_result = None
                 error_name = type(exc).__name__.lower()
                 transient = any(token in error_name for token in ("timeout", "connection", "temporary", "operational"))
@@ -4601,6 +4658,11 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                 reliability_failures.append(failure)
                 record_failure(failure, correlation_id=(context_payload or {}).get("correlation_id"),
                                investigation_id=investigation_id)
+                try:
+                    from ..intelligence.operational_metrics import record_counter
+                    record_counter("rev_tool_failures_total", labels={"stage": "evidence_retrieval", "category": failure["category"]})
+                except Exception:
+                    pass
                 tool_failures[tool] = {
                     "outcome": "retrieval_failed", "error_class": failure["category"],
                     "retry_eligible": failure["retryable"],
@@ -4715,10 +4777,15 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         _record("timeout", "specialist_execution", partial=bool(items), fallback=True)
     specialists = execute_orchestrated_specialists(
         orchestration, period=window, items=items, tools=tool_results_by_name)
+    for specialist in specialists:
+        if isinstance(specialist, dict):
+            specialist.setdefault("correlation_id", (context_payload or {}).get("correlation_id"))
+            specialist.setdefault("parent_execution_id", investigation_id)
     reconcile_orchestration(orchestration, specialists, items + comparison_items, finalize=False)
     for specialist in specialists:
         logger.info("rev_specialist_outcome", extra={
             "investigation_id": investigation_id,
+            "correlation_id": (context_payload or {}).get("correlation_id"),
             "execution_id": specialist.get("execution_id"),
             "specialist": (specialist.get("specialist") or {}).get("name"),
             "specialist_status": specialist.get("status"),
@@ -4727,6 +4794,11 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "contradiction_count": len(specialist.get("contradictions") or []),
         })
     if any(specialist.get("status") == "error" for specialist in specialists):
+        try:
+            from ..intelligence.operational_metrics import record_counter
+            record_counter("rev_tool_failures_total", labels={"stage": "specialist_execution", "category": "specialist_failed"})
+        except Exception:
+            pass
         # Independent evidence may still support a partial investigation, but a
         # failed selected specialist is never rolled up as complete success.
         overall = "partial" if items else "insufficient_data"
@@ -4771,6 +4843,11 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     for tool_result in tool_results:
         warnings.extend(tool_result.warnings)
     if validation_errors:
+        try:
+            from ..intelligence.operational_metrics import record_counter
+            record_counter("rev_validation_failures_total", labels={"stage": "evidence_collection"})
+        except Exception:
+            pass
         warnings.append("Evidence validation reported: " + ", ".join(validation_errors))
         items = []
         comparison_items = []
@@ -5112,6 +5189,71 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     return result
 
 
+def run_investigation(organization_id: str, user_id: str, message: str, *,
+                      conversation_id: str | None = None, db: Any,
+                      context_payload: dict | None = None,
+                      now: datetime | None = None,
+                      emit: Callable[[dict], None] | None = None,
+                      persist: bool = True,
+                      cancel_event: Any = None) -> dict:
+    """Trace and measure every execution, including direct/non-stream callers."""
+    from ..intelligence.trace_context import new_trace, trace_context
+    from ..intelligence.operational_metrics import record_counter, observe_latency
+    import time as _time
+    trace_payload = dict(context_payload or {})
+    correlation_id, execution_id = new_trace(
+        trace_payload.get("correlation_id"), trace_payload.get("execution_id"))
+    trace_payload.update(correlation_id=correlation_id, execution_id=execution_id)
+    started = _time.monotonic()
+    started_at = datetime.now(timezone.utc).isoformat()
+    result = None
+    try:
+        with trace_context(correlation_id, execution_id):
+            result = _run_investigation_core(
+                organization_id, user_id, message, conversation_id=conversation_id,
+                db=db, context_payload=trace_payload, now=now, emit=emit,
+                persist=persist, cancel_event=cancel_event)
+        result["correlation_id"] = correlation_id
+        result["execution_id"] = execution_id
+        duration_ms = int((_time.monotonic() - started) * 1000)
+        investigation = result.get("investigation") or {}
+        intent = str(investigation.get("intent") or "unknown")
+        outcome = str((result.get("investigation_outcome") or {}).get("outcome") or "success")
+        is_general = intent not in STORE_INTENTS
+        succeeded = outcome in {"success", "partial_success", "unsupported_capability", "ambiguous_question"}
+        record_counter("rev_requests_total", labels={"kind": "general" if is_general else "investigation",
+                                                       "outcome": "success" if succeeded else "failure"})
+        if is_general and succeeded:
+            record_counter("rev_general_questions_total", labels={"outcome": "success"})
+        elif not is_general and succeeded:
+            record_counter("rev_investigations_total", labels={"outcome": "success"})
+        result["execution_metadata"] = {
+            "correlation_id": correlation_id, "execution_id": execution_id,
+            "started_at": started_at, "latency_ms": duration_ms,
+            "deadline_ms": (trace_payload.get("execution_policy") or {}).get("overall_timeout_ms"),
+            "outcome": outcome,
+        }
+        return result
+    except Exception as exc:
+        record_counter("rev_requests_total", labels={"kind": "unknown", "outcome": "failure"})
+        if isinstance(exc, ValueError):
+            record_counter("rev_validation_failures_total", labels={"stage": "response_validation"})
+        from .model_gateway import ModelProviderError
+        if isinstance(exc, ModelProviderError):
+            failure = safe_failure(
+                exc.category, "response_composition",
+                retry_count=max(0, exc.attempts - 1), fallback=exc.fallback_used,
+                execution_id=execution_id)
+            exc.failure = failure
+            exc.correlation_id = correlation_id
+            exc.execution_id = execution_id
+            record_failure(failure, correlation_id=correlation_id,
+                           investigation_id=execution_id)
+        raise
+    finally:
+        observe_latency("rev_execution", int((_time.monotonic() - started) * 1000))
+
+
 def _apply_response_adaptation(result: dict, *, message: str, intent: str,
                                items: list, comparison_items: list,
                                comparison_facts: list, year_over_year_facts: list,
@@ -5275,12 +5417,26 @@ def stream_investigation(organization_id: str, user_id: str, message: str, *,
 
     if db is None and session_factory is None:
         raise ValueError("stream_investigation requires either db or session_factory")
+    from ..intelligence.trace_context import new_trace
+    context_payload = dict(context_payload or {})
+    correlation_id, execution_id = new_trace(
+        context_payload.get("correlation_id"), context_payload.get("execution_id"))
+    context_payload.update(correlation_id=correlation_id, execution_id=execution_id)
+
+    def _tag(event: dict) -> dict:
+        if isinstance(event, dict):
+            payload = event.get("data")
+            if isinstance(payload, dict):
+                payload.setdefault("correlation_id", correlation_id)
+                payload.setdefault("execution_id", execution_id)
+        return event
 
     events: "_queue.Queue[dict | None]" = _queue.Queue()
     cancel = cancel_event if cancel_event is not None else threading.Event()
     owns_session = session_factory is not None
 
     def worker() -> None:
+        from .model_gateway import ModelProviderError
         thread_session = None
         try:
             if owns_session:
@@ -5292,14 +5448,26 @@ def stream_investigation(organization_id: str, user_id: str, message: str, *,
                 emit=lambda event: events.put(event),
                 cancel_event=cancel,
             )
+        except ModelProviderError as exc:
+            retryable = exc.category in {"timeout", "rate_limited", "provider_unavailable", "connection_failed"}
+            events.put({"event": "error", "data": {
+                "code": "PROVIDER_FAILURE",
+                "message": ("Rev could not complete this response because the configured AI provider remained unavailable within its retry budget. Please try again shortly."
+                            if retryable else
+                            "Rev could not complete this response because the configured AI provider rejected the request. Please contact support."),
+                "retryable": retryable,
+                "failure": getattr(exc, "failure", None),
+                "correlation_id": correlation_id,
+                "execution_id": execution_id,
+            }})
         except InvestigationCancelled as exc:
             logger.info("rev_stream_cancelled investigation_id=%s", exc.investigation_id)
         except ValueError as exc:
             events.put({"event": "error", "data": {"code": "VALIDATION_ERROR",
-                                                   "message": str(exc)}})
+                                                   "message": "The investigation response failed validation."}})
         except Exception as exc:
-            logger.exception("rev_stream_investigation_failed error_type=%s",
-                             type(exc).__name__)
+            logger.error("rev_stream_investigation_failed error_type=%s correlation_id=%s execution_id=%s",
+                         type(exc).__name__, correlation_id, execution_id)
             events.put({"event": "error", "data": {
                 "code": "INVESTIGATION_FAILED",
                 "message": "Rev could not complete the investigation. Please retry.",
@@ -5322,10 +5490,10 @@ def stream_investigation(organization_id: str, user_id: str, message: str, *,
     # lands -- still signals cancellation and accounts for the worker.
     thread: threading.Thread | None = None
     try:
-        yield {"event": "accepted", "data": {
+        yield _tag({"event": "accepted", "data": {
             "contract_version": CONTRACT_VERSION,
             "read_only": True,
-        }}
+        }})
         thread = threading.Thread(target=worker, name="rev-investigation", daemon=True)
         thread.start()
         while True:
@@ -5334,7 +5502,7 @@ def stream_investigation(organization_id: str, user_id: str, message: str, *,
                 # richer cancellation payload. Still close the typed lifecycle;
                 # never leave the caller with only an accepted event.
                 cancelled_at = iso(utc_now())
-                yield {"event": "cancelled", "data": {
+                yield _tag({"event": "cancelled", "data": {
                     "reason": "client_disconnected_or_stopped",
                     "orchestration": {
                         "contract_version": "rev-question-orchestration-v1",
@@ -5345,7 +5513,7 @@ def stream_investigation(organization_id: str, user_id: str, message: str, *,
                         "tools": [], "tasks": [], "selected_specialists": [],
                         "domain_executions": [], "finished_at": cancelled_at,
                     },
-                }}
+                }})
                 break
             try:
                 event = events.get(timeout=STREAM_QUEUE_POLL_SECONDS)
@@ -5355,7 +5523,7 @@ def stream_investigation(organization_id: str, user_id: str, message: str, *,
                 continue
             if event is None:
                 break
-            yield event
+            yield _tag(event)
     finally:
         cancel.set()
         if thread is not None:

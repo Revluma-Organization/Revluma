@@ -25,8 +25,9 @@ const logger            = require('../utils/logger');
 const { formatSseFrame } = require('../services/revStream');
 const { safePersistedNarrative } = require('../services/revClaimGuardrails');
 const { retryabilityForError, investigationOutcomeFromTransportError } = require('../services/revInvestigationOutcomes');
-const { withTimeout, TIMEOUT_POLICY_MS } = require('../services/revFailureContract');
+const { withTimeout, TIMEOUT_POLICY_MS, safeId } = require('../services/revFailureContract');
 const { validateSubmission, acceptSubmission, replayBody } = require('../services/revSubmission');
+const revMetrics = require('../services/revOperationalMetrics');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -172,6 +173,9 @@ exports.getCommandCenter = async (req, res, next) => {
 
 exports.chat = async (req, res, next) => {
   let correlationId = uuidv4();
+  let executionId = uuidv4();
+  let requestMetricRecorded = false;
+  let persistenceStage = null;
   let activeConvId = null;
   let acceptedOrg = null;
   let reuseUserMessage = false;
@@ -191,6 +195,7 @@ exports.chat = async (req, res, next) => {
     }
     const message = validated.message;
     correlationId = validated.requestId;
+    executionId = uuidv4();
     const conversationId  = req.body?.conversation_id || null;
     const imageBase64     = req.body?.image_base64     || null;
     const imageMediaType  = req.body?.image_media_type || null;
@@ -237,7 +242,7 @@ exports.chat = async (req, res, next) => {
     }
 
     logger.info('rev_chat_request', {
-      correlationId,
+      correlationId, executionId,
       orgId:          org.id,
       userId:         req.user.id,
       conversationId: conversationId || 'new',
@@ -281,7 +286,14 @@ exports.chat = async (req, res, next) => {
     revSequence = (Number(seqResult[0]?.max_seq) || 0) + 1;
 
     const merchantContext = await require('../services/revMerchantContext').buildMerchantContext(prisma, org.id);
-    const conversationContext = await _loadConversationContext(activeConvId, org.id);
+    let conversationContext;
+    try {
+      conversationContext = await _loadConversationContext(activeConvId, org.id, { correlationId, executionId });
+    } catch (restorationError) {
+      revMetrics.record('rev_conversation_restoration_failures_total', 1, { stage: 'context_load' });
+      logger.warn('rev_conversation_restoration_failed', { correlationId, executionId, errorType: restorationError.name });
+      throw restorationError;
+    }
 
     // 6. Call Python via mlService
     // Task 207: JSON and SSE use the same canonical investigation runtime.
@@ -300,13 +312,22 @@ exports.chat = async (req, res, next) => {
       },
       conversationId: activeConvId,
       correlationId,
+      executionId,
       ...(imageBase64 ? { imageBase64, imageMediaType } : {}),
     });
 
     // 7. Handle Python failure — persist failed Rev message so history is intact
     if (!mlResult.success) {
+      revMetrics.record('rev_requests_total', 1, { outcome: 'failure' });
+      revMetrics.observe('rev_request', Date.now() - startTime);
+      requestMetricRecorded = true;
+      if (mlResult.error?.failure?.category) {
+        revMetrics.record('rev_provider_failures_total', 1, { category: mlResult.error.failure.category });
+      }
+      if (mlResult.error?.code === 'INVALID_RESPONSE') revMetrics.record('rev_validation_failures_total', 1, { stage: 'response_contract' });
       const failedMsgId = uuidv4();
-      const failedContent = JSON.stringify({ error: true });
+      const failedContent = JSON.stringify({ error: true, correlation_id: correlationId, execution_id: executionId });
+      persistenceStage = 'failed_turn_write';
       await prisma.$executeRaw`
         INSERT INTO conversation_messages (
           id, conversation_id, organization_id, user_id,
@@ -318,11 +339,13 @@ exports.chat = async (req, res, next) => {
           true, ${mlResult.error.code}, ${mlResult.error.message}
         )
       `;
+      persistenceStage = 'conversation_update';
       await prisma.$executeRaw`
         UPDATE conversations
         SET last_activity_at = NOW(), message_count = message_count + ${reuseUserMessage ? 0 : 1}, updated_at = NOW()
         WHERE id = ${activeConvId}::uuid
       `;
+      persistenceStage = null;
 
       logger.warn('rev_chat_intelligence_failed', {
         correlationId, orgId: org.id,
@@ -334,7 +357,8 @@ exports.chat = async (req, res, next) => {
         success: false,
         conversation_id: activeConvId,
         error: mlResult.error,
-        retryable: retryabilityForError(mlResult.error.code),
+        retryable: typeof mlResult.error.retryable === 'boolean'
+          ? mlResult.error.retryable : retryabilityForError(mlResult.error.code),
         investigation_outcome: investigationOutcomeFromTransportError({
           code: mlResult.error.code, organizationId: org.id,
         }),
@@ -396,10 +420,17 @@ exports.chat = async (req, res, next) => {
       };
     }
 
+    revContent = {
+      ...revContent,
+      correlation_id: correlationId,
+      execution_id: mlResult.data?.execution_id || executionId,
+      execution_metadata: mlResult.data?.execution_metadata || null,
+    };
     const revContentStr   = JSON.stringify(revContent);
     const agentNameStr    = (revData.agents_used || []).join(',');
     const confidenceScore = revData.confidence_score ?? null;
 
+    persistenceStage = 'rev_turn_write';
     await prisma.$executeRaw`
       INSERT INTO conversation_messages (
         id, conversation_id, organization_id, user_id,
@@ -414,10 +445,12 @@ exports.chat = async (req, res, next) => {
       )
     `;
 
+    persistenceStage = 'finding_context_write';
     await _persistFindingContext(activeConvId, org.id, mlResult.data);
 
     // Generate intelligent title from first meaningful user message
     const titleHint = _generateTitle(message);
+    persistenceStage = 'conversation_update';
     await prisma.$executeRaw`
       UPDATE conversations
       SET
@@ -427,7 +460,18 @@ exports.chat = async (req, res, next) => {
         updated_at       = NOW()
       WHERE id = ${activeConvId}::uuid
     `;
+    persistenceStage = null;
 
+    const intentName = revData.intent || revData.investigation?.intent || 'unknown';
+    const storeIntent = new Set([
+      'store_overview', 'revenue_investigation', 'checkout_investigation',
+      'customer_retention', 'refund_investigation', 'product_investigation',
+      'finding_investigation', 'traffic_investigation', 'data_coverage',
+    ]).has(intentName);
+    revMetrics.record('rev_requests_total', 1, { outcome: 'success' });
+    revMetrics.record(storeIntent ? 'rev_investigations_total' : 'rev_general_questions_total', 1, { outcome: 'success' });
+    revMetrics.observe('rev_request', Date.now() - startTime);
+    requestMetricRecorded = true;
     const latencyMs = Date.now() - startTime;
     logger.info('rev_chat_complete', {
       correlationId,
@@ -465,6 +509,8 @@ exports.chat = async (req, res, next) => {
       read_only:       mlResult.data?.read_only ?? true,
       meta: {
         correlation_id:             correlationId,
+        execution_id:               mlResult.data?.execution_id || executionId,
+        execution_metadata:         mlResult.data?.execution_metadata || null,
         business_state_age_minutes: revData.business_state_age_minutes,
         agents_used:                revData.agents_used || [],
         latency_ms:                 latencyMs,
@@ -472,20 +518,34 @@ exports.chat = async (req, res, next) => {
     });
 
   } catch (error) {
+    if (!requestMetricRecorded) {
+      revMetrics.record('rev_requests_total', 1, { outcome: 'failure' });
+      revMetrics.observe('rev_request', Date.now() - startTime);
+      requestMetricRecorded = true;
+    }
+    if (persistenceStage) {
+      revMetrics.record('rev_persistence_failures_total', 1, { stage: persistenceStage });
+      persistenceStage = null;
+    }
     // An accepted turn must have a terminal replay outcome. Without this row a
     // network/client retry would see an eternal in-progress submission.
     if (activeConvId && acceptedOrg && !reuseUserMessage) {
       try {
+        persistenceStage = 'failed_turn_write';
         await _insertRevMessage({
           organizationId: acceptedOrg.id, userId: req.user.id, conversationId: activeConvId,
-          sequenceNumber: revSequence, correlationId, content: { response_type: 'error', error: true, read_only: true },
+          sequenceNumber: revSequence, correlationId,
+          content: { response_type: 'error', error: true, read_only: true, correlation_id: correlationId, execution_id: executionId },
           hasError: true, errorCode: error.code || 'INTELLIGENCE_UNAVAILABLE',
           errorMessage: error.publicMessage || 'Rev could not complete this response. Please retry.',
           latencyMs: Date.now() - startTime,
         });
+        persistenceStage = 'conversation_update';
         await _touchConversation(activeConvId, { increment: 2 });
+        persistenceStage = null;
       } catch (persistenceError) {
-        logger.error('rev_chat_failure_persistence_failed', { correlationId, errorType: persistenceError.name });
+        if (persistenceStage) revMetrics.record('rev_persistence_failures_total', 1, { stage: persistenceStage });
+        logger.error('rev_chat_failure_persistence_failed', { correlationId, executionId, errorType: persistenceError.name });
       }
     }
     next(error);
@@ -495,8 +555,14 @@ exports.chat = async (req, res, next) => {
 // ── GET /api/v1/rev/conversations ─────────────────────────────────────────────
 
 exports.getConversations = async (req, res, next) => {
+  let restorationAttempted = false;
+  const restoreCorrelationId = safeId(req.get?.('X-Correlation-ID') || req.get?.('X-Request-ID'));
+  const restoreExecutionId = uuidv4();
   try {
     const org    = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    restorationAttempted = true;
+    res.setHeader('X-Correlation-ID', restoreCorrelationId);
+    res.setHeader('X-Execution-ID', restoreExecutionId);
     const limit  = Math.min(parseInt(req.query.limit  || '20', 10), 50);
     const offset = Math.max(parseInt(req.query.offset || '0',  10), 0);
     // Conversation search is always scoped to the authenticated organization.
@@ -506,12 +572,21 @@ exports.getConversations = async (req, res, next) => {
 
     const conversations = search
       ? await prisma.$queryRaw`
-          SELECT id, title, status, message_count, last_activity_at, created_at
+          SELECT c.id, c.title, c.status,
+            (SELECT COUNT(*)::int FROM conversation_messages cm_count
+             WHERE cm_count.conversation_id = c.id
+               AND cm_count.organization_id = c.organization_id) AS message_count,
+            c.last_activity_at, c.created_at
           FROM conversations c
-          WHERE organization_id = ${org.id}::uuid
-            AND status = 'active'
+          WHERE c.organization_id = ${org.id}::uuid
+            AND c.status = 'active'
+            AND EXISTS (
+              SELECT 1 FROM conversation_messages cm_any
+              WHERE cm_any.conversation_id = c.id
+                AND cm_any.organization_id = c.organization_id
+            )
             AND (
-              COALESCE(title, '') ILIKE ${search}
+              COALESCE(c.title, '') ILIKE ${search}
               OR EXISTS (
                 SELECT 1 FROM conversation_messages cm
                 WHERE cm.conversation_id = c.id
@@ -519,15 +594,24 @@ exports.getConversations = async (req, res, next) => {
                   AND cm.content::text ILIKE ${search}
               )
             )
-          ORDER BY last_activity_at DESC
+          ORDER BY c.last_activity_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `
       : await prisma.$queryRaw`
-          SELECT id, title, status, message_count, last_activity_at, created_at
-          FROM conversations
-          WHERE organization_id = ${org.id}::uuid
-            AND status = 'active'
-          ORDER BY last_activity_at DESC
+          SELECT c.id, c.title, c.status,
+            (SELECT COUNT(*)::int FROM conversation_messages cm_count
+             WHERE cm_count.conversation_id = c.id
+               AND cm_count.organization_id = c.organization_id) AS message_count,
+            c.last_activity_at, c.created_at
+          FROM conversations c
+          WHERE c.organization_id = ${org.id}::uuid
+            AND c.status = 'active'
+            AND EXISTS (
+              SELECT 1 FROM conversation_messages cm
+              WHERE cm.conversation_id = c.id
+                AND cm.organization_id = c.organization_id
+            )
+          ORDER BY c.last_activity_at DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
 
@@ -538,6 +622,12 @@ exports.getConversations = async (req, res, next) => {
       search: rawSearch || null,
     });
   } catch (error) {
+    if (restorationAttempted) {
+      revMetrics.record('rev_conversation_restoration_failures_total', 1, { stage: 'conversation_list' });
+      logger.warn('rev_conversation_restoration_failed', {
+        correlationId: restoreCorrelationId, executionId: restoreExecutionId, errorType: error.name,
+      });
+    }
     next(error);
   }
 };
@@ -545,6 +635,9 @@ exports.getConversations = async (req, res, next) => {
 // ── GET /api/v1/rev/conversation/:id ─────────────────────────────────────────
 
 exports.getConversation = async (req, res, next) => {
+  let restorationAttempted = false;
+  const restoreCorrelationId = safeId(req.get?.('X-Correlation-ID') || req.get?.('X-Request-ID'));
+  const restoreExecutionId = uuidv4();
   try {
     const { id } = req.params;
     if (!id) {
@@ -556,6 +649,9 @@ exports.getConversation = async (req, res, next) => {
 
     const org  = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     const conv = await verifyConversationOwnership(id, org.id);
+    restorationAttempted = true;
+    res.setHeader('X-Correlation-ID', restoreCorrelationId);
+    res.setHeader('X-Execution-ID', restoreExecutionId);
 
     const limit  = Math.min(parseInt(req.query.limit  || '50', 10), 100);
     const offset = Math.max(parseInt(req.query.offset || '0',  10), 0);
@@ -590,6 +686,13 @@ exports.getConversation = async (req, res, next) => {
       },
     });
   } catch (error) {
+    if (restorationAttempted) {
+      revMetrics.record('rev_conversation_restoration_failures_total', 1, { stage: 'conversation_read' });
+      logger.warn('rev_conversation_restoration_failed', {
+        correlationId: restoreCorrelationId, executionId: restoreExecutionId,
+        errorType: error.name,
+      });
+    }
     next(error);
   }
 };
@@ -780,6 +883,18 @@ exports.createMemory = async (req, res, next) => {
 };
 
 // ── GET /api/v1/rev/health ────────────────────────────────────────────────────
+
+exports.internalMetrics = async (req, res) => {
+  const configured = process.env.ML_INTERNAL_KEY || '';
+  const supplied = req.get('X-Internal-Key') || '';
+  const crypto = require('crypto');
+  const expected = Buffer.from(configured);
+  const actual = Buffer.from(supplied);
+  if (!configured || expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
+    return res.status(404).json({ success: false, error: { code: 'NOT_FOUND' } });
+  }
+  return res.status(200).json(revMetrics.snapshot());
+};
 
 exports.intelligenceHealth = async (req, res, next) => {
   try {
@@ -1014,6 +1129,9 @@ function _boundedResultForPersistence(data) {
   }
   return {
     contract_version: data?.contract_version || 'rev-investigation-v1',
+    correlation_id: data?.correlation_id || null,
+    execution_id: data?.execution_id || null,
+    execution_metadata: data?.execution_metadata || null,
     response_type: data?.response_type || 'analysis',
     text: data?.text || '',
     response: data?.response || null,
@@ -1149,7 +1267,7 @@ async function _touchConversation(conversationId, { titleHint, increment = 2 }) 
   `;
 }
 
-async function _loadConversationContext(conversationId, organizationId) {
+async function _loadConversationContext(conversationId, organizationId, trace = {}) {
   try {
     const rows = await withTimeout(prisma.$queryRaw`
       SELECT summary, context_window
@@ -1174,7 +1292,10 @@ async function _loadConversationContext(conversationId, organizationId) {
     }
     return context;
   } catch (error) {
-    logger.warn('rev_conversation_context_unavailable', { errorType: error.name });
+    revMetrics.record('rev_conversation_restoration_failures_total', 1, { stage: 'context_load' });
+    logger.warn('rev_conversation_context_unavailable', {
+      correlationId: trace.correlationId, executionId: trace.executionId, errorType: error.name,
+    });
     return { summary: null, context_window: null,
       context_error: error.code === 'REV_TIMEOUT' ? 'context_timeout' : 'context_unavailable' };
   }
@@ -1226,11 +1347,14 @@ async function _resolveFindingMessage(req, org, message) {
 // ── POST /api/v1/rev/stream ───────────────────────────────────────────────────
 exports.chatStream = async (req, res, next) => {
   let correlationId = uuidv4();
+  let executionId = uuidv4();
   const startedAt = Date.now();
   let sse = null;
   let activeConvId = null;
   let sequenceNumber = null;
   let finished = false;
+  let requestMetricRecorded = false;
+  let persistenceStage = null;
   let org = null;
   let validated = null;
   let reuseUserMessage = false;
@@ -1250,6 +1374,7 @@ exports.chatStream = async (req, res, next) => {
     const intelligenceMessage = finding.message;
 
     correlationId = validated.requestId;
+    executionId = uuidv4();
     const requestedConversationId = req.body?.conversation_id || null;
     reuseUserMessage = req.body?.reuse_user_message === true;
     if (!reuseUserMessage) {
@@ -1273,7 +1398,7 @@ exports.chatStream = async (req, res, next) => {
         if (typeof res.flushHeaders === 'function') res.flushHeaders();
         sse = _sseWriter(res);
         finished = true;
-        sse.send('meta', { conversation_id: replay.conversationId, correlation_id: replay.requestId, read_only: true, idempotent_replay: true });
+        sse.send('meta', { conversation_id: replay.conversationId, correlation_id: replay.requestId, execution_id: replay.content.execution_id || executionId, read_only: true, idempotent_replay: true });
         if (replay.failed) {
           sse.send('error', {
             conversation_id: replay.conversationId, code: replay.errorCode || 'INTELLIGENCE_UNAVAILABLE',
@@ -1290,7 +1415,7 @@ exports.chatStream = async (req, res, next) => {
         return undefined;
       }
     } else {
-      await verifyConversationOwnership(conversationId, org.id);
+      await verifyConversationOwnership(requestedConversationId, org.id);
       activeConvId = requestedConversationId;
     }
 
@@ -1318,13 +1443,23 @@ exports.chatStream = async (req, res, next) => {
     sse.send('meta', {
       conversation_id: activeConvId,
       correlation_id: correlationId,
+      execution_id: executionId,
       read_only: true,
       started_at: new Date().toISOString(),
     });
 
     const merchantContext = await require('../services/revMerchantContext')
       .buildMerchantContext(prisma, org.id);
-    const conversationContext = await _loadConversationContext(activeConvId, org.id);
+    let conversationContext;
+    try {
+      conversationContext = await _loadConversationContext(activeConvId, org.id, { correlationId, executionId });
+    } catch (restorationError) {
+      revMetrics.record('rev_conversation_restoration_failures_total', 1, { stage: 'context_load' });
+      logger.warn('rev_conversation_restoration_failed', {
+        correlationId, executionId, errorType: restorationError.name,
+      });
+      throw restorationError;
+    }
 
     const streamed = await mlService.streamInvestigation({
       organizationId: org.id,
@@ -1332,6 +1467,7 @@ exports.chatStream = async (req, res, next) => {
       message: intelligenceMessage,
       conversationId: activeConvId,
       correlationId,
+      executionId,
       contextPayload: {
         merchant_context: merchantContext,
         selected_finding: finding.selected_finding,
@@ -1350,7 +1486,14 @@ exports.chatStream = async (req, res, next) => {
 
     if (streamed.success) {
       const data = streamed.data;
+      const intent = data?.investigation?.intent || 'unknown';
+      const storeIntent = new Set([
+        'store_overview', 'revenue_investigation', 'checkout_investigation',
+        'customer_retention', 'refund_investigation', 'product_investigation',
+        'finding_investigation', 'traffic_investigation', 'data_coverage',
+      ]).has(intent);
       const content = _boundedResultForPersistence(data);
+      persistenceStage = 'rev_turn_write';
       const messageId = await _insertRevMessage({
         organizationId: org.id,
         userId: req.user.id,
@@ -1363,11 +1506,18 @@ exports.chatStream = async (req, res, next) => {
         confidenceScore: data.response?.confidence?.score ?? null,
         latencyMs: Date.now() - startedAt,
       });
+      persistenceStage = 'conversation_update';
       await _touchConversation(activeConvId, {
         titleHint: _generateTitle(validated.message),
         increment: reuseUserMessage ? 1 : 2,
       });
+      persistenceStage = 'finding_context_write';
       await _persistFindingContext(activeConvId, org.id, data);
+      persistenceStage = null;
+      revMetrics.record('rev_requests_total', 1, { outcome: 'success' });
+      revMetrics.record(storeIntent ? 'rev_investigations_total' : 'rev_general_questions_total', 1, { outcome: 'success' });
+      revMetrics.observe('rev_request', Date.now() - startedAt);
+      requestMetricRecorded = true;
       finished = true;
       sse.send('final', {
         success: true,
@@ -1378,7 +1528,7 @@ exports.chatStream = async (req, res, next) => {
       });
       sse.end();
       logger.info('rev_stream_complete', {
-        correlationId, orgId: org.id, conversationId: activeConvId,
+        correlationId, executionId, orgId: org.id, conversationId: activeConvId,
         intent: data.investigation?.intent, latencyMs: Date.now() - startedAt,
       });
       return undefined;
@@ -1403,6 +1553,14 @@ exports.chatStream = async (req, res, next) => {
     }
 
     const error = streamed.error || { code: 'INTELLIGENCE_UNAVAILABLE', message: 'Rev is unavailable.' };
+    revMetrics.record('rev_requests_total', 1, { outcome: 'failure' });
+    revMetrics.observe('rev_request', Date.now() - startedAt);
+    requestMetricRecorded = true;
+    if (error.failure?.category && ['provider_unavailable', 'connection_failed', 'rate_limited', 'timeout'].includes(error.failure.category)) {
+      revMetrics.record('rev_provider_failures_total', 1, { category: error.failure.category });
+    }
+    if (error.code === 'INVALID_RESPONSE') revMetrics.record('rev_validation_failures_total', 1, { stage: 'response_contract' });
+    persistenceStage = 'failed_turn_write';
     await _insertRevMessage({
       organizationId: org.id, userId: req.user.id, conversationId: activeConvId,
       sequenceNumber: revSequence, correlationId,
@@ -1410,16 +1568,20 @@ exports.chatStream = async (req, res, next) => {
       hasError: true, errorCode: error.code, errorMessage: error.message,
       latencyMs: Date.now() - startedAt,
     });
+    persistenceStage = 'conversation_update';
     await _touchConversation(activeConvId, {
       titleHint: _generateTitle(validated.message), increment: reuseUserMessage ? 1 : 2,
     });
+    persistenceStage = null;
     finished = true;
     sse.send('error', {
       conversation_id: activeConvId,
+      correlation_id: correlationId,
+      execution_id: executionId,
       code: error.code,
       message: error.message,
       failure: error.failure || null,
-      retryable: retryabilityForError(error.code),
+      retryable: typeof error.retryable === 'boolean' ? error.retryable : retryabilityForError(error.code),
       investigation_outcome: investigationOutcomeFromTransportError({
         code: error.code, organizationId: org.id,
       }),
@@ -1431,6 +1593,15 @@ exports.chatStream = async (req, res, next) => {
     });
     return undefined;
   } catch (error) {
+    if (!requestMetricRecorded) {
+      revMetrics.record('rev_requests_total', 1, { outcome: 'failure' });
+      revMetrics.observe('rev_request', Date.now() - startedAt);
+      requestMetricRecorded = true;
+    }
+    if (persistenceStage) {
+      revMetrics.record('rev_persistence_failures_total', 1, { stage: persistenceStage });
+      persistenceStage = null;
+    }
     if (org && activeConvId && sequenceNumber) {
       try {
         await _insertRevMessage({
@@ -1445,20 +1616,23 @@ exports.chatStream = async (req, res, next) => {
           titleHint: _generateTitle(validated.message), increment: reuseUserMessage ? 1 : 2,
         });
       } catch (persistenceError) {
-        logger.error('rev_stream_failure_persistence_failed', { correlationId, errorType: persistenceError.name });
+        revMetrics.record('rev_persistence_failures_total', 1, { stage: 'failed_turn_write' });
+        logger.error('rev_stream_failure_persistence_failed', { correlationId, executionId, errorType: persistenceError.name });
       }
     }
     if (sse) {
       finished = true;
       sse.send('error', {
         conversation_id: activeConvId,
+        correlation_id: correlationId,
+        execution_id: executionId,
         code: 'STREAM_FAILED',
         message: 'Rev could not complete this response. Please retry.',
         retryable: true,
       });
       sse.end();
       logger.error('rev_stream_unhandled', {
-        correlationId, errorType: error.name, statusCode: error.statusCode,
+        correlationId, executionId, errorType: error.name, statusCode: error.statusCode,
       });
       return undefined;
     }

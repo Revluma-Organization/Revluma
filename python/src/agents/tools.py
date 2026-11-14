@@ -720,7 +720,9 @@ def run_tool(tool_name: str, organization_id: str, db: Any, params: dict | None 
             result = _HANDLERS[tool_name](organization_id, db, {**params, "_now": now}, window)
         result.store_ids = store_ids
     except Exception as exc:  # defensive: a tool must never abort the investigation
-        logger.warning("rev_tool_failed tool=%s error_type=%s", tool_name, type(exc).__name__)
+        from ..intelligence.trace_context import correlation_id_var, execution_id_var
+        logger.warning("rev_tool_failed tool=%s error_type=%s correlation_id=%s execution_id=%s",
+                       tool_name, type(exc).__name__, correlation_id_var.get(), execution_id_var.get())
         result = ToolResult(tool_name, STATUS_UNAVAILABLE,
                             warnings=["tool_execution_failed"],
                             data_sources=spec.data_sources)

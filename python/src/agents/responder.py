@@ -124,8 +124,9 @@ def compose_conversational(message: str, understanding, history_text: str,
                 "provider_request_id": getattr(exc, "request_id", None),
             },
         )
-        # Never misrepresent a failed provider call as a successful answer.
-        return _static_conversational(message, understanding)
+        # Propagate the typed provider failure to the execution boundary; a
+        # canned greeting must never be persisted as a successful model answer.
+        raise
 
 
 def _static_conversational(message: str, understanding) -> str:
@@ -206,7 +207,7 @@ def compose_knowledge(message: str, understanding, history_text: str,
                             "failure_category": getattr(exc, "category", None),
                             "provider_status": str(getattr(exc, "status", "unknown")),
                             "correlation_id": correlation_id})
-        return "I'm temporarily unable to generate a response. Please try again shortly."
+        raise
 
 
 # ── Capability ────────────────────────────────────────────────────────────────
@@ -244,7 +245,7 @@ def compose_clarification(message: str, understanding, history_text: str) -> str
     try:
         return sanitise(_call(FAST_ROLE, prompt, 120, 8.0))
     except Exception:
-        return "Say a bit more about what you're after and I'll dig in."
+        raise
 
 
 # ── Store-data-needed but no store ────────────────────────────────────────────

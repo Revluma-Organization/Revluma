@@ -80,7 +80,8 @@ const args = {
   userId: '22222222-2222-4222-8222-222222222222',
   message: 'What happened to revenue last week?',
   conversationId: '33333333-3333-4333-8333-333333333333',
-  correlationId: 'corr-1',
+  correlationId: '11111111-1111-4111-8111-111111111111',
+  executionId: '22222222-2222-4222-8222-222222222222',
   contextPayload: { currency: 'USD' },
 };
 
@@ -109,13 +110,19 @@ test('forwards plan/step/evidence frames and returns the validated final payload
   // Contract: authenticated, correlated, versioned, read-only request.
   assert.equal(request.url, 'http://python.test/rev/stream');
   assert.equal(request.init.headers['X-Internal-Key'], 'test-internal-key');
-  assert.equal(request.init.headers['X-Correlation-ID'], 'corr-1');
+  assert.equal(request.init.headers['X-Correlation-ID'], args.correlationId);
+  assert.equal(request.init.headers['X-Execution-ID'], args.executionId);
+  assert.notEqual(request.init.headers['X-Execution-ID'], request.init.headers['X-Correlation-ID']);
   assert.equal(request.init.headers.Accept, 'text/event-stream');
   const body = JSON.parse(request.init.body);
   assert.equal(body.contract_version, '1.0');
   assert.equal(body.organization_id, args.organizationId);
   assert.equal(body.conversation_id, args.conversationId);
   assert.equal(body.message, args.message);
+  assert.equal(body.correlation_id, args.correlationId);
+  assert.equal(body.execution_id, args.executionId);
+  assert.equal(body.context_payload.correlation_id, args.correlationId);
+  assert.equal(body.context_payload.execution_id, args.executionId);
   assert.equal(body.execute, undefined);
 });
 
@@ -208,6 +215,11 @@ test('an unconfigured deployment fails closed without calling Python', async () 
     const result = await fresh.streamInvestigation({ ...args });
     assert.equal(result.success, false);
     assert.equal(result.error.code, 'INTELLIGENCE_NOT_CONFIGURED');
+    assert.equal(result.correlationId, args.correlationId);
+    assert.equal(result.executionId, args.executionId);
+    assert.equal(result.error.failure.correlation_id, args.correlationId);
+    assert.equal(result.error.failure.execution_id, args.executionId);
+    assert.equal(result.error.failure.retryable, true);
     assert.equal(called, false);
   } finally {
     process.env.PYTHON_SERVICE_URL = saved.url;

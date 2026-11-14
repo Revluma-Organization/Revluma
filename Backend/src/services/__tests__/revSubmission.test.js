@@ -20,6 +20,11 @@ function rejects(body, code) {
   assert.throws(() => validateSubmission(body), error => error.code === code);
 }
 
+function transactionCapable(prisma) {
+  prisma.$transaction = callback => callback(prisma);
+  return prisma;
+}
+
 test('shared question bound remains 2000 characters', () => {
   assert.equal(MAX_QUESTION_LENGTH, 2000);
 });
@@ -88,7 +93,7 @@ test('first new-conversation acceptance creates deterministic conversation and o
     $queryRaw: () => [],
     $executeRaw: (strings, ...values) => { calls.push({ sql: strings.join('?'), values }); return 1; },
   };
-  const result = await acceptSubmission({ prisma, organizationId: ORG, userId: USER, message: 'Revenue?', requestId: REQ });
+  const result = await acceptSubmission({ prisma: transactionCapable(prisma), organizationId: ORG, userId: USER, message: 'Revenue?', requestId: REQ });
   assert.equal(result.duplicate, false);
   assert.equal(result.conversationId, uuidv5(REQ, REQUEST_CONVERSATION_NAMESPACE));
   assert.equal(calls.length, 2);
@@ -97,13 +102,46 @@ test('first new-conversation acceptance creates deterministic conversation and o
   assert.equal(calls[1].values.includes(REQ), true);
 });
 
+test('failed first-message insertion rolls back newly created conversation atomically', async () => {
+  const committed = [];
+  let transactionCalls = 0;
+  const prisma = {
+    $queryRaw: () => [],
+    $transaction: async callback => {
+      transactionCalls += 1;
+      const staged = [];
+      const tx = {
+        $queryRaw: prisma.$queryRaw,
+        $executeRaw: async strings => {
+          const sql = strings.join('?');
+          if (sql.includes('INSERT INTO conversation_messages')) throw new Error('message insert failed');
+          staged.push(sql);
+          return 1;
+        },
+      };
+      try {
+        const result = await callback(tx);
+        committed.push(...staged);
+        return result;
+      } catch (error) {
+        staged.length = 0;
+        throw error;
+      }
+    },
+  };
+
+  await assert.rejects(acceptSubmission({ prisma, organizationId: ORG, userId: USER, message: 'Revenue?', requestId: REQ }), /message insert failed/);
+  assert.equal(transactionCalls, 1);
+  assert.deepEqual(committed, [], 'the new conversation write must not commit without its accepted user message');
+});
+
 test('existing-conversation acceptance verifies ownership before inserting', async () => {
   const calls = [];
   const prisma = {
     $queryRaw: (strings) => { const sql = strings.join('?'); calls.push(sql); return sql.includes('FROM conversations') ? [{ organization_id: ORG }] : []; },
     $executeRaw: () => 1,
   };
-  const result = await acceptSubmission({ prisma, organizationId: ORG, userId: USER, message: 'Revenue?', requestId: REQ, requestedConversationId: CONV });
+  const result = await acceptSubmission({ prisma: transactionCapable(prisma), organizationId: ORG, userId: USER, message: 'Revenue?', requestId: REQ, requestedConversationId: CONV });
   assert.equal(result.conversationId, CONV);
   assert.match(calls[1], /SELECT organization_id FROM conversations/);
 });
@@ -113,7 +151,7 @@ for (const [name, row, code, status] of [
   ['foreign conversation', { organization_id: USER }, 'FORBIDDEN', 403],
 ]) test(`rejects ${name}`, async () => {
   const prisma = { $queryRaw: (strings) => strings.join('?').includes('FROM conversations') ? (row ? [row] : []) : [], $executeRaw: () => { throw new Error('must not persist'); } };
-  await assert.rejects(acceptSubmission({ prisma, organizationId: ORG, userId: USER, message: 'Revenue?', requestId: REQ, requestedConversationId: CONV }), error => error.code === code && error.statusCode === status);
+  await assert.rejects(acceptSubmission({ prisma: transactionCapable(prisma), organizationId: ORG, userId: USER, message: 'Revenue?', requestId: REQ, requestedConversationId: CONV }), error => error.code === code && error.statusCode === status);
 });
 
 for (const [name, row, requested] of [
@@ -139,7 +177,7 @@ test('concurrent insert loser replays winner and does not start another investig
     $queryRaw: (strings) => { const sql = strings.join('?'); if (sql.includes('SELECT organization_id FROM conversations')) return [{ organization_id: ORG }]; acceptedLookups += 1; return acceptedLookups === 1 ? [] : [accepted()]; },
     $executeRaw: () => { inserts += 1; return 0; },
   };
-  const result = await acceptSubmission({ prisma, organizationId: ORG, userId: USER, message: 'Revenue?', requestId: REQ, requestedConversationId: CONV });
+  const result = await acceptSubmission({ prisma: transactionCapable(prisma), organizationId: ORG, userId: USER, message: 'Revenue?', requestId: REQ, requestedConversationId: CONV });
   assert.equal(result.duplicate, true);
   assert.equal(inserts, 1);
 });

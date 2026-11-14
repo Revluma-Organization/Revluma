@@ -89,12 +89,16 @@ def test_05_retention_question_invokes_retention_only():
     assert r["orchestration"]["selected_specialists"] == ["retention"]
 
 
-def test_06_unsupported_write_is_not_dispatched():
+def test_06_unsupported_write_is_not_dispatched(monkeypatch):
+    from src.agents import responder
+    monkeypatch.setattr(responder, "compose_conversational", lambda *a, **k: "I can explain, but cannot make store changes.")
     r = run_investigation(ORG, USER, "Change my product prices now", db=workspace_db(), now=NOW, persist=False)
     assert r["orchestration"]["state"] == "unsupported" and not r["orchestration"]["selected_specialists"]
 
 
-def test_07_genuinely_ambiguous_message_clarifies_without_tools():
+def test_07_genuinely_ambiguous_message_clarifies_without_tools(monkeypatch):
+    from src.agents import responder
+    monkeypatch.setattr(responder, "compose_conversational", lambda *a, **k: "What would you like help with?")
     r = run_investigation(ORG, USER, "Can you help?", db=workspace_db(), now=NOW, persist=False)
     assert r["response_type"] in {"chat", "clarification"}
     assert not r["orchestration"]["execution_records"]
@@ -290,7 +294,9 @@ def test_39_service_unavailable_is_transient_and_bounded():
     assert len(calls) == 2 and results[0]["status"] == "error"
 
 
-def test_40_database_failure_returns_safe_failed_orchestration():
+def test_40_database_failure_returns_safe_failed_orchestration(monkeypatch):
+    from src.agents import responder
+    monkeypatch.setattr(responder, "compose_conversational", lambda *a, **k: "I could not verify the store data.")
     db = workspace_db(fail=("FROM stores",))
     r = run_investigation(ORG, USER, "Revenue", db=db, now=NOW, persist=False)
     assert r["orchestration"]["state"] == "failed" and r["investigation_outcome"]["outcome"] != "success"
