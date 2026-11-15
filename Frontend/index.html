@@ -84,11 +84,6 @@
         /* Specific Elements & Forms */
         html.light-mode .glass { background: rgba(255,255,255,0.85) !important; border-color: rgba(0,0,0,0.1) !important; }
         html.light-mode .glass-btn { background: rgba(0,0,0,0.05) !important; color: #0f172a !important; border-color: rgba(0,0,0,0.1) !important; }
-        html.light-mode .premium-headline { background: linear-gradient(135deg, #0f172a, #334155 45%, #475569) !important; -webkit-background-clip: text !important; background-clip: text !important; }
-        html.light-mode .premium-headline span { color: #0f172a !important; }
-        html.light-mode .hero-video { filter: brightness(0.95) saturate(1.1) contrast(1.05) !important; opacity: 0.15 !important; }
-        html.light-mode .hero-video-overlay { background: linear-gradient(180deg, rgba(248,250,252, 0.5), rgba(248,250,252, 1)) !important; }
-        html.light-mode .grid-bg { background-image: linear-gradient(to right, #cbd5e1 1px, transparent 1px), linear-gradient(to bottom, #cbd5e1 1px, transparent 1px) !important; }
         html.light-mode section[style*="linear-gradient"], html.light-mode div[style*="linear-gradient"] { background: #f8fafc !important; box-shadow: none !important; }
         html.light-mode .hiw-card, html.light-mode .hiw-node { background: #ffffff !important; border-color: rgba(0,0,0,0.1) !important; }
         html.light-mode .video-promo-title, html.light-mode .hiw-title, html.light-mode .logo-name, html.light-mode .promo-label { color: #0f172a !important; } /* Fixed missing video text */
@@ -169,13 +164,6 @@
             }
         }
 
-        .grid-bg {
-            background-image: linear-gradient(to right, #1f1f1f 1px, transparent 1px),
-                linear-gradient(to bottom, #1f1f1f 1px, transparent 1px);
-            background-size: 4.5rem 4.5rem;
-            mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, #000 70%, transparent 100%);
-        }
-
         [x-cloak] {
             display: none !important;
         }
@@ -191,84 +179,601 @@
             transform: translateY(0);
         }
 
-        .premium-headline {
-            font-family: 'Playfair Display', serif;
-            font-weight: 800;
-            letter-spacing: -0.03em;
-            color: transparent;
-            background: linear-gradient(135deg, #ffffff, #d8d8ff 45%, #b5b5ff);
-            background-clip: text;
-            -webkit-background-clip: text;
-            text-shadow: none;
-            position: relative;
-            display: inline-block;
-            animation: shimmerText 4.5s ease-in-out infinite alternate, floatText 7s ease-in-out infinite;
+        /* ── Revluma intelligence hero ── */
+        :root {
+            --hero-ink: #191a20;
+            --hero-muted: #687080;
+            --hero-blue: #4334c9;
+            --hero-blue-deep: #3325a9;
+            --hero-blue-soft: #f2f3ff;
+            --hero-line: #d9dce8;
+            --hero-backdrop: #eef0f4;
         }
 
-        .premium-headline::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.35), transparent 22%);
-            opacity: 0.65;
-            pointer-events: none;
-            mix-blend-mode: screen;
+        nav.hero-nav {
+            position: fixed !important;
+            z-index: 50;
+            top: 24px !important;
+            left: 50% !important;
+            width: min(calc(100% - 76px), 1260px) !important;
+            max-width: 1260px !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            transform: translateX(-50%) !important;
         }
 
-        .premium-headline span {
-            color: rgba(255, 255, 255, 0.9);
-            display: inline-block;
-        }
-
-        .hero-video {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            object-position: center top;
-            opacity: 0.94;
-            filter: brightness(0.42) saturate(1.1) contrast(1.05);
-            z-index: 0;
-            pointer-events: none;
-        }
-
-        .bounce-logo-container {
-            position: absolute;
-            inset: 0;
-            z-index: 2;
-            pointer-events: none;
-        }
-
-        .bounce-logo {
-            position: absolute;
-            width: clamp(48px, 8vw, 96px);
-            height: clamp(48px, 8vw, 96px);
-            border-radius: 18px;
-            overflow: hidden;
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
-            display: flex;
+        nav.hero-nav .hero-nav-inner {
+            display: grid;
+            min-height: 52px;
+            grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr);
             align-items: center;
-            justify-content: center;
+            gap: 20px;
+            padding: 0;
         }
 
-        .bounce-logo img {
-            width: 70%;
-            height: 70%;
+        nav.hero-nav .hero-brand {
+            display: inline-flex;
+            width: max-content;
+            align-items: center;
+            gap: 9px;
+            justify-self: start;
+            color: var(--hero-ink);
+            text-decoration: none;
+        }
+
+        nav.hero-nav .hero-brand-mark {
+            display: block;
+            width: 31px;
+            height: 31px;
+            flex: 0 0 auto;
             object-fit: contain;
         }
 
-        .hero-video-overlay {
+        nav.hero-nav .hero-brand-name {
+            color: #202127;
+            font-family: 'DM Sans', 'Satoshi', sans-serif;
+            font-size: 16px;
+            font-weight: 750;
+            letter-spacing: -0.045em;
+            line-height: 1;
+        }
+
+        nav.hero-nav .hero-nav-links {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: clamp(18px, 2.4vw, 34px);
+            white-space: nowrap;
+        }
+
+        nav.hero-nav .hero-nav-links a,
+        nav.hero-nav #login-link {
+            color: #656b77 !important;
+            font-family: 'DM Sans', 'Satoshi', sans-serif;
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0;
+            line-height: 1.2;
+            text-decoration: none;
+            transition: color 180ms ease;
+        }
+
+        nav.hero-nav .hero-nav-links a:hover,
+        nav.hero-nav #login-link:hover { color: var(--hero-blue) !important; }
+
+        nav.hero-nav .hero-auth-nav {
+            display: flex;
+            align-items: center;
+            justify-self: end;
+            gap: 19px;
+        }
+
+        nav.hero-nav #signup-link,
+        nav.hero-nav #dashboard-link:not(.hidden) {
+            display: inline-flex;
+            min-height: 38px;
+            align-items: center;
+            justify-content: center;
+            padding: 0 19px;
+            border: 1px solid #191a20;
+            border-radius: 999px;
+            color: #fff !important;
+            background: #191a20 !important;
+            box-shadow: 0 5px 13px rgba(25, 26, 32, 0.12);
+            font-family: 'DM Sans', 'Satoshi', sans-serif;
+            font-size: 12px;
+            font-weight: 650;
+            line-height: 1;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: background-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+        }
+
+        nav.hero-nav #signup-link:hover,
+        nav.hero-nav #dashboard-link:hover {
+            color: #fff !important;
+            background: #30313a !important;
+            box-shadow: 0 7px 17px rgba(25, 26, 32, 0.16);
+            transform: translateY(-1px);
+        }
+
+        nav.hero-nav .hero-nav-toggle {
+            display: none;
+            border: 1px solid #e2e4ec !important;
+            color: #313440 !important;
+            background: #fff !important;
+        }
+
+        nav.hero-nav :focus-visible,
+        .hero-stage a:focus-visible,
+        .hero-stage button:focus-visible {
+            outline: 3px solid rgba(67, 52, 201, 0.45);
+            outline-offset: 3px;
+        }
+
+        .hero-mobile-menu {
+            position: fixed;
+            z-index: 49;
+            top: 77px;
+            right: 18px;
+            left: 18px;
+            padding: 18px;
+            border: 1px solid #e5e7ee;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: 0 18px 42px rgba(28, 31, 42, 0.14);
+            backdrop-filter: blur(16px);
+        }
+
+        .hero-mobile-menu-links { display: flex; flex-direction: column; gap: 3px; }
+        .hero-mobile-menu a {
+            display: block;
+            padding: 11px 8px;
+            color: #555b68;
+            font-family: 'DM Sans', 'Satoshi', sans-serif;
+            font-size: 14px;
+            font-weight: 550;
+            text-decoration: none;
+        }
+        .hero-mobile-menu a:hover { color: var(--hero-blue); }
+        .hero-mobile-menu #mobile-dashboard-link.hidden { display: none; }
+        .hero-mobile-menu .hero-mobile-cta {
+            margin-top: 8px;
+            padding: 13px 16px;
+            border-radius: 999px;
+            color: #fff;
+            background: #191a20;
+            text-align: center;
+        }
+
+        .hero-stage {
+            position: relative;
+            isolation: isolate;
+            display: flex;
+            min-height: 100vh;
+            min-height: 100svh;
+            min-height: 100dvh;
+            flex-direction: column;
+            overflow: hidden;
+            padding: clamp(104px, 12vh, 130px) clamp(24px, 5.2vw, 76px) 22px;
+            color: var(--hero-ink);
+            background: var(--hero-backdrop);
+        }
+
+        .hero-stage::before {
+            content: '';
             position: absolute;
-            inset: 0;
-            background: radial-gradient(circle at top center, rgba(255, 255, 255, 0.05), transparent 30%),
-                linear-gradient(180deg, rgba(8, 8, 10, 0.45), rgba(5, 5, 7, 0.8));
-            z-index: 1;
+            z-index: -1;
+            inset: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.84);
+            border-radius: 7px;
+            background: #fff;
+            box-shadow: 0 20px 58px rgba(32, 38, 52, 0.105), 0 4px 15px rgba(32, 38, 52, 0.045);
             pointer-events: none;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            width: min(100%, 1210px);
+            flex: 1 0 auto;
+            flex-direction: column;
+            align-items: center;
+            margin: 0 auto;
+        }
+
+        .hero-copy {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            width: min(100%, 1050px);
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .hero-eyebrow {
+            margin: 0 0 17px;
+            color: var(--hero-blue);
+            font-family: 'DM Sans', 'Satoshi', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.17em;
+            line-height: 1.4;
+            text-transform: uppercase;
+            animation: hero-copy-enter 500ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+        }
+
+        .hero-title {
+            max-width: 1120px;
+            margin: 0;
+            color: #191a20;
+            font-family: 'Playfair Display', Georgia, serif;
+            font-size: clamp(3.35rem, 6.1vw, 5.15rem);
+            font-weight: 700;
+            letter-spacing: -0.052em;
+            line-height: 0.99;
+            text-wrap: balance;
+            animation: hero-copy-enter 580ms cubic-bezier(0.2, 0.7, 0.2, 1) 45ms both;
+        }
+
+        .hero-title-line { display: block; }
+
+        .hero-supporting {
+            margin: 16px 0 0;
+            color: #3b3e47;
+            font-family: 'DM Sans', 'Satoshi', sans-serif;
+            font-size: clamp(1rem, 1.45vw, 1.18rem);
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            line-height: 1.4;
+            animation: hero-copy-enter 520ms cubic-bezier(0.2, 0.7, 0.2, 1) 110ms both;
+        }
+
+        .hero-description {
+            max-width: 660px;
+            margin: 8px 0 0;
+            color: var(--hero-muted);
+            font-family: 'DM Sans', 'Satoshi', sans-serif;
+            font-size: clamp(0.9rem, 1.05vw, 0.98rem);
+            font-weight: 400;
+            line-height: 1.55;
+            text-wrap: pretty;
+            animation: hero-copy-enter 520ms cubic-bezier(0.2, 0.7, 0.2, 1) 160ms both;
+        }
+
+        .hero-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 20px;
+            animation: hero-copy-enter 520ms cubic-bezier(0.2, 0.7, 0.2, 1) 205ms both;
+        }
+
+        .hero-cta {
+            display: inline-flex;
+            min-height: 46px;
+            align-items: center;
+            justify-content: center;
+            gap: 9px;
+            padding: 0 22px;
+            border: 1px solid transparent;
+            border-radius: 999px;
+            font-family: 'DM Sans', 'Satoshi', sans-serif;
+            font-size: 13px;
+            font-weight: 650;
+            letter-spacing: -0.01em;
+            line-height: 1.2;
+            text-align: center;
+            text-decoration: none;
+            transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+        }
+
+        .hero-cta-primary {
+            color: #fff;
+            background: #191a20;
+            box-shadow: 0 7px 17px rgba(25, 26, 32, 0.15);
+        }
+        .hero-cta-primary:hover {
+            color: #fff;
+            background: #30313a;
+            box-shadow: 0 9px 20px rgba(25, 26, 32, 0.18);
+            transform: translateY(-1px);
+        }
+        .hero-cta-secondary {
+            color: #282a32;
+            border-color: #d9dce4;
+            background: #fff;
+        }
+        .hero-cta-secondary:hover {
+            color: #17181d;
+            border-color: #b7bcc8;
+            background: #fafbfc;
+            transform: translateY(-1px);
+        }
+        .hero-cta-arrow { width: 15px; height: 15px; flex: 0 0 auto; transition: transform 180ms ease; }
+        .hero-cta:hover .hero-cta-arrow { transform: translateX(2px); }
+
+        .hero-waitlist-note {
+            display: flex;
+            min-height: 18px;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            margin-top: 8px;
+            color: #8a8f9a;
+            font-family: 'DM Sans', 'Satoshi', sans-serif;
+            font-size: 10px;
+        }
+        .hero-waitlist-link {
+            padding: 0;
+            border: 0;
+            color: var(--hero-blue);
+            background: transparent;
+            font: inherit;
+            font-weight: 650;
+            text-decoration: underline;
+            text-decoration-color: rgba(67, 52, 201, 0.35);
+            text-underline-offset: 3px;
+            cursor: pointer;
+        }
+
+        .hero-platforms {
+            position: relative;
+            width: min(100%, 1120px);
+            height: clamp(205px, 29vh, 285px);
+            flex: 0 0 auto;
+            margin: auto auto 0;
+            isolation: isolate;
+        }
+
+        .hero-flow-lines {
+            position: absolute;
+            z-index: 0;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            pointer-events: none;
+        }
+        .hero-flow-lines--mobile { display: none; }
+        .hero-flow-path {
+            fill: none;
+            stroke: var(--hero-line);
+            stroke-width: 1.15;
+            stroke-linecap: round;
+        }
+        .hero-flow-pulse { fill: var(--hero-blue); opacity: 0.58; }
+
+        .hero-satellite {
+            position: absolute;
+            z-index: 2;
+            display: flex;
+            width: 174px;
+            min-height: 62px;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 11px;
+            border: 1px solid #eceef3;
+            border-radius: 13px;
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: 0 8px 20px rgba(35, 41, 55, 0.075), 0 2px 5px rgba(35, 41, 55, 0.035);
+            transform: translate(-50%, -50%);
+            animation: hero-data-float 7.4s ease-in-out infinite;
+            transition: border-color 220ms ease, box-shadow 220ms ease, background-color 220ms ease;
+        }
+        .hero-satellite:hover {
+            border-color: #d9dced;
+            background: #fff;
+            box-shadow: 0 11px 24px rgba(35, 41, 55, 0.11), 0 0 0 3px rgba(67, 52, 201, 0.045);
+        }
+        .hero-satellite-icon {
+            width: 19px;
+            height: 19px;
+            flex: 0 0 auto;
+            color: #353947;
+            stroke: currentColor;
+            stroke-width: 1.65;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .hero-satellite-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+        .hero-satellite-title {
+            color: #292c34;
+            font-family: 'DM Sans', 'Satoshi', sans-serif;
+            font-size: 11px;
+            font-weight: 650;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .hero-satellite-description {
+            overflow: hidden;
+            color: #858b98;
+            font-family: 'DM Sans', 'Satoshi', sans-serif;
+            font-size: 9px;
+            font-weight: 400;
+            line-height: 1.25;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .hero-satellite--products { left: 12%; top: 23%; animation-delay: -1.2s; }
+        .hero-satellite--orders { left: 29%; top: 50%; animation-delay: -3.1s; }
+        .hero-satellite--inventory { left: 12%; top: 77%; animation-delay: -4.4s; }
+        .hero-satellite--customers { left: 88%; top: 23%; animation-delay: -2.5s; }
+        .hero-satellite--checkouts { left: 71%; top: 50%; animation-delay: -5.3s; }
+        .hero-satellite--returns { left: 88%; top: 77%; animation-delay: -0.7s; }
+
+        .hero-network-hub {
+            position: absolute;
+            z-index: 3;
+            top: 50%;
+            left: 50%;
+            display: grid;
+            width: 70px;
+            height: 70px;
+            place-items: center;
+            border: 1px solid rgba(67, 52, 201, 0.23);
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 0 0 7px rgba(67, 52, 201, 0.045), 0 10px 29px rgba(61, 48, 177, 0.13);
+            transform: translate(-50%, -50%);
+            animation: hero-hub-breathe 4.8s ease-in-out infinite;
+        }
+        .hero-network-hub img { width: 39px; height: 39px; object-fit: contain; }
+        .hero-hub-label {
+            position: absolute;
+            z-index: 3;
+            top: calc(50% + 42px);
+            left: 50%;
+            color: #555a67;
+            font-family: 'DM Sans', 'Satoshi', sans-serif;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.09em;
+            line-height: 1.2;
+            text-transform: none;
+            white-space: nowrap;
+            transform: translateX(-50%);
+        }
+
+        @keyframes hero-copy-enter {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes hero-data-float {
+            0%, 100% { translate: 0 0; }
+            50% { translate: 0 -3px; }
+        }
+        @keyframes hero-hub-breathe {
+            0%, 100% { box-shadow: 0 0 0 7px rgba(67, 52, 201, 0.045), 0 10px 29px rgba(61, 48, 177, 0.13); }
+            50% { box-shadow: 0 0 0 9px rgba(67, 52, 201, 0.065), 0 13px 32px rgba(61, 48, 177, 0.17); }
+        }
+
+        @media (max-width: 1100px) {
+            nav.hero-nav { width: min(calc(100% - 56px), 1260px) !important; }
+            nav.hero-nav .hero-nav-inner { grid-template-columns: minmax(130px, 1fr) auto minmax(130px, 1fr); gap: 12px; }
+            nav.hero-nav .hero-nav-links { gap: 18px; }
+            nav.hero-nav .hero-nav-links a { font-size: 11px; }
+            .hero-stage { padding-right: 5vw; padding-left: 5vw; }
+            .hero-title { font-size: clamp(3.05rem, 6.2vw, 4.55rem); }
+            .hero-platforms { height: clamp(195px, 26vh, 240px); }
+            .hero-satellite { width: 136px; min-height: 54px; gap: 8px; padding: 7px 9px; }
+            .hero-satellite-description { display: none; }
+            .hero-satellite--products, .hero-satellite--customers { top: 17%; }
+            .hero-satellite--orders, .hero-satellite--checkouts { top: 50%; }
+            .hero-satellite--inventory, .hero-satellite--returns { top: 83%; }
+        }
+
+        @media (max-width: 767px) {
+            nav.hero-nav { top: 17px !important; width: calc(100% - 42px) !important; }
+            nav.hero-nav .hero-nav-inner { display: flex; min-height: 46px; justify-content: space-between; }
+            nav.hero-nav .hero-brand-mark { width: 29px; height: 29px; }
+            nav.hero-nav .hero-brand-name { font-size: 15px; }
+            nav.hero-nav .hero-nav-links,
+            nav.hero-nav .hero-auth-nav { display: none; }
+            nav.hero-nav .hero-nav-toggle {
+                display: grid;
+                width: 38px;
+                height: 38px;
+                place-items: center;
+                padding: 0;
+                border: 1px solid #e2e4ec;
+                border-radius: 50%;
+            }
+            .hero-stage {
+                min-height: 100vh;
+                min-height: 100svh;
+                min-height: 100dvh;
+                padding: 83px 22px 15px;
+            }
+            .hero-stage::before { inset: 8px; border-radius: 5px; }
+            .hero-content { flex: 1 0 auto; justify-content: flex-start; }
+            .hero-eyebrow { max-width: 100%; margin-bottom: 14px; font-size: 9px; letter-spacing: 0.13em; }
+            .hero-title { max-width: 620px; font-size: clamp(1.5rem, 7.5vw, 2rem); letter-spacing: -0.045em; line-height: 1.08; }
+            .hero-supporting { max-width: 380px; margin-top: 13px; font-size: 1rem; line-height: 1.38; }
+            .hero-description { max-width: 390px; margin-top: 7px; font-size: 0.88rem; line-height: 1.48; }
+            .hero-actions { display: grid; width: min(100%, 380px); grid-template-columns: 1fr; gap: 8px; margin-top: 16px; }
+            .hero-cta { width: 100%; min-height: 44px; padding-inline: 18px; font-size: 12px; }
+            .hero-waitlist-note { margin-top: 6px; }
+            .hero-platforms { width: min(100%, 510px); height: clamp(220px, 29vh, 248px); margin-top: 13px; }
+            .hero-flow-lines--desktop { display: none; }
+            .hero-flow-lines--mobile { display: block; }
+            .hero-satellite { width: clamp(108px, 34vw, 132px); min-height: 54px; gap: 7px; padding: 7px 8px; border-radius: 11px; }
+            .hero-satellite-icon { width: 17px; height: 17px; }
+            .hero-satellite-title { font-size: 10px; }
+            .hero-satellite-description { font-size: 8px; }
+            .hero-satellite--products { left: 20%; top: 16%; }
+            .hero-satellite--orders { left: 80%; top: 16%; }
+            .hero-satellite--inventory { left: 20%; top: 50%; }
+            .hero-satellite--customers { left: 80%; top: 50%; }
+            .hero-satellite--checkouts { left: 20%; top: 87%; }
+            .hero-satellite--returns { left: 80%; top: 87%; }
+            .hero-network-hub { width: 56px; height: 56px; }
+            .hero-network-hub img { width: 32px; height: 32px; }
+            .hero-hub-label { top: calc(50% + 34px); font-size: 8px; letter-spacing: 0.07em; }
+        }
+
+        @media (max-width: 380px) {
+            nav.hero-nav { width: calc(100% - 34px) !important; }
+            .hero-stage { padding-right: 16px; padding-left: 16px; }
+            .hero-eyebrow { font-size: 8px; letter-spacing: 0.12em; }
+            .hero-title { font-size: clamp(1.5rem, 7.5vw, 1.85rem); }
+            .hero-supporting { font-size: 0.95rem; }
+            .hero-description { font-size: 0.84rem; }
+            .hero-platforms { height: 220px; }
+        }
+
+        @media (max-width: 767px) and (max-height: 720px) {
+            .hero-stage { padding-top: 78px; padding-bottom: 9px; }
+            .hero-eyebrow { margin-bottom: 10px; }
+            .hero-title { font-size: clamp(1.5rem, 7.4vw, 1.9rem); line-height: 1.05; }
+            .hero-supporting { margin-top: 9px; font-size: 0.93rem; }
+            .hero-description { margin-top: 5px; font-size: 0.82rem; line-height: 1.38; }
+            .hero-actions { gap: 6px; margin-top: 11px; }
+            .hero-cta { min-height: 40px; }
+            .hero-waitlist-note { min-height: 16px; margin-top: 4px; }
+            .hero-platforms { height: 184px; margin-top: 8px; }
+            .hero-satellite { min-height: 50px; }
+            .hero-satellite--products, .hero-satellite--orders { top: 14%; }
+            .hero-satellite--inventory, .hero-satellite--customers { top: 50%; }
+            .hero-satellite--checkouts, .hero-satellite--returns { top: 86%; }
+            .hero-hub-label { top: calc(50% + 28px); font-size: 7.5px; }
+        }
+
+        @media (min-width: 768px) and (max-height: 840px) {
+            .hero-stage { padding-top: 98px; padding-bottom: 15px; }
+            .hero-eyebrow { margin-bottom: 12px; }
+            .hero-title { font-size: clamp(2.9rem, 5vw, 4.1rem); }
+            .hero-supporting { margin-top: 11px; }
+            .hero-description { margin-top: 6px; }
+            .hero-actions { margin-top: 15px; }
+            .hero-platforms { height: clamp(200px, 23vh, 220px); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto !important; }
+            nav.hero-nav *,
+            .hero-mobile-menu *,
+            #hero-landing *,
+            #hero-landing::before {
+                animation: none !important;
+                transition: none !important;
+                scroll-behavior: auto !important;
+            }
+            #hero-landing .hero-flow-pulse { display: none; }
+            #hero-landing .hero-satellite { translate: 0 0; }
+            #hero-landing .hero-network-hub {
+                animation: none !important;
+                box-shadow: 0 0 0 7px rgba(67, 52, 201, 0.045), 0 10px 29px rgba(61, 48, 177, 0.13);
+            }
         }
 
         .video-promo-section {
@@ -685,38 +1190,6 @@
                 margin-right: auto;
             }
 
-            .premium-headline {
-                font-size: clamp(2.4rem, 11vw, 4rem) !important;
-                line-height: 1.05;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .premium-headline {
-                font-size: clamp(2rem, 10vw, 3rem) !important;
-            }
-        }
-
-        @keyframes shimmerText {
-            0% {
-                background-position: 0% 50%;
-            }
-
-            100% {
-                background-position: 100% 50%;
-            }
-        }
-
-        @keyframes floatText {
-
-            0%,
-            100% {
-                transform: translateY(0);
-            }
-
-            50% {
-                transform: translateY(-6px);
-            }
         }
 
         .upload-overlay {
@@ -1049,122 +1522,153 @@
       @scroll.window="scrolled = (window.pageYOffset > 50)">
 
     <!-- ── Navigation ── -->
-    <nav :class="scrolled ? 'glass shadow-sm shadow-black/30' : 'glass'" class="fixed top-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] md:w-[calc(100%-4rem)] max-w-7xl z-50 rounded-full transition-all duration-500 border border-white/10">
-        <div class="flex items-center justify-between gap-2 px-3 py-1.5">
-            <a href="/" class="flex items-center gap-2.5 transition-transform duration-300 hover:-translate-y-0.5">
-                <div class="logo-mark">
-                    <img src="assets/images/Revluma-icon.png" alt="Revluma" style="mix-blend-mode: screen;" />
-                </div>
-                <div class="logo-name-wrap">
-                    <span class="logo-name">Revluma</span>
-                </div>
+    <nav :class="scrolled ? 'glass shadow-sm shadow-black/30' : 'glass'" class="hero-nav fixed top-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] md:w-[calc(100%-4rem)] max-w-7xl z-50 transition-all duration-500" aria-label="Main navigation">
+        <div class="hero-nav-inner">
+            <a href="/" class="hero-brand" aria-label="Revluma home">
+                <img class="hero-brand-mark" src="assets/images/Revluma-icon.png" alt="" aria-hidden="true" width="31" height="31">
+                <span class="hero-brand-name">Revluma</span>
             </a>
 
-            <div class="hidden md:flex items-center gap-5 text-[10px] font-medium uppercase tracking-[0.18em] text-[#CCCCCC]">
-                <a href="#features" @click.prevent="document.getElementById('features').scrollIntoView({behavior: 'smooth'})" class="group relative hover:text-white transition-colors">Features
-                    <span class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
-                </a>
-                <a href="#pricing" @click.prevent="document.getElementById('pricing').scrollIntoView({behavior: 'smooth'})" class="group relative hover:text-white transition-colors">Pricing
-                    <span class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
-                </a>
-                <a href="#integrations" @click.prevent="document.getElementById('integrations').scrollIntoView({behavior: 'smooth'})" class="group relative hover:text-white transition-colors">Integrations
-                    <span class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
-                </a>
-                <a href="#" class="group relative hover:text-white transition-colors">Contact
-                    <span class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
-                </a>
+            <div class="hero-nav-links" aria-label="Site links">
+                <a href="#features">Features</a>
+                <a href="#how-it-works">How It Works</a>
+                <a href="#integrations">Integrations</a>
+                <a href="#pricing">Pricing</a>
             </div>
 
-            <div class="hidden md:flex items-center gap-2" id="auth-nav">
-                <a href="/dashboard/overview" id="dashboard-link" class="hidden px-4 py-1.5 rounded-full bg-white text-black/95 font-bold text-xs uppercase tracking-wide shadow-sm hover:shadow-md hover:scale-[1.02] hover:bg-white/90 transition-all duration-300 whitespace-nowrap text-[11px]">
-                    Go to Dashboard
-                </a>
-                <a href="./auth/login.html" id="login-link" class="text-[11px] font-semibold text-[#CCCCCC] hover:text-white transition-colors">Login</a>
-                <a href="./auth/signup.html" id="signup-link">
-                    <button class="bg-white text-black px-3 py-1.5 rounded-full text-[11px] font-bold hover:-translate-y-0.5 transition-transform">Get Started</button>
-                </a>
+            <div class="hero-auth-nav" id="auth-nav">
+                <a href="./auth/login.html" id="login-link">Log in</a>
+                <a href="/dashboard/overview" id="dashboard-link" class="hidden">Dashboard</a>
+                <a href="./auth/signup.html" id="signup-link">Get Started</a>
             </div>
 
-            <!-- Mobile Menu -->
-            <div class="flex items-center gap-2">
-                <!-- Mobile Menu Button -->
-                <button @click="mobileMenu = !mobileMenu" class="md:hidden p-2 rounded-full border border-white/10 bg-white/5 text-[#A1A1AA]">
-                    <svg x-show="!mobileMenu" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
-                    </svg>
-                    <svg x-show="mobileMenu" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-            </div>
+            <button @click="mobileMenu = !mobileMenu" class="hero-nav-toggle md:hidden" type="button" aria-label="Toggle navigation menu" aria-controls="mobile-menu" :aria-expanded="mobileMenu.toString()">
+                <svg x-show="!mobileMenu" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
+                </svg>
+                <svg x-show="mobileMenu" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
         </div>
     </nav>
-    
-    <!-- ── Mobile Menu ── -->
-    <div x-show="mobileMenu" x-transition.opacity x-cloak
-        class="fixed inset-x-0 top-20 z-40 rounded-b-3xl border border-white/10 bg-[#090909]/95 px-6 py-8 md:hidden">
-        <div class="flex flex-col gap-6 text-lg font-semibold uppercase tracking-wide">
-            <a href="#features" @click.prevent="document.getElementById('features').scrollIntoView({behavior: 'smooth'}); mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Features</a>
-            <a href="#pricing" @click.prevent="document.getElementById('pricing').scrollIntoView({behavior: 'smooth'}); mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Pricing</a>
-            <a href="#integrations" @click.prevent="document.getElementById('integrations').scrollIntoView({behavior: 'smooth'}); mobileMenu=false"
-                class="hover:text-[#A1A1AA] transition-colors">Integrations</a>
-            <a href="/dashboard/overview" id="mobile-dashboard-link"
-                class="hidden py-3 px-6 rounded-2xl bg-white text-black font-bold hover:scale-[1.01] hover:bg-white/90 shadow-sm transition-all block w-full text-left">Dashboard</a>
-            <a href="./auth/login.html" id="mobile-login-link" @click="mobileMenu=false"
-                class="hover:text-[#A1A1AA] transition-colors">Login</a>
-            <a href="./auth/signup.html" id="mobile-signup-link" @click="mobileMenu=false"
-                class="hover:text-[#A1A1AA] transition-colors">
-                <button
-                    class="mt-2 bg-white text-black py-4 rounded-2xl font-bold hover:-translate-y-0.5 transition-transform block w-full text-left p-0">Get
-                    Started</button>
-            </a>
+
+    <div id="mobile-menu" x-show="mobileMenu" x-transition.opacity x-cloak class="hero-mobile-menu" aria-label="Mobile navigation">
+        <div class="hero-mobile-menu-links">
+            <a href="#features" @click="mobileMenu=false">Features</a>
+            <a href="#how-it-works" @click="mobileMenu=false">How It Works</a>
+            <a href="#integrations" @click="mobileMenu=false">Integrations</a>
+            <a href="#pricing" @click="mobileMenu=false">Pricing</a>
+            <a href="./auth/login.html" id="mobile-login-link" @click="mobileMenu=false">Log in</a>
+            <a href="/dashboard/overview" id="mobile-dashboard-link" class="hidden">Dashboard</a>
+            <a href="./auth/signup.html" id="mobile-signup-link" class="hero-mobile-cta" @click="mobileMenu=false">Get Started</a>
         </div>
     </div>
 
     <!-- ── Hero ── -->
-    <section id="hero-landing"
-        class="relative min-h-[100dvh] flex flex-col items-center justify-center pt-28 pb-12 md:pt-0 md:pb-0 px-6 overflow-hidden">
-        <video autoplay muted loop playsinline class="hero-video">
-            <source src="assets/videos/growth-video.mp4" type="video/mp4">
-        </video>
-        <div class="hero-video-overlay"></div>
-        <div class="bounce-logo-container">
-            <div id="bounceLogo" class="bounce-logo">
-                <img id="bounceLogoImg" src="assets/images/shopifyLoog.png" alt="Shopify Logo">
+    <section id="hero-landing" class="hero-stage" aria-labelledby="hero-title">
+        <div class="hero-content">
+            <div class="hero-copy">
+                <p class="hero-eyebrow">AI Operational Intelligence for Commerce</p>
+                <h1 id="hero-title" class="hero-title">
+                    <span class="hero-title-line">Know what's costing</span>
+                    <span class="hero-title-line">your store revenue.</span>
+                </h1>
+                <p class="hero-supporting">Understand why. Know what to fix next.</p>
+                <p class="hero-description">Revluma turns your Shopify business data into operational intelligence, helping you uncover problems, understand what matters, and prioritize your next move.</p>
+
+                <div class="hero-actions">
+                    <a href="./auth/signup.html" class="hero-cta hero-cta-primary">
+                        Connect your Shopify store
+                        <svg class="hero-cta-arrow" aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                            <path d="M3.75 10h12.5m-5-5 5 5-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </a>
+                    <a href="#features" class="hero-cta hero-cta-secondary">
+                        Explore the platform
+                        <svg class="hero-cta-arrow" aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                            <path d="M10 3.75v12.5m-5-5 5 5 5-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </a>
+                </div>
+
+                <div class="hero-waitlist-note">
+                    <span>Still exploring?</span>
+                    <button @click="$dispatch('open-waitlist')" type="button" class="hero-waitlist-link">Join the waitlist</button>
+                </div>
+            </div>
+
+            <div class="hero-platforms" role="group" aria-label="Shopify commerce data flowing into Revluma Intelligence">
+                <svg class="hero-flow-lines hero-flow-lines--desktop" viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="hero-flow-left" x1="0" y1="0" x2="500" y2="0" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#7d8293" stop-opacity=".13"/><stop offset="1" stop-color="#5145ca" stop-opacity=".48"/>
+                        </linearGradient>
+                        <linearGradient id="hero-flow-right" x1="500" y1="0" x2="1000" y2="0" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#5145ca" stop-opacity=".48"/><stop offset="1" stop-color="#7d8293" stop-opacity=".13"/>
+                        </linearGradient>
+                    </defs>
+                    <path id="hero-flow-products" class="hero-flow-path" stroke="url(#hero-flow-left)" d="M465 143 C360 140 245 70 120 69"/>
+                    <path id="hero-flow-orders" class="hero-flow-path" stroke="url(#hero-flow-left)" d="M465 150 C390 150 350 150 290 150"/>
+                    <path id="hero-flow-inventory" class="hero-flow-path" stroke="url(#hero-flow-left)" d="M465 157 C360 160 245 230 120 231"/>
+                    <path id="hero-flow-customers" class="hero-flow-path" stroke="url(#hero-flow-right)" d="M535 143 C640 140 755 70 880 69"/>
+                    <path id="hero-flow-checkouts" class="hero-flow-path" stroke="url(#hero-flow-right)" d="M535 150 C610 150 650 150 710 150"/>
+                    <path id="hero-flow-returns" class="hero-flow-path" stroke="url(#hero-flow-right)" d="M535 157 C640 160 755 230 880 231"/>
+                    <circle class="hero-flow-pulse" r="3"><animateMotion dur="5.2s" repeatCount="indefinite" path="M120 69 C245 70 360 140 465 143"/></circle>
+                    <circle class="hero-flow-pulse" r="3"><animateMotion dur="5.7s" begin="-2.1s" repeatCount="indefinite" path="M710 150 C650 150 610 150 535 150"/></circle>
+                    <circle class="hero-flow-pulse" r="3"><animateMotion dur="6s" begin="-3.3s" repeatCount="indefinite" path="M880 231 C755 230 640 160 535 157"/></circle>
+                </svg>
+                <svg class="hero-flow-lines hero-flow-lines--mobile" viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="hero-flow-mobile-left" x1="0" y1="0" x2="500" y2="0" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#85899a" stop-opacity=".12"/><stop offset="1" stop-color="#5145ca" stop-opacity=".42"/>
+                        </linearGradient>
+                        <linearGradient id="hero-flow-mobile-right" x1="500" y1="0" x2="1000" y2="0" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#5145ca" stop-opacity=".42"/><stop offset="1" stop-color="#85899a" stop-opacity=".12"/>
+                        </linearGradient>
+                    </defs>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-left)" d="M475 143 C360 120 280 48 200 48"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-left)" d="M475 150 C365 150 270 150 200 150"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-left)" d="M475 157 C360 180 280 252 200 252"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-right)" d="M525 143 C640 120 720 48 800 48"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-right)" d="M525 150 C635 150 730 150 800 150"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-right)" d="M525 157 C640 180 720 252 800 252"/>
+                    <circle class="hero-flow-pulse" r="2.5"><animateMotion dur="5.6s" repeatCount="indefinite" path="M200 48 C280 48 360 120 475 143"/></circle>
+                    <circle class="hero-flow-pulse" r="2.5"><animateMotion dur="5.9s" begin="-2.6s" repeatCount="indefinite" path="M800 252 C720 252 640 180 525 157"/></circle>
+                </svg>
+
+                <span class="hero-network-hub" role="img" aria-label="Revluma logo">
+                    <img src="assets/images/Revluma-icon.png" alt="" aria-hidden="true" width="39" height="39">
+                </span>
+                <span class="hero-hub-label">Revluma Intelligence</span>
+
+                <div class="hero-satellite hero-satellite--products" role="img" aria-label="Products: Product catalogue">
+                    <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m12 3 8.5 4.5v9L12 21l-8.5-4.5v-9L12 3Z"/><path d="m3.8 7.6 8.2 4.5 8.2-4.5M12 12.1V21M8 5.1l8.4 4.6"/></svg>
+                    <span class="hero-satellite-copy"><span class="hero-satellite-title">Products</span><span class="hero-satellite-description">Product catalogue</span></span>
+                </div>
+                <div class="hero-satellite hero-satellite--orders" role="img" aria-label="Orders: Sales and order activity">
+                    <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 3h16v18l-3-2-3 2-3-2-3 2-4-2V3Z"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>
+                    <span class="hero-satellite-copy"><span class="hero-satellite-title">Orders</span><span class="hero-satellite-description">Sales and order activity</span></span>
+                </div>
+                <div class="hero-satellite hero-satellite--inventory" role="img" aria-label="Inventory: Stock and availability">
+                    <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m3 7 9-4 9 4-9 4-9-4Z"/><path d="M3 7v10l9 4 9-4V7M12 11v10M7.5 5 16.5 9"/></svg>
+                    <span class="hero-satellite-copy"><span class="hero-satellite-title">Inventory</span><span class="hero-satellite-description">Stock and availability</span></span>
+                </div>
+                <div class="hero-satellite hero-satellite--customers" role="img" aria-label="Customers: Customer information">
+                    <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span class="hero-satellite-copy"><span class="hero-satellite-title">Customers</span><span class="hero-satellite-description">Customer information</span></span>
+                </div>
+                <div class="hero-satellite hero-satellite--checkouts" role="img" aria-label="Checkouts: Checkout activity">
+                    <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M1 2h3l2.7 13.1a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L22 7H5"/></svg>
+                    <span class="hero-satellite-copy"><span class="hero-satellite-title">Checkouts</span><span class="hero-satellite-description">Checkout activity</span></span>
+                </div>
+                <div class="hero-satellite hero-satellite--returns" role="img" aria-label="Returns: Refunds and returns">
+                    <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 7v6h6M21 17v-6h-6"/><path d="M5.1 17a8 8 0 0 0 13.3 1.2L21 15M3 9l2.6-3.2A8 8 0 0 1 18.9 7"/></svg>
+                    <span class="hero-satellite-copy"><span class="hero-satellite-title">Returns</span><span class="hero-satellite-description">Refunds and returns</span></span>
+                </div>
             </div>
         </div>
-        <div class="absolute inset-0 z-0 grid-bg opacity-20"></div>
-
-        <div class="relative z-10 text-center max-w-5xl mx-auto w-full px-4">
-
-            <!-- Trust badge -->
-            <div
-                class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-[11px] uppercase tracking-widest text-[#A1A1AA] mb-6 font-semibold">
-                <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block"></span>
-                Trusted by 2,400+ e-commerce brands
-            </div>
-
-            <h1 class="premium-headline text-4xl sm:text-[40px] md:text-5xl tracking-tighter leading-[1.05] mb-6">
-                Recover lost Revenue. Retain customers.<br>
-                <span>Grow Smarter.</span>
-            </h1>
-
-            <p class="text-[#A1A1AA] text-lg md:text-xl max-w-2xl mx-auto mb-8 font-light leading-relaxed">
-                Revluma helps eCommerce brands recover lost revenue, predict & prevent customer churn, and turn one-time buyers into loyal customers with AI powered, personalized experiences that feel human not generic.
-            </p>
-
-            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
-  
-  <!-- Get Started Free Button -->
-  <a href="./auth/signup.html" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide text-center hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
-    Get Started Free
-  </a>
-
-  <!-- Join Waitlist Button -->
-  <button @click="$dispatch('open-waitlist')" type="button" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
-    Join Waitlist
-  </button>
-            </div>
+    </section>
 
             <div x-data="{ waitlistModal: false }" x-init="$watch('waitlistModal', value => document.body.style.overflow = value ? 'hidden' : '')" @open-waitlist.window="waitlistModal = true" x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/85 flex justify-center overflow-y-auto p-4 backdrop-blur-md" x-cloak
       x-transition:enter="transition ease-out duration-300"
@@ -1517,12 +2021,7 @@
                              </div>
                  </div>
              </div>
-                 </div>
-             </div>
-        </div>
-<!-- Micro trust line -->
-        <p class="mt-8 text-[11px] text-[#A1A1AA] tracking-wide relative z-10">No credit card required &nbsp;·&nbsp; Setup in 4 minutes
-            &nbsp;·&nbsp; Cancel anytime</p>
+
     </section>
 
     <!-- ── Trusted By Logos Bar ── -->
@@ -3346,102 +3845,6 @@
 
         document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
 
-        // Bouncing logo animation with icon cycling on edge hits
-        const bounceContainer = document.getElementById('hero-landing');
-        const bounceLogo = document.getElementById('bounceLogo');
-        const bounceLogoImg = document.getElementById('bounceLogoImg');
-
-        // ── BOUNCE LOGOS CONFIG ──────────────────────────────────────────────
-        // To add more logos: just push another object into this array.
-        // { src: 'path/to/image.png', alt: 'Name' }
-        // The animation will automatically include them in the rotation cycle.
-        // ────────────────────────────────────────────────────────────────────
-        const logos = [
-            { src: 'assets/images/shopifyLoog.png', alt: 'Shopify' },
-            { src: 'assets/images/woocomrceLogo.webp', alt: 'WooCommerce' },
-            { src: 'assets/images/meta-logo.png', alt: 'Meta' },
-            { src: 'assets/images/google-ads-logo.webp', alt: 'Google Ads' },
-            { src: 'assets/images/tiktok-logo.png', alt: 'TikTok Shop' },
-            { src: 'assets/images/bigCommerce-logo.png', alt: 'BigCommerce' },
-
-            // ── ADD MORE LOGOS BELOW THIS LINE ──
-            // { src: 'assets/images/your-logo.png', alt: 'Your Platform' },
-        ];
-        let logoIndex = 0;
-
-        let position = { x: 24, y: 24 };
-        let velocity = { x: 130, y: 110 };
-        let lastTime = null;
-
-        const updateBounceBounds = () => {
-            const bounds = bounceContainer.getBoundingClientRect();
-            const logoBounds = bounceLogo.getBoundingClientRect();
-            return {
-                width: bounds.width - logoBounds.width,
-                height: bounds.height - logoBounds.height
-            };
-        };
-
-        const setLogo = (index) => {
-            logoIndex = index % logos.length;
-            bounceLogoImg.src = logos[logoIndex].src;
-            bounceLogoImg.alt = logos[logoIndex].alt;
-        };
-
-        const nextLogo = () => {
-            setLogo((logoIndex + 1) % logos.length);
-        };
-
-        const animateBounce = (timestamp) => {
-            if (!lastTime) lastTime = timestamp;
-            const dt = Math.min((timestamp - lastTime) / 1000, 0.032);
-            lastTime = timestamp;
-
-            const bounds = updateBounceBounds();
-            let collided = false;
-
-            position.x += velocity.x * dt;
-            position.y += velocity.y * dt;
-
-            if (position.x <= 0) {
-                position.x = 0;
-                velocity.x = Math.abs(velocity.x);
-                collided = true;
-            } else if (position.x >= bounds.width) {
-                position.x = bounds.width;
-                velocity.x = -Math.abs(velocity.x);
-                collided = true;
-            }
-
-            if (position.y <= 0) {
-                position.y = 0;
-                velocity.y = Math.abs(velocity.y);
-                collided = true;
-            } else if (position.y >= bounds.height) {
-                position.y = bounds.height;
-                velocity.y = -Math.abs(velocity.y);
-                collided = true;
-            }
-
-            bounceLogo.style.transform = `translate(${position.x}px, ${position.y}px)`;
-
-            if (collided) {
-                nextLogo();
-            }
-
-            requestAnimationFrame(animateBounce);
-        };
-
-        window.addEventListener('load', () => {
-            setLogo(0);
-            requestAnimationFrame(animateBounce);
-        });
-
-        window.addEventListener('resize', () => {
-            const bounds = updateBounceBounds();
-            position.x = Math.min(position.x, bounds.width);
-            position.y = Math.min(position.y, bounds.height);
-        });
     </script>
     <script>
         // Feature image upload handler
