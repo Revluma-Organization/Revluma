@@ -621,9 +621,12 @@
             .hero-stage { padding-right: 5vw; padding-left: 5vw; }
             .hero-title { font-size: clamp(3.05rem, 6.2vw, 4.55rem); }
             .hero-platforms { height: clamp(195px, 26vh, 240px); }
-            .hero-satellite--shopify, .hero-satellite--whatsapp { top: 17%; }
+            .hero-satellite { width: clamp(40px, 4.7vw, 48px); height: clamp(40px, 4.7vw, 48px); }
+            .hero-app-icon--woocommerce { width: clamp(29px, 3.42vw, 35px); height: clamp(29px, 3.42vw, 35px); }
+            .hero-network-hub { width: clamp(50px, 5.66vw, 58px); height: clamp(50px, 5.66vw, 58px); }
+            .hero-satellite--shopify, .hero-satellite--whatsapp { top: 20%; }
             .hero-satellite--woocommerce, .hero-satellite--email { top: 50%; }
-            .hero-satellite--stripe, .hero-satellite--analytics { top: 83%; }
+            .hero-satellite--stripe, .hero-satellite--analytics { top: 80%; }
         }
 
         @media (max-width: 767px) {
@@ -660,6 +663,10 @@
             .hero-platforms { width: min(100%, 510px); height: clamp(220px, 29vh, 248px); margin-top: 13px; }
             .hero-flow-lines--desktop { display: none; }
             .hero-flow-lines--mobile { display: block; }
+            .hero-satellite { width: 48px; height: 48px; }
+            .hero-app-icon--woocommerce { width: 35px; height: 35px; }
+            .hero-satellite--shopify, .hero-satellite--woocommerce, .hero-satellite--stripe { left: 20%; }
+            .hero-satellite--whatsapp, .hero-satellite--email, .hero-satellite--analytics { left: 80%; }
             .hero-satellite--shopify, .hero-satellite--whatsapp { top: 16%; }
             .hero-satellite--woocommerce, .hero-satellite--email { top: 50%; }
             .hero-satellite--stripe, .hero-satellite--analytics { top: 84%; }
@@ -687,9 +694,6 @@
             .hero-cta { min-height: 40px; }
             .hero-waitlist-note { min-height: 16px; margin-top: 4px; }
             .hero-platforms { height: 184px; margin-top: 8px; }
-            .hero-satellite--shopify, .hero-satellite--whatsapp { top: 14%; }
-            .hero-satellite--woocommerce, .hero-satellite--email { top: 50%; }
-            .hero-satellite--stripe, .hero-satellite--analytics { top: 86%; }
         }
 
         @media (min-width: 768px) and (max-height: 840px) {
@@ -1583,20 +1587,20 @@
                     </defs>
                     <path class="hero-flow-path" stroke="url(#hero-flow-mobile-left)" d="M475 141 C380 136 285 18 0 10"/>
                     <path class="hero-flow-path" stroke="url(#hero-flow-mobile-left)" d="M475 146 C375 140 280 45 0 48"/>
-                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-left)" d="M475 149 C375 147 290 60 200 60"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-left)" d="M475 148 C375 145 290 48 200 48"/>
                     <path class="hero-flow-path" stroke="url(#hero-flow-mobile-left)" d="M475 150 C400 143 315 157 200 150"/>
-                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-left)" d="M475 153 C375 156 290 240 200 240"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-left)" d="M475 153 C375 156 290 252 200 252"/>
                     <path class="hero-flow-path" stroke="url(#hero-flow-mobile-left)" d="M475 158 C375 164 285 284 0 290"/>
                     <path class="hero-flow-path" stroke="url(#hero-flow-mobile-left)" d="M475 154 C360 162 200 210 0 214"/>
                     <path class="hero-flow-path" stroke="url(#hero-flow-mobile-right)" d="M525 141 C620 136 715 18 1000 10"/>
                     <path class="hero-flow-path" stroke="url(#hero-flow-mobile-right)" d="M525 146 C625 140 720 45 1000 48"/>
-                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-right)" d="M525 149 C625 147 710 60 800 60"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-right)" d="M525 148 C625 145 710 48 800 48"/>
                     <path class="hero-flow-path" stroke="url(#hero-flow-mobile-right)" d="M525 150 C600 143 685 157 800 150"/>
-                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-right)" d="M525 153 C625 156 710 240 800 240"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-mobile-right)" d="M525 153 C625 156 710 252 800 252"/>
                     <path class="hero-flow-path" stroke="url(#hero-flow-mobile-right)" d="M525 158 C625 164 715 284 1000 290"/>
                     <path class="hero-flow-path" stroke="url(#hero-flow-mobile-right)" d="M525 154 C640 162 800 210 1000 214"/>
-                    <circle class="hero-flow-pulse" r="2.5"><animateMotion dur="5.6s" repeatCount="indefinite" path="M200 60 C290 60 380 136 475 149"/></circle>
-                    <circle class="hero-flow-pulse" r="2.5"><animateMotion dur="5.9s" begin="-2.6s" repeatCount="indefinite" path="M800 240 C710 240 620 156 525 153"/></circle>
+                    <circle class="hero-flow-pulse" r="2.5"><animateMotion dur="5.6s" repeatCount="indefinite" path="M200 48 C290 48 380 136 475 148"/></circle>
+                    <circle class="hero-flow-pulse" r="2.5"><animateMotion dur="5.9s" begin="-2.6s" repeatCount="indefinite" path="M800 252 C710 252 620 156 525 153"/></circle>
                 </svg>
 
                 <span class="hero-network-hub" role="img" aria-label="Revluma AI intelligence hub">
