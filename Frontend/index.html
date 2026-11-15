@@ -547,7 +547,7 @@
         .hero-flow-path {
             fill: none;
             stroke: var(--hero-line);
-            stroke-width: 1.15;
+            stroke-width: 1.05;
             stroke-linecap: round;
         }
         .hero-flow-pulse { fill: var(--hero-blue); opacity: 0.58; }
@@ -556,27 +556,38 @@
             position: absolute;
             z-index: 2;
             display: flex;
-            width: 174px;
-            min-height: 62px;
+            width: 82px;
+            min-height: 78px;
+            flex-direction: column;
             align-items: center;
-            gap: 10px;
-            padding: 9px 11px;
-            border: 1px solid #eceef3;
-            border-radius: 13px;
-            background: rgba(255, 255, 255, 0.98);
-            box-shadow: 0 8px 20px rgba(35, 41, 55, 0.075), 0 2px 5px rgba(35, 41, 55, 0.035);
+            justify-content: flex-start;
+            gap: 6px;
+            padding: 0;
+            border: 0;
+            background: transparent;
             transform: translate(-50%, -50%);
             animation: hero-data-float 7.4s ease-in-out infinite;
-            transition: border-color 220ms ease, box-shadow 220ms ease, background-color 220ms ease;
         }
-        .hero-satellite:hover {
+        .hero-satellite-badge {
+            display: grid;
+            width: 50px;
+            height: 50px;
+            flex: 0 0 auto;
+            place-items: center;
+            border: 1px solid #eceef3;
+            border-radius: 13px;
+            background: rgba(255, 255, 255, 0.99);
+            box-shadow: 0 8px 20px rgba(35, 41, 55, 0.075), 0 2px 5px rgba(35, 41, 55, 0.035);
+            transition: border-color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
+        }
+        .hero-satellite:hover .hero-satellite-badge {
             border-color: #d9dced;
-            background: #fff;
             box-shadow: 0 11px 24px rgba(35, 41, 55, 0.11), 0 0 0 3px rgba(67, 52, 201, 0.045);
+            transform: translateY(-2px);
         }
         .hero-satellite-icon {
-            width: 19px;
-            height: 19px;
+            width: 24px;
+            height: 24px;
             flex: 0 0 auto;
             color: #353947;
             stroke: currentColor;
@@ -584,23 +595,15 @@
             stroke-linecap: round;
             stroke-linejoin: round;
         }
-        .hero-satellite-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
         .hero-satellite-title {
-            color: #292c34;
-            font-family: 'DM Sans', 'Satoshi', sans-serif;
-            font-size: 11px;
-            font-weight: 650;
-            line-height: 1.2;
-            white-space: nowrap;
-        }
-        .hero-satellite-description {
-            overflow: hidden;
-            color: #858b98;
+            max-width: 100%;
+            color: #6c7180;
             font-family: 'DM Sans', 'Satoshi', sans-serif;
             font-size: 9px;
-            font-weight: 400;
-            line-height: 1.25;
-            text-overflow: ellipsis;
+            font-weight: 550;
+            letter-spacing: 0.015em;
+            line-height: 1.2;
+            text-align: center;
             white-space: nowrap;
         }
 
@@ -617,17 +620,17 @@
             top: 50%;
             left: 50%;
             display: grid;
-            width: 70px;
-            height: 70px;
+            width: 60px;
+            height: 60px;
             place-items: center;
-            border: 1px solid rgba(67, 52, 201, 0.23);
-            border-radius: 50%;
+            border: 1px solid rgba(67, 52, 201, 0.27);
+            border-radius: 15px;
             background: #fff;
             box-shadow: 0 0 0 7px rgba(67, 52, 201, 0.045), 0 10px 29px rgba(61, 48, 177, 0.13);
             transform: translate(-50%, -50%);
             animation: hero-hub-breathe 4.8s ease-in-out infinite;
         }
-        .hero-network-hub img { width: 39px; height: 39px; object-fit: contain; }
+        .hero-network-hub img { width: 37px; height: 37px; object-fit: contain; }
         .hero-hub-label {
             position: absolute;
             z-index: 3;
@@ -665,8 +668,10 @@
             .hero-stage { padding-right: 5vw; padding-left: 5vw; }
             .hero-title { font-size: clamp(3.05rem, 6.2vw, 4.55rem); }
             .hero-platforms { height: clamp(195px, 26vh, 240px); }
-            .hero-satellite { width: 136px; min-height: 54px; gap: 8px; padding: 7px 9px; }
-            .hero-satellite-description { display: none; }
+            .hero-satellite { width: 80px; min-height: 76px; gap: 5px; padding: 0; }
+            .hero-satellite-badge { width: 46px; height: 46px; border-radius: 12px; }
+            .hero-satellite-icon { width: 22px; height: 22px; }
+            .hero-satellite-title { font-size: 8.5px; }
             .hero-satellite--products, .hero-satellite--customers { top: 17%; }
             .hero-satellite--orders, .hero-satellite--checkouts { top: 50%; }
             .hero-satellite--inventory, .hero-satellite--returns { top: 83%; }
@@ -706,17 +711,17 @@
             .hero-platforms { width: min(100%, 510px); height: clamp(220px, 29vh, 248px); margin-top: 13px; }
             .hero-flow-lines--desktop { display: none; }
             .hero-flow-lines--mobile { display: block; }
-            .hero-satellite { width: clamp(108px, 34vw, 132px); min-height: 54px; gap: 7px; padding: 7px 8px; border-radius: 11px; }
-            .hero-satellite-icon { width: 17px; height: 17px; }
-            .hero-satellite-title { font-size: 10px; }
-            .hero-satellite-description { font-size: 8px; }
+            .hero-satellite { width: 72px; min-height: 70px; gap: 5px; padding: 0; }
+            .hero-satellite-badge { width: 44px; height: 44px; border-radius: 12px; }
+            .hero-satellite-icon { width: 21px; height: 21px; }
+            .hero-satellite-title { font-size: 8px; }
             .hero-satellite--products { left: 20%; top: 16%; }
             .hero-satellite--orders { left: 80%; top: 16%; }
             .hero-satellite--inventory { left: 20%; top: 50%; }
             .hero-satellite--customers { left: 80%; top: 50%; }
             .hero-satellite--checkouts { left: 20%; top: 87%; }
             .hero-satellite--returns { left: 80%; top: 87%; }
-            .hero-network-hub { width: 56px; height: 56px; }
+            .hero-network-hub { width: 52px; height: 52px; border-radius: 13px; }
             .hero-network-hub img { width: 32px; height: 32px; }
             .hero-hub-label { top: calc(50% + 34px); font-size: 8px; letter-spacing: 0.07em; }
         }
@@ -741,7 +746,7 @@
             .hero-cta { min-height: 40px; }
             .hero-waitlist-note { min-height: 16px; margin-top: 4px; }
             .hero-platforms { height: 184px; margin-top: 8px; }
-            .hero-satellite { min-height: 50px; }
+            .hero-satellite { min-height: 60px; }
             .hero-satellite--products, .hero-satellite--orders { top: 14%; }
             .hero-satellite--inventory, .hero-satellite--customers { top: 50%; }
             .hero-satellite--checkouts, .hero-satellite--returns { top: 86%; }
@@ -1608,12 +1613,20 @@
                             <stop stop-color="#5145ca" stop-opacity=".48"/><stop offset="1" stop-color="#7d8293" stop-opacity=".13"/>
                         </linearGradient>
                     </defs>
-                    <path id="hero-flow-products" class="hero-flow-path" stroke="url(#hero-flow-left)" d="M465 143 C360 140 245 70 120 69"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-left)" d="M0 20 C145 20 275 120 465 143"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-left)" d="M0 68 C145 68 290 133 465 147"/>
+                    <path id="hero-flow-products" class="hero-flow-path" stroke="url(#hero-flow-left)" d="M120 69 C245 70 360 140 465 143"/>
                     <path id="hero-flow-orders" class="hero-flow-path" stroke="url(#hero-flow-left)" d="M465 150 C390 150 350 150 290 150"/>
                     <path id="hero-flow-inventory" class="hero-flow-path" stroke="url(#hero-flow-left)" d="M465 157 C360 160 245 230 120 231"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-left)" d="M465 153 C290 167 145 232 0 232"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-left)" d="M465 157 C275 180 145 280 0 280"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-right)" d="M1000 20 C855 20 725 120 535 143"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-right)" d="M1000 68 C855 68 710 133 535 147"/>
                     <path id="hero-flow-customers" class="hero-flow-path" stroke="url(#hero-flow-right)" d="M535 143 C640 140 755 70 880 69"/>
                     <path id="hero-flow-checkouts" class="hero-flow-path" stroke="url(#hero-flow-right)" d="M535 150 C610 150 650 150 710 150"/>
                     <path id="hero-flow-returns" class="hero-flow-path" stroke="url(#hero-flow-right)" d="M535 157 C640 160 755 230 880 231"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-right)" d="M535 153 C710 167 855 232 1000 232"/>
+                    <path class="hero-flow-path" stroke="url(#hero-flow-right)" d="M535 157 C725 180 855 280 1000 280"/>
                     <circle class="hero-flow-pulse" r="3"><animateMotion dur="5.2s" repeatCount="indefinite" path="M120 69 C245 70 360 140 465 143"/></circle>
                     <circle class="hero-flow-pulse" r="3"><animateMotion dur="5.7s" begin="-2.1s" repeatCount="indefinite" path="M710 150 C650 150 610 150 535 150"/></circle>
                     <circle class="hero-flow-pulse" r="3"><animateMotion dur="6s" begin="-3.3s" repeatCount="indefinite" path="M880 231 C755 230 640 160 535 157"/></circle>
@@ -1642,29 +1655,41 @@
                 </span>
                 <span class="hero-hub-label">Revluma Intelligence</span>
 
-                <div class="hero-satellite hero-satellite--products" role="img" aria-label="Products: Product catalogue">
-                    <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m12 3 8.5 4.5v9L12 21l-8.5-4.5v-9L12 3Z"/><path d="m3.8 7.6 8.2 4.5 8.2-4.5M12 12.1V21M8 5.1l8.4 4.6"/></svg>
-                    <span class="hero-satellite-copy"><span class="hero-satellite-title">Products</span><span class="hero-satellite-description">Product catalogue</span></span>
+                <div class="hero-satellite hero-satellite--products" role="img" aria-label="Products">
+                    <span class="hero-satellite-badge" aria-hidden="true">
+                        <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none"><path d="m12 3 8.5 4.5v9L12 21l-8.5-4.5v-9L12 3Z"/><path d="m3.8 7.6 8.2 4.5 8.2-4.5M12 12.1V21M8 5.1l8.4 4.6"/></svg>
+                    </span>
+                    <span class="hero-satellite-title">Products</span>
                 </div>
-                <div class="hero-satellite hero-satellite--orders" role="img" aria-label="Orders: Sales and order activity">
-                    <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 3h16v18l-3-2-3 2-3-2-3 2-4-2V3Z"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>
-                    <span class="hero-satellite-copy"><span class="hero-satellite-title">Orders</span><span class="hero-satellite-description">Sales and order activity</span></span>
+                <div class="hero-satellite hero-satellite--orders" role="img" aria-label="Orders">
+                    <span class="hero-satellite-badge" aria-hidden="true">
+                        <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none"><path d="M4 3h16v18l-3-2-3 2-3-2-3 2-4-2V3Z"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>
+                    </span>
+                    <span class="hero-satellite-title">Orders</span>
                 </div>
-                <div class="hero-satellite hero-satellite--inventory" role="img" aria-label="Inventory: Stock and availability">
-                    <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m3 7 9-4 9 4-9 4-9-4Z"/><path d="M3 7v10l9 4 9-4V7M12 11v10M7.5 5 16.5 9"/></svg>
-                    <span class="hero-satellite-copy"><span class="hero-satellite-title">Inventory</span><span class="hero-satellite-description">Stock and availability</span></span>
+                <div class="hero-satellite hero-satellite--inventory" role="img" aria-label="Inventory">
+                    <span class="hero-satellite-badge" aria-hidden="true">
+                        <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none"><path d="m3 7 9-4 9 4-9 4-9-4Z"/><path d="M3 7v10l9 4 9-4V7M12 11v10M7.5 5 16.5 9"/></svg>
+                    </span>
+                    <span class="hero-satellite-title">Inventory</span>
                 </div>
-                <div class="hero-satellite hero-satellite--customers" role="img" aria-label="Customers: Customer information">
-                    <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    <span class="hero-satellite-copy"><span class="hero-satellite-title">Customers</span><span class="hero-satellite-description">Customer information</span></span>
+                <div class="hero-satellite hero-satellite--customers" role="img" aria-label="Customers">
+                    <span class="hero-satellite-badge" aria-hidden="true">
+                        <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </span>
+                    <span class="hero-satellite-title">Customers</span>
                 </div>
-                <div class="hero-satellite hero-satellite--checkouts" role="img" aria-label="Checkouts: Checkout activity">
-                    <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M1 2h3l2.7 13.1a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L22 7H5"/></svg>
-                    <span class="hero-satellite-copy"><span class="hero-satellite-title">Checkouts</span><span class="hero-satellite-description">Checkout activity</span></span>
+                <div class="hero-satellite hero-satellite--checkouts" role="img" aria-label="Checkouts">
+                    <span class="hero-satellite-badge" aria-hidden="true">
+                        <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M1 2h3l2.7 13.1a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L22 7H5"/></svg>
+                    </span>
+                    <span class="hero-satellite-title">Checkouts</span>
                 </div>
-                <div class="hero-satellite hero-satellite--returns" role="img" aria-label="Returns: Refunds and returns">
-                    <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 7v6h6M21 17v-6h-6"/><path d="M5.1 17a8 8 0 0 0 13.3 1.2L21 15M3 9l2.6-3.2A8 8 0 0 1 18.9 7"/></svg>
-                    <span class="hero-satellite-copy"><span class="hero-satellite-title">Returns</span><span class="hero-satellite-description">Refunds and returns</span></span>
+                <div class="hero-satellite hero-satellite--returns" role="img" aria-label="Returns">
+                    <span class="hero-satellite-badge" aria-hidden="true">
+                        <svg class="hero-satellite-icon" viewBox="0 0 24 24" fill="none"><path d="M3 7v6h6M21 17v-6h-6"/><path d="M5.1 17a8 8 0 0 0 13.3 1.2L21 15M3 9l2.6-3.2A8 8 0 0 1 18.9 7"/></svg>
+                    </span>
+                    <span class="hero-satellite-title">Returns</span>
                 </div>
             </div>
         </div>
