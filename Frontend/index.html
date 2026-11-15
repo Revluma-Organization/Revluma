@@ -3567,11 +3567,14 @@
         };
 
         window.addEventListener('load', () => {
-            setLogo(0);
-            requestAnimationFrame(animateBounce);
+            if (bounceContainer && bounceLogo && bounceLogoImg) {
+                setLogo(0);
+                requestAnimationFrame(animateBounce);
+            }
         });
 
         window.addEventListener('resize', () => {
+            if (!bounceContainer || !bounceLogo) return;
             const bounds = updateBounceBounds();
             position.x = Math.min(position.x, bounds.width);
             position.y = Math.min(position.y, bounds.height);
