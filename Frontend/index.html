@@ -844,116 +844,6 @@
       line-height: 16px;
       font-family: 'DM Sans', system-ui, sans-serif;
     }
-
-        /* ── Editorial Revluma hero ── */
-        body { background:#fff; }
-        #site-navigation {
-            top: 18px !important; background:rgba(255,255,255,.92) !important;
-            border:1px solid rgba(20,20,20,.08) !important; box-shadow:0 8px 30px rgba(20,20,20,.055);
-            backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
-        }
-        #site-navigation .logo-mark { width:38px;height:38px;animation:none; }
-        #site-navigation .logo-mark img { mix-blend-mode:normal !important;border-radius:9px; }
-        #site-navigation .logo-name,#site-navigation a { color:#171717 !important; }
-        #site-navigation .logo-name { font-size:16px;font-weight:700;letter-spacing:-.04em; }
-        #site-navigation .hidden.md\\:flex { color:#626262 !important; }
-        #site-navigation .hidden.md\\:flex a:hover { color:#141414 !important; }
-        #site-navigation #signup-link button,#site-navigation #dashboard-link {
-            background:#171717 !important;color:#fff !important;border-radius:999px;padding:10px 18px;
-        }
-        #site-navigation #login-link { color:#555 !important; }
-        #site-navigation .md\\:hidden { color:#171717 !important;border-color:#e8e8e8 !important;background:#fff !important; }
-        .revluma-hero { position:relative;isolation:isolate;overflow:hidden;background:#fff;color:#141414;padding:132px 24px 34px;min-height:calc(100vh - 20px); }
-        .revluma-hero-inner { max-width:1160px;margin:0 auto;text-align:center; }
-        .revluma-eyebrow { display:inline-flex;align-items:center;gap:10px;color:#5E6268;font:700 10px/1.2 'DM Sans',sans-serif;letter-spacing:.17em;margin-bottom:24px; }
-        .revluma-eyebrow-dot { width:7px;height:7px;border-radius:50%;background:#3978D7;box-shadow:0 0 0 4px rgba(57,120,215,.11); }
-        .revluma-hero-title { margin:0 auto;color:#141414;font-family:'Playfair Display',Georgia,serif;font-size:clamp(43px,6.1vw,78px);font-weight:700;letter-spacing:-.055em;line-height:1.08;max-width:1040px;animation:revluma-title-in .8s cubic-bezier(.2,.75,.25,1) both; }
-        .revluma-hero-subtitle { margin:12px 0 0;color:#252525;font:600 clamp(17px,2vw,21px)/1.35 'DM Sans',sans-serif;letter-spacing:-.025em; }
-        .revluma-hero-description { max-width:650px;margin:16px auto 0;color:#5E6268;font:400 15px/1.75 'DM Sans',sans-serif; }
-        .revluma-hero-actions { display:flex;align-items:center;justify-content:center;gap:12px;margin:25px auto 0; }
-        .revluma-button-primary,.revluma-button-secondary { min-height:48px;padding:0 24px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:12px;font:600 13px 'DM Sans',sans-serif;text-decoration:none;transition:transform .25s,box-shadow .25s,background .25s,border-color .25s; }
-        .revluma-button-primary { color:#fff !important;background:#141414;border:1px solid #141414;box-shadow:0 5px 14px rgba(0,0,0,.10); }
-        .revluma-button-primary svg { width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round; }
-        .revluma-button-secondary { color:#141414 !important;background:#fff;border:1px solid #d8dce3; }
-        .revluma-button-primary:hover,.revluma-button-secondary:hover { transform:translateY(-2px);box-shadow:0 9px 22px rgba(20,20,20,.11); }
-        .revluma-button-primary:hover { background:#30343a; }
-        .revluma-button-secondary:hover { border-color:#3978D7;background:#f7faff; }
-        .revluma-hero-visual { position:relative;height:330px;max-width:1000px;margin:43px auto 0; }
-        .revluma-visual-caption { position:absolute;top:0;left:0;right:0;color:#8a9099;font:700 9px 'DM Sans',sans-serif;letter-spacing:.2em; }
-        .revluma-connection-lines { position:absolute;inset:20px 0 0;width:100%;height:310px;overflow:visible; }
-        .revluma-line-pulses { animation:revluma-pulse-flow 7s linear infinite; }
-        .revluma-data-tile { position:absolute;z-index:2;display:flex;align-items:center;gap:10px;text-align:left;min-width:148px;padding:10px 13px;background:rgba(255,255,255,.98);border:1px solid #e9edf3;border-radius:13px;box-shadow:0 9px 25px rgba(25,35,50,.065);animation:revluma-float 5.5s ease-in-out infinite; }
-        .revluma-data-tile strong { display:block;color:#242a33;font:650 11px 'DM Sans',sans-serif; }
-        .revluma-data-tile small { display:block;margin-top:3px;color:#858d99;font:400 9px 'DM Sans',sans-serif; }
-        .revluma-tile-icon { width:30px;height:30px;flex:0 0 30px;border-radius:9px;background:#eef4ff;display:grid;place-items:center;color:#3978D7; }
-        .revluma-tile-icon svg { width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round; }
-        .tile-products { top:40px;left:2%;animation-delay:-.5s; }
-        .tile-orders { top:127px;left:0;animation-delay:-2s; }
-        .tile-inventory { top:232px;left:7%;animation-delay:-3.5s; }
-        .tile-customers { top:40px;right:2%;animation-delay:-1.3s; }
-        .tile-checkouts { top:127px;right:0;animation-delay:-2.7s; }
-        .tile-returns { top:232px;right:7%;animation-delay:-4.1s; }
-        .revluma-intelligence-hub { position:absolute;z-index:3;left:50%;top:218px;transform:translate(-50%,-50%);width:70px;height:70px;border-radius:19px;background:linear-gradient(145deg,#4f8ee8,#245db5);display:grid;place-items:center;box-shadow:0 12px 34px rgba(57,120,215,.22),0 0 0 9px rgba(57,120,215,.07);animation:revluma-hub-breathe 4s ease-in-out infinite; }
-        .revluma-intelligence-hub img { width:43px;height:43px;object-fit:contain;filter:brightness(0) invert(1);mix-blend-mode:screen; }
-        .revluma-hub-glow { position:absolute;inset:-15px;border-radius:25px;background:rgba(57,120,215,.10);filter:blur(17px);z-index:-1; }
-        .revluma-visual-note { margin:0;color:#9299a3;font:400 10px/1.5 'DM Sans',sans-serif; }
-        @media(max-width:767px) {
-            .revluma-hero { padding:112px 18px 30px;min-height:auto; }
-            .revluma-hero-title { font-size:clamp(39px,9.5vw,58px); }
-            .revluma-hero-description { font-size:14px;max-width:470px; }
-            .revluma-hero-visual { height:auto;margin-top:34px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:center; }
-            .revluma-visual-caption { position:static;grid-column:1/-1;margin-bottom:8px; }
-            .revluma-connection-lines { display:none; }
-            .revluma-data-tile { position:static;min-width:0;width:100%;padding:10px 9px;gap:8px;animation:none; }
-            .revluma-data-tile strong { font-size:10px; }
-            .revluma-data-tile small { font-size:8px; }
-            .revluma-tile-icon { width:27px;height:27px;flex-basis:27px; }
-            .revluma-intelligence-hub { position:relative;left:auto;top:auto;transform:none;grid-column:1/-1;justify-self:center;grid-row:2;width:62px;height:62px;margin:0 0 5px; }
-            .tile-products,.tile-orders,.tile-inventory,.tile-customers,.tile-checkouts,.tile-returns { grid-row:auto; }
-            .revluma-visual-note { max-width:360px;margin:12px auto 0;text-align:center; }
-        }
-        @media(max-width:420px) {
-            .revluma-hero-actions { flex-direction:column;align-items:stretch;max-width:320px; }
-            .revluma-button-primary,.revluma-button-secondary { width:100%; }
-            .revluma-data-tile { padding:9px 7px;gap:6px; }
-            .revluma-tile-icon { display:grid; }
-        }
-        @keyframes revluma-title-in { from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:translateY(0)} }
-        @keyframes revluma-float { 0%,100%{translate:0 0}50%{translate:0 -6px} }
-        @keyframes revluma-hub-breathe { 0%,100%{box-shadow:0 12px 34px rgba(57,120,215,.22),0 0 0 8px rgba(57,120,215,.06)}50%{box-shadow:0 14px 42px rgba(57,120,215,.31),0 0 0 13px rgba(57,120,215,.035)} }
-        @keyframes revluma-pulse-flow { to{stroke-dashoffset:-180} }
-        @media(max-width:700px) {
-            .revluma-hero { padding:116px 18px 24px;min-height:auto; }
-            .revluma-hero-title { font-size:clamp(39px,10vw,58px); }
-            .revluma-hero-description { font-size:14px;max-width:430px; }
-            .revluma-hero-visual { height:390px;margin-top:39px; }
-            .revluma-connection-lines { top:30px;height:340px; }
-            .revluma-data-tile { min-width:0;width:136px;padding:8px 9px;gap:7px; }
-            .revluma-tile-icon { width:26px;height:26px;flex-basis:26px; }
-            .revluma-data-tile strong { font-size:10px; }
-            .revluma-data-tile small { font-size:8px; }
-            .tile-products { top:45px;left:0; }
-            .tile-orders { top:135px;left:0; }
-            .tile-inventory { top:225px;left:0; }
-            .tile-customers { top:45px;right:0; }
-            .tile-checkouts { top:135px;right:0; }
-            .tile-returns { top:225px;right:0; }
-            .revluma-intelligence-hub { top:325px;width:58px;height:58px;border-radius:16px; }
-            .revluma-intelligence-hub img { width:36px;height:36px; }
-            .revluma-visual-note { max-width:340px;margin:0 auto; }
-        }
-        @media(max-width:420px) {
-            .revluma-hero-actions { flex-direction:column;align-items:stretch;max-width:320px; }
-            .revluma-button-primary,.revluma-button-secondary { width:100%; }
-            .revluma-data-tile { width:124px; }
-            .revluma-tile-icon { display:none; }
-            .revluma-hero-visual { height:375px; }
-            .revluma-intelligence-hub { top:310px; }
-        }
-        @media(prefers-reduced-motion:reduce) {
-            .revluma-hero-title,.revluma-data-tile,.revluma-intelligence-hub,.revluma-line-pulses { animation:none !important; }
-            .revluma-button-primary,.revluma-button-secondary { transition:none !important; }
-        }
 </style>
 
     <script src="assets/js/countries.js"></script>
@@ -1159,7 +1049,7 @@
       @scroll.window="scrolled = (window.pageYOffset > 50)">
 
     <!-- ── Navigation ── -->
-    <nav id="site-navigation" :class="scrolled ? 'glass shadow-sm shadow-black/30' : 'glass'" class="fixed top-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] md:w-[calc(100%-4rem)] max-w-7xl z-50 rounded-full transition-all duration-500 border border-white/10">
+    <nav :class="scrolled ? 'glass shadow-sm shadow-black/30' : 'glass'" class="fixed top-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] md:w-[calc(100%-4rem)] max-w-7xl z-50 rounded-full transition-all duration-500 border border-white/10">
         <div class="flex items-center justify-between gap-2 px-3 py-1.5">
             <a href="/" class="flex items-center gap-2.5 transition-transform duration-300 hover:-translate-y-0.5">
                 <div class="logo-mark">
@@ -1231,95 +1121,50 @@
         </div>
     </div>
 
-    <!-- Revluma editorial intelligence hero -->
-    <section id="hero-landing" class="revluma-hero" aria-labelledby="hero-title">
-        <div class="revluma-hero-inner">
-            <div class="revluma-eyebrow">
-                <span class="revluma-eyebrow-dot" aria-hidden="true"></span>
-                AI OPERATIONAL INTELLIGENCE FOR SHOPIFY
+    <!-- ── Hero ── -->
+    <section id="hero-landing"
+        class="relative min-h-[100dvh] flex flex-col items-center justify-center pt-28 pb-12 md:pt-0 md:pb-0 px-6 overflow-hidden">
+        <video autoplay muted loop playsinline class="hero-video">
+            <source src="assets/videos/growth-video.mp4" type="video/mp4">
+        </video>
+        <div class="hero-video-overlay"></div>
+        <div class="bounce-logo-container">
+            <div id="bounceLogo" class="bounce-logo">
+                <img id="bounceLogoImg" src="assets/images/shopifyLoog.png" alt="Shopify Logo">
+            </div>
+        </div>
+        <div class="absolute inset-0 z-0 grid-bg opacity-20"></div>
+
+        <div class="relative z-10 text-center max-w-5xl mx-auto w-full px-4">
+
+            <!-- Trust badge -->
+            <div
+                class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-[11px] uppercase tracking-widest text-[#A1A1AA] mb-6 font-semibold">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block"></span>
+                Trusted by 2,400+ e-commerce brands
             </div>
 
-            <h1 id="hero-title" class="revluma-hero-title">
-                Know what's costing<br class="desktop-break"> your store revenue.
+            <h1 class="premium-headline text-4xl sm:text-[40px] md:text-5xl tracking-tighter leading-[1.05] mb-6">
+                Recover lost Revenue. Retain customers.<br>
+                <span>Grow Smarter.</span>
             </h1>
-            <p class="revluma-hero-subtitle">Understand why. Know what to fix next.</p>
-            <p class="revluma-hero-description">
-                Revluma turns your Shopify business data into operational intelligence,
-                helping you uncover problems, understand what matters and prioritize your next move.
+
+            <p class="text-[#A1A1AA] text-lg md:text-xl max-w-2xl mx-auto mb-8 font-light leading-relaxed">
+                Revluma helps eCommerce brands recover lost revenue, predict & prevent customer churn, and turn one-time buyers into loyal customers with AI powered, personalized experiences that feel human not generic.
             </p>
 
-            <div class="revluma-hero-actions">
-                <a href="./auth/signup.html" class="revluma-button-primary">
-                    Connect your Shopify store
-                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M10 5l5 5-5 5"/></svg>
-                </a>
-                <a href="#features" class="revluma-button-secondary">Explore the platform</a>
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
+
+  <!-- Get Started Free Button -->
+  <a href="./auth/signup.html" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide text-center hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
+    Get Started Free
+  </a>
+
+  <!-- Join Waitlist Button -->
+  <button @click="$dispatch('open-waitlist')" type="button" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
+    Join Waitlist
+  </button>
             </div>
-
-            <div class="revluma-hero-visual" aria-label="Shopify business data flowing into Revluma intelligence">
-                <div class="revluma-visual-caption">YOUR SHOPIFY BUSINESS. ONE INTELLIGENCE LAYER.</div>
-                <svg class="revluma-connection-lines" viewBox="0 0 1000 330" preserveAspectRatio="none" aria-hidden="true">
-                    <defs>
-                        <linearGradient id="revluma-line-left" x1="0" y1="0" x2="1" y2="0">
-                            <stop offset="0" stop-color="#AFC8F5" stop-opacity="0"/>
-                            <stop offset="1" stop-color="#3978D7" stop-opacity=".65"/>
-                        </linearGradient>
-                        <linearGradient id="revluma-line-right" x1="1" y1="0" x2="0" y2="0">
-                            <stop offset="0" stop-color="#AFC8F5" stop-opacity="0"/>
-                            <stop offset="1" stop-color="#3978D7" stop-opacity=".65"/>
-                        </linearGradient>
-                    </defs>
-                    <g fill="none" stroke-width="1.35">
-                        <path d="M70 58 C220 58 300 112 500 250" stroke="url(#revluma-line-left)"/>
-                        <path d="M70 145 C235 145 320 175 500 250" stroke="url(#revluma-line-left)"/>
-                        <path d="M70 250 C245 250 340 235 500 250" stroke="url(#revluma-line-left)"/>
-                        <path d="M930 58 C780 58 700 112 500 250" stroke="url(#revluma-line-right)"/>
-                        <path d="M930 145 C765 145 680 175 500 250" stroke="url(#revluma-line-right)"/>
-                        <path d="M930 250 C755 250 660 235 500 250" stroke="url(#revluma-line-right)"/>
-                    </g>
-                    <g class="revluma-line-pulses" fill="none" stroke="#3978D7" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 16">
-                        <path d="M70 58 C220 58 300 112 500 250"/>
-                        <path d="M70 145 C235 145 320 175 500 250"/>
-                        <path d="M70 250 C245 250 340 235 500 250"/>
-                        <path d="M930 58 C780 58 700 112 500 250"/>
-                        <path d="M930 145 C765 145 680 175 500 250"/>
-                        <path d="M930 250 C755 250 660 235 500 250"/>
-                    </g>
-                </svg>
-
-                <div class="revluma-data-tile tile-products">
-                    <span class="revluma-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4.5 7.7 7.5 4.4 7.5-4.4M12 12.1V21"/></svg></span>
-                    <span><strong>Products</strong><small>Catalog data</small></span>
-                </div>
-                <div class="revluma-data-tile tile-orders">
-                    <span class="revluma-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg></span>
-                    <span><strong>Orders</strong><small>Sales activity</small></span>
-                </div>
-                <div class="revluma-data-tile tile-inventory">
-                    <span class="revluma-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3 7 9-4 9 4v10l-9 4-9-4V7Z"/><path d="m3 7 9 4 9-4M12 11v10"/></svg></span>
-                    <span><strong>Inventory</strong><small>Stock operations</small></span>
-                </div>
-                <div class="revluma-data-tile tile-customers">
-                    <span class="revluma-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 20v-1.5a5.5 5.5 0 0 1 11 0V20M16 5.5a3 3 0 0 1 0 5.8M17 14a4.5 4.5 0 0 1 3.5 4.4V20"/></svg></span>
-                    <span><strong>Customers</strong><small>Customer activity</small></span>
-                </div>
-                <div class="revluma-data-tile tile-checkouts">
-                    <span class="revluma-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h2l2.2 10.2h9.9L20 8H7"/><circle cx="10" cy="19" r="1.2"/><circle cx="17" cy="19" r="1.2"/></svg></span>
-                    <span><strong>Checkouts</strong><small>Purchase journeys</small></span>
-                </div>
-                <div class="revluma-data-tile tile-returns">
-                    <span class="revluma-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h9a7 7 0 0 1 0 14h-2"/></svg></span>
-                    <span><strong>Returns</strong><small>Post-purchase activity</small></span>
-                </div>
-
-                <div class="revluma-intelligence-hub">
-                    <span class="revluma-hub-glow" aria-hidden="true"></span>
-                    <img src="assets/images/Revluma-icon.png" alt="Revluma" />
-                </div>
-            </div>
-            <p class="revluma-visual-note">Illustrative Shopify data categories. Available insights depend on the access you authorize.</p>
-        </div>
-    </section>
 
             <div x-data="{ waitlistModal: false }" x-init="$watch('waitlistModal', value => document.body.style.overflow = value ? 'hidden' : '')" @open-waitlist.window="waitlistModal = true" x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/85 flex justify-center overflow-y-auto p-4 backdrop-blur-md" x-cloak
       x-transition:enter="transition ease-out duration-300"
@@ -3505,7 +3350,6 @@
         const bounceContainer = document.getElementById('hero-landing');
         const bounceLogo = document.getElementById('bounceLogo');
         const bounceLogoImg = document.getElementById('bounceLogoImg');
-        if (!bounceLogo || !bounceLogoImg || !bounceContainer.querySelector('#bounceLogo')) { /* legacy hero animation removed */ }
 
         // ── BOUNCE LOGOS CONFIG ──────────────────────────────────────────────
         // To add more logos: just push another object into this array.
@@ -3589,14 +3433,11 @@
         };
 
         window.addEventListener('load', () => {
-            if (bounceContainer && bounceLogo && bounceLogoImg) {
-                setLogo(0);
-                requestAnimationFrame(animateBounce);
-            }
+            setLogo(0);
+            requestAnimationFrame(animateBounce);
         });
 
         window.addEventListener('resize', () => {
-            if (!bounceContainer || !bounceLogo) return;
             const bounds = updateBounceBounds();
             position.x = Math.min(position.x, bounds.width);
             position.y = Math.min(position.y, bounds.height);
