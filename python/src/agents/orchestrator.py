@@ -39,8 +39,12 @@ from .understanding import (
     MODE_ANALYSIS, MODE_CLARIFICATION, MODE_ACTION_PLAN,
 )
 from . import responder
+from .model_gateway import ModelProviderError
 from ..intelligence.business_state import load_current_business_state, build_business_state, load_business_change_history
 from ..memory.vector_store import retrieve_memory_scores
+from ..intelligence.trace_context import new_trace, trace_context
+from ..intelligence.operational_metrics import record_counter, observe_latency
+from ..intelligence.reliability import record_failure, safe_failure
 
 logger = logging.getLogger("rev.orchestrator")
 
@@ -547,6 +551,7 @@ class OrchestrationResult:
     warnings:                   list[str] = field(default_factory=list)
     ad_evaluation:              dict | None = None
     correlation_id:             str = ""
+    execution_id:               str = ""
     latency_ms:                 int = 0
 
     def to_dict(self) -> dict:
@@ -571,6 +576,13 @@ class OrchestrationResult:
             "warnings":                   self.warnings,
             "ad_evaluation":               self.ad_evaluation,
             "correlation_id":             self.correlation_id,
+            "execution_id":               self.execution_id,
+            "execution_metadata": {
+                "correlation_id": self.correlation_id,
+                "execution_id": self.execution_id,
+                "latency_ms": self.latency_ms,
+                "outcome": "success" if self.success else "failure",
+            },
             "latency_ms":                 self.latency_ms,
         }
 
@@ -590,40 +602,73 @@ def orchestrate(organization_id: str, user_id: str, message: str,
                 image_media_type: str | None = None,
                 trigger_type: str = "conversation",
                 trigger_priority: str = "normal",
-                context_payload: dict | None = None) -> OrchestrationResult:
-    correlation_id = str(uuid.uuid4())
-    start = time.time()
+                context_payload: dict | None = None,
+                correlation_id: str | None = None,
+                execution_id: str | None = None) -> OrchestrationResult:
+    context_payload = dict(context_payload or {})
+    correlation_id, execution_id = new_trace(
+        correlation_id or context_payload.get("correlation_id"),
+        execution_id or context_payload.get("execution_id"))
+    context_payload.update(correlation_id=correlation_id, execution_id=execution_id)
+    start = time.monotonic()
     try:
-        result = _run(organization_id, user_id, message, conversation_id, db, correlation_id,
-                     image_base64=image_base64, image_media_type=image_media_type,
-                     trigger_type=trigger_type, trigger_priority=trigger_priority,
-                     context_payload=context_payload)
+        with trace_context(correlation_id, execution_id):
+            result = _run(organization_id, user_id, message, conversation_id, db, correlation_id,
+                         image_base64=image_base64, image_media_type=image_media_type,
+                         trigger_type=trigger_type, trigger_priority=trigger_priority,
+                         context_payload=context_payload)
+    except ModelProviderError as exc:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        failure = safe_failure(
+            exc.category, "response_composition",
+            retry_count=max(0, exc.attempts - 1), fallback=exc.fallback_used,
+            execution_id=execution_id,
+        )
+        exc.failure = failure
+        exc.correlation_id = correlation_id
+        exc.execution_id = execution_id
+        record_counter("rev_requests_total", labels={"kind": "orchestrate", "outcome": "failure"})
+        observe_latency("rev_execution", elapsed_ms)
+        record_failure(failure, correlation_id=correlation_id, investigation_id=execution_id)
+        raise
     except PermissionError:
+        record_counter("rev_requests_total", labels={"kind": "orchestrate", "outcome": "failure"})
+        observe_latency("rev_execution", (time.monotonic() - start) * 1000)
         raise
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
         logger.critical(
-            "orchestrate_fatal",
-            extra={
-                "correlation_id": correlation_id,
-                "error_type": type(exc).__name__,
-            },
+            "orchestrate_fatal error_type=%s correlation_id=%s execution_id=%s",
+            type(exc).__name__, correlation_id, execution_id,
         )
+        record_counter("rev_requests_total", labels={"kind": "orchestrate", "outcome": "failure"})
+        observe_latency("rev_execution", elapsed_ms)
         return OrchestrationResult(
             success=False,
             conversation_id=conversation_id or str(uuid.uuid4()),
             message_id=str(uuid.uuid4()),
             response_type="error",
-            text="Something broke on my side. Try that again in a moment.",
+            text="Something broke on my side. Please try again shortly. Reference: " + execution_id,
             correlation_id=correlation_id,
-            latency_ms=int((time.time() - start) * 1000),
+            execution_id=execution_id,
+            latency_ms=elapsed_ms,
         )
-    result.latency_ms = int((time.time() - start) * 1000)
-    logger.info("orchestrate_complete", extra={
-        "correlation_id": correlation_id,
-        "intent": result.intent,
-        "type": result.response_type,
-        "ms": result.latency_ms,
-    })
+    result.latency_ms = int((time.monotonic() - start) * 1000)
+    result.correlation_id = correlation_id
+    result.execution_id = execution_id
+    outcome = "success" if result.success else "failure"
+    is_investigation = result.intent in {
+        "store_overview", "revenue_investigation", "checkout_investigation",
+        "customer_retention", "product_investigation", "refund_investigation",
+        "data_coverage", "finding_investigation", "traffic_investigation",
+    }
+    record_counter("rev_requests_total", labels={"kind": "orchestrate", "outcome": outcome})
+    if result.success:
+        record_counter("rev_investigations_total" if is_investigation else "rev_general_questions_total",
+                       labels={"outcome": outcome})
+    observe_latency("rev_execution", result.latency_ms)
+    logger.info("orchestrate_complete correlation_id=%s execution_id=%s intent=%s type=%s ms=%d",
+                correlation_id, execution_id, result.intent, result.response_type, result.latency_ms)
     return result
 
 

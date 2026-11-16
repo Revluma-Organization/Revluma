@@ -24,8 +24,8 @@ def test_analysis_falls_back_to_fast_model_with_identical_evidence():
 
     assert result["situation"] == "15 recorded abandoned carts"
     assert len(calls) == 2
-    assert calls[0][0] == responder.DEEP_MODEL
-    assert calls[1][0] == responder.FAST_MODEL
+    assert calls[0][0] == responder.DEEP_ROLE
+    assert calls[1][0] == responder.FAST_ROLE
     assert calls[0][1] == calls[1][1]
     assert "do not infer reasons" in calls[1][1]
 

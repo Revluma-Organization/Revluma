@@ -4,7 +4,7 @@
 // framing, cancellation and typed events so the workspace never renders an
 // unvalidated provider payload directly.
 
-import { createRequestId, getApiBaseUrl, getStreamingAuthHeaders, handleUnauthorized } from "@/lib/api";
+import { getApiBaseUrl, getStreamingAuthHeaders, handleUnauthorized } from "@/lib/api";
 
 export type EvidenceStatus = "available" | "partial" | "unavailable" | "unsupported";
 
@@ -150,6 +150,9 @@ export interface RevResponseProfile {
 
 export interface RevAnswerPayload {
   contract_version?: string;
+  correlation_id?: string;
+  execution_id?: string;
+  execution_metadata?: Record<string, unknown>;
   success?: boolean;
   read_only: boolean;
   response_type: string;
@@ -237,7 +240,7 @@ export type RevStreamName =
 
 export interface RevStreamHandlers {
   onAccepted?: (data: unknown) => void;
-  onMeta?: (data: { conversation_id: string; correlation_id?: string }) => void;
+  onMeta?: (data: { conversation_id: string; correlation_id?: string; execution_id?: string }) => void;
   onPlan?: (data: {
     investigation_id?: string;
     intent?: string;
@@ -266,12 +269,20 @@ export interface RevStreamRequest {
 export class RevStreamError extends Error {
   code: string;
   status: number;
+  retryable?: boolean;
+  correlationId?: string;
+  executionId?: string;
+  failure?: Record<string, unknown>;
 
-  constructor(code: string, message: string, status = 0) {
+  constructor(code: string, message: string, status = 0, details: Record<string, unknown> = {}) {
     super(message);
     this.name = "RevStreamError";
     this.code = code;
     this.status = status;
+    this.retryable = typeof details.retryable === "boolean" ? details.retryable : undefined;
+    this.correlationId = typeof details.correlation_id === "string" ? details.correlation_id : undefined;
+    this.executionId = typeof details.execution_id === "string" ? details.execution_id : undefined;
+    this.failure = isRecord(details.failure) ? details.failure : undefined;
   }
 }
 
@@ -348,7 +359,8 @@ export async function streamRevAnswer({
       headers: {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
-        "X-Request-ID": createRequestId(),
+        "X-Request-ID": submissionId,
+        "X-Correlation-ID": submissionId,
         ...authHeaders,
       },
       credentials: "include",
@@ -403,6 +415,7 @@ export async function streamRevAnswer({
           handlers.onMeta?.({
             conversation_id: data.conversation_id,
             correlation_id: typeof data.correlation_id === "string" ? data.correlation_id : undefined,
+            execution_id: typeof data.execution_id === "string" ? data.execution_id : undefined,
           });
         }
         break;
@@ -451,6 +464,8 @@ export async function streamRevAnswer({
         streamError = new RevStreamError(
           typeof data.code === "string" ? data.code : "STREAM_FAILED",
           typeof data.message === "string" ? data.message : "Rev could not complete this response.",
+          0,
+          data,
         );
         break;
       case "cancelled":

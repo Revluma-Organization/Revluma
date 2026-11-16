@@ -194,7 +194,7 @@ def test_gemini_auth_failure_never_retries_or_leaks(monkeypatch):
     assert "secret merchant content" not in str(exc.value)
 
 
-def test_retired_primary_model_404_fails_over_to_configured_gemini(monkeypatch):
+def test_unknown_gemini_model_404_is_permanent_and_never_retried(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER", "gemini")
     monkeypatch.setenv("GEMINI_API_KEY", "test-only")
     monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
@@ -211,9 +211,12 @@ def test_retired_primary_model_404_fails_over_to_configured_gemini(monkeypatch):
             return SimpleNamespace(status_code=200, json=lambda: {
                 "candidates": [{"content": {"parts": [{"text": "Recovered"}]}}]})
     monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
-    assert model_gateway.generate("merchant question", timeout=10) == "Recovered"
+    with pytest.raises(model_gateway.ModelProviderError) as error:
+        model_gateway.generate("merchant question", timeout=10)
+    assert error.value.status == 404
+    assert error.value.category == "invalid_request"
+    assert len(calls) == 1
     assert "retired-model" in calls[0]
-    assert "gemini-2.5-flash" in calls[1]
 
 
 def test_grounding_sources_are_separated_by_real_newlines(monkeypatch):

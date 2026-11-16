@@ -71,7 +71,7 @@ describe("createSseParser", () => {
 describe("streamRevAnswer", () => {
   it("dispatches typed events and resolves with the conversation id", async () => {
     const fetchMock = vi.fn().mockResolvedValue(streamResponse([
-      frame("meta", { conversation_id: "conv-1", correlation_id: "corr-1" }),
+      frame("meta", { conversation_id: "conv-1", correlation_id: "corr-1", execution_id: "exec-1" }),
       frame("plan", { intent: "revenue", steps: [{ id: "s1", tool: "orders_summary", label: "Orders", status: "pending" }] }),
       frame("step", { id: "s1", tool: "orders_summary", label: "Orders", status: "completed" }),
       frame("final", finalPayload),
@@ -90,7 +90,7 @@ describe("streamRevAnswer", () => {
 
     // The final frame is authoritative for the persisted conversation id.
     expect(result).toEqual({ conversationId: "11111111-1111-4111-8111-111111111111", completed: true });
-    expect(onMeta).toHaveBeenCalledWith({ conversation_id: "conv-1", correlation_id: "corr-1" });
+    expect(onMeta).toHaveBeenCalledWith({ conversation_id: "conv-1", correlation_id: "corr-1", execution_id: "exec-1" });
     expect(onPlan.mock.calls[0][0].steps).toHaveLength(1);
     expect(onStep).toHaveBeenCalledWith(expect.objectContaining({ tool: "orders_summary", status: "completed" }));
     expect(onFinal.mock.calls[0][0].evidence.items[0].id).toBe("ev-1");
@@ -98,7 +98,10 @@ describe("streamRevAnswer", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://api.example.test/api/v1/rev/stream");
     expect((init.headers as Record<string, string>).Accept).toBe("text/event-stream");
-    expect(JSON.parse(init.body as string)).toEqual({ message: "How did revenue move?", request_id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+    const submitted = JSON.parse(init.body as string);
+    expect(submitted).toEqual({ message: "How did revenue move?", request_id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+    expect((init.headers as Record<string, string>)["X-Request-ID"]).toBe(submitted.request_id);
+    expect((init.headers as Record<string, string>)["X-Correlation-ID"]).toBe(submitted.request_id);
   });
 
   it("sends conversation id and read-only turn options without an execute capability", async () => {

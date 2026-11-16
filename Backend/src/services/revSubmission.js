@@ -86,36 +86,43 @@ async function acceptSubmission({ prisma, organizationId, userId, message, reque
     return { duplicate: true, accepted: existing, conversationId: existing.conversation_id };
   }
 
-  let conversationId = requestedConversationId;
-  if (conversationId) {
-    const owned = await prisma.$queryRaw`
-      SELECT organization_id FROM conversations WHERE id = ${conversationId}::uuid LIMIT 1
-    `;
-    if (!owned?.[0]) throw submissionError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
-    if (String(owned[0].organization_id) !== String(organizationId)) {
-      throw submissionError(403, 'FORBIDDEN', 'Not authorised to access this conversation.');
+  // The conversation row and its first accepted user message form one unit of
+  // persistence. Keeping both writes in the same transaction prevents a failed
+  // second write (or a process interruption between writes) from leaving an
+  // active, restorable-looking conversation with no messages.
+  const { conversationId, inserted } = await prisma.$transaction(async (tx) => {
+    let acceptedConversationId = requestedConversationId;
+    if (acceptedConversationId) {
+      const owned = await tx.$queryRaw`
+        SELECT organization_id FROM conversations WHERE id = ${acceptedConversationId}::uuid LIMIT 1
+      `;
+      if (!owned?.[0]) throw submissionError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+      if (String(owned[0].organization_id) !== String(organizationId)) {
+        throw submissionError(403, 'FORBIDDEN', 'Not authorised to access this conversation.');
+      }
+    } else {
+      acceptedConversationId = uuidv5(requestId, REQUEST_CONVERSATION_NAMESPACE);
+      await tx.$executeRaw`
+        INSERT INTO conversations (id, organization_id, user_id, status, message_count, last_activity_at)
+        VALUES (${acceptedConversationId}::uuid, ${organizationId}::uuid, ${userId}::uuid, 'active', 0, NOW())
+        ON CONFLICT (id) DO NOTHING
+      `;
     }
-  } else {
-    conversationId = uuidv5(requestId, REQUEST_CONVERSATION_NAMESPACE);
-    await prisma.$executeRaw`
-      INSERT INTO conversations (id, organization_id, user_id, status, message_count, last_activity_at)
-      VALUES (${conversationId}::uuid, ${organizationId}::uuid, ${userId}::uuid, 'active', 0, NOW())
-      ON CONFLICT (id) DO NOTHING
-    `;
-  }
 
-  const inserted = await prisma.$executeRaw`
-    INSERT INTO conversation_messages (
-      id, conversation_id, organization_id, user_id,
-      role, content, sequence_number, correlation_id, has_error
-    )
-    SELECT ${uuidv4()}::uuid, ${conversationId}::uuid, ${organizationId}::uuid, ${userId}::uuid,
-           'user', ${JSON.stringify({ text: message })}::jsonb,
-           COALESCE(MAX(sequence_number), 0) + 1, ${requestId}::uuid, false
-    FROM conversation_messages
-    WHERE conversation_id = ${conversationId}::uuid
-    ON CONFLICT (organization_id, conversation_id, role, correlation_id) DO NOTHING
-  `;
+    const inserted = await tx.$executeRaw`
+      INSERT INTO conversation_messages (
+        id, conversation_id, organization_id, user_id,
+        role, content, sequence_number, correlation_id, has_error
+      )
+      SELECT ${uuidv4()}::uuid, ${acceptedConversationId}::uuid, ${organizationId}::uuid, ${userId}::uuid,
+             'user', ${JSON.stringify({ text: message })}::jsonb,
+             COALESCE(MAX(sequence_number), 0) + 1, ${requestId}::uuid, false
+      FROM conversation_messages
+      WHERE conversation_id = ${acceptedConversationId}::uuid
+      ON CONFLICT (organization_id, conversation_id, role, correlation_id) DO NOTHING
+    `;
+    return { conversationId: acceptedConversationId, inserted };
+  });
   if (Number(inserted) === 0) {
     const accepted = await findAcceptedSubmission(prisma, organizationId, requestId);
     if (!accepted) throw submissionError(409, 'SUBMISSION_NOT_ACCEPTED', 'The question was not accepted. Please retry.');

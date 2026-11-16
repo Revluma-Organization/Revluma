@@ -1,5 +1,6 @@
 import pytest
 from types import SimpleNamespace
+from uuid import UUID
 from fastapi.testclient import TestClient
 from src.serving import api as serving_api
 from src.serving.api import app, verify_internal_caller
@@ -132,7 +133,10 @@ def test_orchestrate_forwards_scheduler_trigger_context(monkeypatch):
     assert response.json()["orchestrator_mode"] == "Briefing"
     assert captured["trigger_type"] == "scheduler"
     assert captured["trigger_priority"] == "high"
-    assert captured["context_payload"] == {"schedule": "morning_briefing"}
+    trace_context = captured["context_payload"]
+    assert trace_context["schedule"] == "morning_briefing"
+    assert str(UUID(trace_context["correlation_id"])) == trace_context["correlation_id"]
+    assert str(UUID(trace_context["execution_id"])) == trace_context["execution_id"]
     assert captured["session_closed"] is True
 
 

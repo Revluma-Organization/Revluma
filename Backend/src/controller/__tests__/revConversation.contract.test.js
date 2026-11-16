@@ -76,4 +76,40 @@ assert.match(
   'cross-tenant attempts are logged with ids only (privacy-safe, no content)',
 );
 
+// A streamed retry reuses the already-accepted user turn. It must authorize
+// the requested conversation ID before reading its history or writing the
+// assistant result; an undefined/wrong-scope identifier would lose recovery.
+const streamStart = source.indexOf('exports.chatStream = async');
+const streamEnd = source.indexOf('// ── GET /api/v1/rev/tools', streamStart);
+assert.ok(streamStart > 0 && streamEnd > streamStart, 'chatStream handler must exist');
+const streamHandler = source.slice(streamStart, streamEnd);
+assert.match(
+  streamHandler,
+  /verifyConversationOwnership\(requestedConversationId, org\.id\)/,
+  'stream retries must authorize the supplied conversation ID under the authenticated organization',
+);
+assert.doesNotMatch(
+  streamHandler,
+  /verifyConversationOwnership\(conversationId, org\.id\)/,
+  'stream retries must not reference a stale or undefined conversationId variable',
+);
+
+// ── 4. History restoration: do not present orphan empty rows as resumable ───
+const historySource = sliceFunction('exports.getConversations');
+assert.equal(
+  (historySource.match(/SELECT COUNT\(\*\)::int FROM conversation_messages cm_count/g) || []).length,
+  2,
+  'history list and search must report actual persisted message counts, not stale denormalized counts',
+);
+assert.match(
+  historySource,
+  /EXISTS \(\s*SELECT 1 FROM conversation_messages cm_any[\s\S]*?cm_any\.conversation_id = c\.id[\s\S]*?cm_any\.organization_id = c\.organization_id/,
+  'history search must exclude active conversation rows with no persisted messages',
+);
+assert.match(
+  historySource,
+  /EXISTS \(\s*SELECT 1 FROM conversation_messages cm[\s\S]*?cm\.conversation_id = c\.id[\s\S]*?cm\.organization_id = c\.organization_id/,
+  'ordinary history must also exclude empty conversations without crossing tenants',
+);
+
 console.log('revConversation contract test passed');

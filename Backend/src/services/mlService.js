@@ -21,6 +21,7 @@
 
 const axios = require('axios');
 const logger = require('../utils/logger');
+const revMetrics = require('./revOperationalMetrics');
 const { createSseParser } = require('./revStream');
 const { EVIDENCE_SCHEMA_VERSION, validateEvidenceCollection } = require('./revEvidenceContract');
 const {
@@ -190,12 +191,8 @@ const SEND_TIME_FIELDS = [
 /* -------------------------------------------------------------------------- */
 
 function getCorrelationId(correlationId) {
-  return (
-    correlationId ||
-    `ml-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 10)}`
-  );
+  // Correlation is a UUID contract shared with browser submission idempotency.
+  return safeId(correlationId);
 }
 
 function isPlainObject(value) {
@@ -228,17 +225,31 @@ async function pythonRequest({
   path,
   body,
   correlationId,
+  executionId,
   timeout = TIMEOUT_MS,
   extraHeaders = {},
 }) {
+  const requestCorrelationId = getCorrelationId(
+    correlationId || body?.correlation_id || body?.context_payload?.correlation_id,
+  );
+  const requestExecutionId = safeId(
+    executionId || body?.execution_id || body?.context_payload?.execution_id,
+  );
+  const startTime = Date.now();
+
   if (!PYTHON_SERVICE_URL || !ML_INTERNAL_KEY) {
+    revMetrics.record('rev_provider_failures_total', 1, { category: 'provider_unavailable' });
+    const failure = safeFailure('provider_unavailable', 'node_python_transport', {
+      correlationId: requestCorrelationId, executionId: requestExecutionId,
+    });
     return {
       success: false,
+      correlationId: requestCorrelationId,
+      executionId: requestExecutionId,
       error: {
         code: ML_ERRORS.NOT_CONFIGURED,
-        failure: safeFailure('provider_unavailable', 'node_python_transport', { correlationId }),
-        message:
-          'Rev Intelligence is not configured. Contact support.',
+        failure,
+        message: 'Rev Intelligence is not configured. Contact support.',
       },
     };
   }
@@ -246,25 +257,24 @@ async function pythonRequest({
   if (!path) {
     return {
       success: false,
+      correlationId: requestCorrelationId,
+      executionId: requestExecutionId,
       error: {
         code: ML_ERRORS.INVALID_REQUEST,
-        message:
-          'Python intelligence endpoint is not configured.',
+        failure: safeFailure('invalid_request', 'node_python_transport', {
+          correlationId: requestCorrelationId, executionId: requestExecutionId,
+        }),
+        message: 'Python intelligence endpoint is not configured.',
       },
     };
   }
-
-  const requestCorrelationId =
-    getCorrelationId(correlationId);
-
-  const startTime = Date.now();
   if (body && typeof body === 'object') {
     body.correlation_id = requestCorrelationId;
-    body.execution_id = requestCorrelationId;
+    body.execution_id = requestExecutionId;
     body.context_payload = {
       ...(body.context_payload || {}),
       correlation_id: requestCorrelationId,
-      execution_id: requestCorrelationId,
+      execution_id: requestExecutionId,
       execution_policy: { overall_timeout_ms: TIMEOUT_POLICY_MS.overallInvestigation - 5000 },
     };
   }
@@ -277,12 +287,13 @@ async function pythonRequest({
       timeout,
       maxRedirects: 0,
 
-      validateStatus: (status) => status < 500,
+      validateStatus: (status) => status < 600,
 
       headers: {
         'Content-Type': 'application/json',
         'X-Internal-Key': ML_INTERNAL_KEY,
         'X-Correlation-ID': requestCorrelationId,
+        'X-Execution-ID': requestExecutionId,
         'X-Contract-Version': CONTRACT_VERSION,
         ...extraHeaders,
       },
@@ -306,9 +317,11 @@ async function pythonRequest({
     ) {
       return {
         success: false,
+        correlationId: requestCorrelationId,
+        executionId: requestExecutionId,
         error: {
           code: ML_ERRORS.AUTH_FAILED,
-          failure: safeFailure('authorization_failed', 'node_python_transport', { correlationId: requestCorrelationId }),
+          failure: safeFailure('authorization_failed', 'node_python_transport', { correlationId: requestCorrelationId, executionId: requestExecutionId }),
           message:
             'Intelligence service authentication failed.',
         },
@@ -316,20 +329,37 @@ async function pythonRequest({
     }
 
     if (response.status >= 400) {
+      const detail = response.data?.detail && typeof response.data.detail === 'object'
+        ? response.data.detail : {};
+      const fallback = safeFailure(
+        response.status === 422 ? 'schema_validation_failed' : response.status >= 500 ? 'provider_unavailable' : 'invalid_request',
+        'node_python_transport', { correlationId: requestCorrelationId, executionId: requestExecutionId });
+      const failure = normalizePythonFailure(detail.failure, fallback, requestCorrelationId, requestExecutionId);
+      if (response.status >= 500) revMetrics.record('rev_provider_failures_total', 1, { category: failure.category });
+      const providerFailure = detail.code === 'PROVIDER_FAILURE';
       return {
         success: false,
+        correlationId: requestCorrelationId,
+        executionId: requestExecutionId,
         error: {
-          code: response.status === 422 ? ML_ERRORS.INVALID_RESPONSE : ML_ERRORS.UNAVAILABLE,
-          failure: safeFailure(response.status === 422 ? 'schema_validation_failed' : 'invalid_request',
-            'node_python_transport', { correlationId: requestCorrelationId }),
-          message:
-            'Intelligence service request failed.',
+          code: providerFailure ? 'PROVIDER_FAILURE' : response.status === 422 ? ML_ERRORS.INVALID_RESPONSE : ML_ERRORS.UNAVAILABLE,
+          failure,
+          retryable: providerFailure ? failure.retryable : undefined,
+          message: providerFailure
+            ? (failure.retryable
+              ? 'Rev could not complete this response because its configured AI providers remained unavailable within the retry budget. Please try again shortly.'
+              : 'Rev could not complete this response because its configured AI provider rejected the request. Please contact support.')
+            : response.status === 422
+              ? 'Intelligence response failed validation.'
+              : response.status >= 500 ? 'Intelligence service is temporarily unavailable.' : 'Intelligence service request failed.',
         },
       };
     }
 
     return {
       success: true,
+      correlationId: requestCorrelationId,
+      executionId: requestExecutionId,
       data: response.data,
       latencyMs,
     };
@@ -340,6 +370,7 @@ async function pythonRequest({
       error.code === 'ECONNABORTED' ||
       error.code === 'ETIMEDOUT'
     ) {
+      revMetrics.record('rev_provider_failures_total', 1, { category: 'timeout' });
       logger.warn(
         {
           operation: path,
@@ -352,9 +383,11 @@ async function pythonRequest({
 
       return {
         success: false,
+        correlationId: requestCorrelationId,
+        executionId: requestExecutionId,
         error: {
           code: ML_ERRORS.TIMEOUT,
-          failure: safeFailure('timeout', 'node_python_transport', { correlationId: requestCorrelationId }),
+          failure: safeFailure('timeout', 'node_python_transport', { correlationId: requestCorrelationId, executionId: requestExecutionId }),
           message:
             'Intelligence service timed out.',
         },
@@ -362,11 +395,13 @@ async function pythonRequest({
       };
     }
 
+    revMetrics.record('rev_provider_failures_total', 1, { category: 'connection_failed' });
     logger.warn(
       {
         operation: path,
         latencyMs,
         correlationId: requestCorrelationId,
+        executionId: requestExecutionId,
         errorType: error.code || 'request_error',
       },
       'ML service request failed'
@@ -374,9 +409,11 @@ async function pythonRequest({
 
     return {
       success: false,
+      correlationId: requestCorrelationId,
+      executionId: requestExecutionId,
       error: {
         code: ML_ERRORS.UNAVAILABLE,
-        failure: safeFailure('connection_failed', 'node_python_transport', { correlationId: requestCorrelationId }),
+        failure: safeFailure('connection_failed', 'node_python_transport', { correlationId: requestCorrelationId, executionId: requestExecutionId }),
         message:
           'Intelligence service is unavailable.',
       },
@@ -503,6 +540,7 @@ function buildOrchestrateRequest({
   message,
   conversationId,
   correlationId,
+  executionId,
   triggerType = 'conversation',
   triggerPriority = 'normal',
   contextPayload = {},
@@ -512,6 +550,7 @@ function buildOrchestrateRequest({
   const request = {
     organization_id: organizationId,
     user_id: userId,
+    execution_id: safeId(executionId),
 
     conversation_id:
       conversationId || null,
@@ -697,14 +736,15 @@ async function orchestrate({
   message,
   conversationId,
   correlationId,
+  executionId,
   triggerType = 'conversation',
   triggerPriority = 'normal',
   contextPayload = {},
   imageBase64,
   imageMediaType,
 }) {
-  const requestCorrelationId =
-    getCorrelationId(correlationId);
+  const requestCorrelationId = getCorrelationId(correlationId);
+  const requestExecutionId = safeId(executionId);
 
   const validation =
     validateOrchestrateRequest({
@@ -721,8 +761,13 @@ async function orchestrate({
   if (!validation.valid) {
     return {
       success: false,
+      correlationId: requestCorrelationId,
+      executionId: requestExecutionId,
       error: {
         code: ML_ERRORS.INVALID_REQUEST,
+        failure: safeFailure('invalid_request', 'request_validation', {
+          correlationId: requestCorrelationId, executionId: requestExecutionId,
+        }),
         message: validation.message,
       },
     };
@@ -734,11 +779,15 @@ async function orchestrate({
       userId,
       message,
       conversationId,
-      correlationId:
-        requestCorrelationId,
+      correlationId: requestCorrelationId,
+      executionId: requestExecutionId,
       triggerType,
       triggerPriority,
-      contextPayload,
+      contextPayload: {
+        ...contextPayload,
+        correlation_id: requestCorrelationId,
+        execution_id: requestExecutionId,
+      },
       imageBase64,
       imageMediaType,
     });
@@ -747,8 +796,8 @@ async function orchestrate({
     await pythonRequest({
       path: '/orchestrate',
       body: requestBody,
-      correlationId:
-        requestCorrelationId,
+      correlationId: requestCorrelationId,
+      executionId: requestExecutionId,
     });
 
   if (!result.success) {
@@ -784,6 +833,13 @@ async function orchestrate({
     };
   }
 
+  result.data.correlation_id = result.data.correlation_id || requestCorrelationId;
+  result.data.execution_id = result.data.execution_id || requestExecutionId;
+  result.data.execution_metadata = result.data.execution_metadata || {
+    correlation_id: requestCorrelationId,
+    execution_id: requestExecutionId,
+    outcome: 'success',
+  };
   return {
     success: true,
     data: result.data,
@@ -1652,17 +1708,33 @@ function validateContributorAnalysis(contributor, knownIds) {
 }
 
 async function investigate({
-  organizationId, userId, message, conversationId, correlationId,
+  organizationId, userId, message, conversationId, correlationId, executionId,
   contextPayload = {},
 }) {
+  const requestCorrelationId = getCorrelationId(
+    correlationId || contextPayload?.correlation_id,
+  );
+  const requestExecutionId = safeId(
+    executionId || contextPayload?.execution_id,
+  );
   const validation = validateOrchestrateRequest({
     organizationId, userId, message, triggerType: 'conversation',
     triggerPriority: 'normal', contextPayload,
   });
   if (!validation.valid) {
-    return { success: false, error: { code: ML_ERRORS.INVALID_REQUEST, message: validation.message } };
+    return {
+      success: false,
+      correlationId: requestCorrelationId,
+      executionId: requestExecutionId,
+      error: {
+        code: ML_ERRORS.INVALID_REQUEST,
+        failure: safeFailure('invalid_request', 'request_validation', {
+          correlationId: requestCorrelationId, executionId: requestExecutionId,
+        }),
+        message: validation.message,
+      },
+    };
   }
-  const requestCorrelationId = getCorrelationId(correlationId);
   const result = await pythonRequest({
     path: '/rev/investigate',
     body: {
@@ -1674,23 +1746,37 @@ async function investigate({
       context_payload: contextPayload,
     },
     correlationId: requestCorrelationId,
+    executionId: requestExecutionId,
     timeout: TIMEOUT_POLICY_MS.overallInvestigation,
   });
   if (!result.success) return result;
   if (!validateInvestigationResponse(result.data, organizationId, authorizedContextStoreIds(contextPayload), requestCorrelationId)) {
     logger.error('rev_investigation_invalid_response', {
-      correlationId: requestCorrelationId,
+      correlationId: requestCorrelationId, executionId: requestExecutionId,
     });
     return {
       success: false,
+      correlationId: requestCorrelationId,
+      executionId: requestExecutionId,
       error: {
         code: ML_ERRORS.INVALID_RESPONSE,
-        failure: safeFailure('schema_validation_failed', 'response_validation', { correlationId: requestCorrelationId }),
+        failure: safeFailure('schema_validation_failed', 'response_validation', {
+          correlationId: requestCorrelationId, executionId: requestExecutionId,
+        }),
         message: 'Intelligence service returned an invalid response.',
       },
     };
   }
-  return { success: true, data: result.data, latencyMs: result.latencyMs };
+  result.data.correlation_id = result.data.correlation_id || requestCorrelationId;
+  result.data.execution_id = result.data.execution_id || requestExecutionId;
+  result.data.execution_metadata = result.data.execution_metadata || {
+    correlation_id: requestCorrelationId,
+    execution_id: requestExecutionId,
+    latency_ms: result.latencyMs,
+    outcome: result.data.investigation_outcome?.outcome || 'success',
+  };
+  return { success: true, data: result.data, latencyMs: result.latencyMs,
+    correlationId: requestCorrelationId, executionId: requestExecutionId };
 }
 
 /**
@@ -1702,12 +1788,24 @@ async function investigate({
  */
 async function streamInvestigation({
   organizationId, userId, message, conversationId, correlationId,
-  contextPayload = {}, signal, onEvent,
+  executionId, contextPayload = {}, signal, onEvent,
 }) {
+  const requestCorrelationId = getCorrelationId(
+    correlationId || contextPayload?.correlation_id,
+  );
+  const requestExecutionId = safeId(
+    executionId || contextPayload?.execution_id,
+  );
   if (!PYTHON_SERVICE_URL || !ML_INTERNAL_KEY) {
+    revMetrics.record('rev_provider_failures_total', 1, { category: 'provider_unavailable' });
+    const failure = safeFailure('provider_unavailable', 'node_python_stream', {
+      correlationId: requestCorrelationId, executionId: requestExecutionId,
+    });
     return {
       success: false,
-      error: { code: ML_ERRORS.NOT_CONFIGURED,
+      correlationId: requestCorrelationId,
+      executionId: requestExecutionId,
+      error: { code: ML_ERRORS.NOT_CONFIGURED, failure,
         message: 'Rev Intelligence is not configured. Contact support.' },
     };
   }
@@ -1716,9 +1814,20 @@ async function streamInvestigation({
     triggerPriority: 'normal', contextPayload,
   });
   if (!validation.valid) {
-    return { success: false, error: { code: ML_ERRORS.INVALID_REQUEST, message: validation.message } };
+    return {
+      success: false,
+      correlationId: requestCorrelationId,
+      executionId: requestExecutionId,
+      error: {
+        code: ML_ERRORS.INVALID_REQUEST,
+        failure: safeFailure('invalid_request', 'request_validation', {
+          correlationId: requestCorrelationId, executionId: requestExecutionId,
+        }),
+        message: validation.message,
+      },
+    };
   }
-  const requestCorrelationId = getCorrelationId(correlationId);
+  const startedAt = Date.now();
   const timeoutSignal = AbortSignal.timeout(STREAM_TIMEOUT_MS);
   const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 
@@ -1730,6 +1839,7 @@ async function streamInvestigation({
         'Content-Type': 'application/json',
         'X-Internal-Key': ML_INTERNAL_KEY,
         'X-Correlation-ID': requestCorrelationId,
+        'X-Execution-ID': requestExecutionId,
         'X-Contract-Version': CONTRACT_VERSION,
         Accept: 'text/event-stream',
       },
@@ -1740,11 +1850,11 @@ async function streamInvestigation({
         message,
         conversation_id: conversationId || null,
         correlation_id: requestCorrelationId,
-        execution_id: requestCorrelationId,
+        execution_id: requestExecutionId,
         context_payload: {
           ...contextPayload,
           correlation_id: requestCorrelationId,
-          execution_id: requestCorrelationId,
+          execution_id: requestExecutionId,
           execution_policy: { overall_timeout_ms: TIMEOUT_POLICY_MS.overallInvestigation - 5000 },
         },
       }),
@@ -1756,7 +1866,7 @@ async function streamInvestigation({
         success: false,
         error: {
           code: signal && signal.aborted ? 'CANCELLED' : ML_ERRORS.TIMEOUT,
-          failure: safeFailure(signal && signal.aborted ? 'cancelled' : 'timeout', 'node_python_stream', { correlationId: requestCorrelationId }),
+          failure: safeFailure(signal && signal.aborted ? 'cancelled' : 'timeout', 'node_python_stream', { correlationId: requestCorrelationId, executionId: requestExecutionId }),
           message: signal && signal.aborted
             ? 'Generation stopped.'
             : 'Intelligence service timed out.',
@@ -1769,19 +1879,19 @@ async function streamInvestigation({
     return {
       success: false,
       error: { code: ML_ERRORS.UNAVAILABLE,
-        failure: safeFailure('connection_failed', 'node_python_stream', { correlationId: requestCorrelationId }),
+        failure: safeFailure('connection_failed', 'node_python_stream', { correlationId: requestCorrelationId, executionId: requestExecutionId }),
         message: 'Intelligence service is unavailable.' },
     };
   }
 
   if (response.status === 401 || response.status === 403) {
     return { success: false, error: { code: ML_ERRORS.AUTH_FAILED,
-      failure: safeFailure('authorization_failed', 'node_python_stream', { correlationId: requestCorrelationId }),
+      failure: safeFailure('authorization_failed', 'node_python_stream', { correlationId: requestCorrelationId, executionId: requestExecutionId }),
       message: 'Intelligence service authentication failed.' } };
   }
   if (!response.ok || !response.body) {
     return { success: false, error: { code: ML_ERRORS.UNAVAILABLE,
-      failure: safeFailure('provider_unavailable', 'node_python_stream', { correlationId: requestCorrelationId }),
+      failure: safeFailure('provider_unavailable', 'node_python_stream', { correlationId: requestCorrelationId, executionId: requestExecutionId }),
       message: 'Intelligence service request failed.' } };
   }
 
@@ -1813,7 +1923,13 @@ async function streamInvestigation({
       cancelledUpstream = payload || {};
       return;
     }
-    if (typeof onEvent === 'function') onEvent(event, payload);
+    if (typeof onEvent === 'function') {
+      const tracedPayload = isPlainObject(payload)
+        ? { ...payload, correlation_id: payload.correlation_id || requestCorrelationId,
+            execution_id: payload.execution_id || requestExecutionId }
+        : { value: payload, correlation_id: requestCorrelationId, execution_id: requestExecutionId };
+      onEvent(event, tracedPayload);
+    }
   });
 
   const reader = response.body.getReader();
@@ -1832,7 +1948,7 @@ async function streamInvestigation({
         success: false,
         error: {
           code: signal && signal.aborted ? 'CANCELLED' : ML_ERRORS.TIMEOUT,
-          failure: safeFailure(signal && signal.aborted ? 'cancelled' : 'timeout', 'node_python_stream', { correlationId: requestCorrelationId }),
+          failure: safeFailure(signal && signal.aborted ? 'cancelled' : 'timeout', 'node_python_stream', { correlationId: requestCorrelationId, executionId: requestExecutionId }),
           message: signal && signal.aborted ? 'Generation stopped.' : 'Intelligence service timed out.',
         },
       };
@@ -1841,7 +1957,7 @@ async function streamInvestigation({
       correlationId: requestCorrelationId, errorType: error.name,
     });
     return { success: false, error: { code: ML_ERRORS.UNAVAILABLE,
-      failure: safeFailure('connection_failed', 'node_python_stream', { correlationId: requestCorrelationId }),
+      failure: safeFailure('connection_failed', 'node_python_stream', { correlationId: requestCorrelationId, executionId: requestExecutionId }),
       message: 'The intelligence stream was interrupted.' } };
   } finally {
     try { reader.releaseLock(); } catch { /* no-op */ }
@@ -1858,28 +1974,46 @@ async function streamInvestigation({
     return {
       success: false,
       error: { code: 'CANCELLED',
-        failure: safeFailure('cancelled', 'python_execution', { correlationId: requestCorrelationId }),
+        failure: safeFailure('cancelled', 'python_execution', { correlationId: requestCorrelationId, executionId: requestExecutionId }),
         message: 'Generation stopped.' },
     };
   }
   if (streamError) {
+    const fallbackCategory = streamError.code === ML_ERRORS.TIMEOUT ? 'timeout'
+      : streamError.code === 'PROVIDER_FAILURE' ? 'provider_unavailable' : 'internal_error';
+    const fallback = safeFailure(fallbackCategory, 'python_execution', {
+      correlationId: requestCorrelationId, executionId: requestExecutionId,
+    });
+    const failure = normalizePythonFailure(
+      streamError.failure, fallback, requestCorrelationId, requestExecutionId);
+    const retryable = failure.retryable === true;
     return {
       success: false,
       error: {
         code: streamError.code || ML_ERRORS.UNAVAILABLE,
-        failure: safeFailure(streamError.code === ML_ERRORS.TIMEOUT ? 'timeout' : 'provider_unavailable',
-          'python_execution', { correlationId: requestCorrelationId }),
-        message: streamError.code === ML_ERRORS.TIMEOUT
-          ? 'Intelligence service timed out.'
-          : 'Rev could not complete the investigation. Please retry.',
+        failure,
+        retryable,
+        message: retryable
+          ? 'Rev could not complete this response because its configured AI providers remained unavailable within the retry budget. Please try again shortly.'
+          : 'Rev could not complete this response because its configured AI provider rejected the request. Please contact support.',
       },
     };
   }
   if (!validateInvestigationResponse(finalPayload, organizationId, authorizedContextStoreIds(contextPayload), requestCorrelationId)) {
+    const revMetrics = require('./revOperationalMetrics');
+    revMetrics.record('rev_validation_failures_total', 1, { stage: 'python_response_contract' });
     return { success: false, error: { code: ML_ERRORS.INVALID_RESPONSE,
-      failure: safeFailure('schema_validation_failed', 'response_validation', { correlationId: requestCorrelationId }),
+      failure: safeFailure('schema_validation_failed', 'response_validation', { correlationId: requestCorrelationId, executionId: requestExecutionId }),
       message: 'Intelligence service returned an invalid response.' } };
   }
+  finalPayload.correlation_id = finalPayload.correlation_id || requestCorrelationId;
+  finalPayload.execution_id = finalPayload.execution_id || requestExecutionId;
+  finalPayload.execution_metadata = finalPayload.execution_metadata || {
+    correlation_id: requestCorrelationId,
+    execution_id: requestExecutionId,
+    latency_ms: Date.now() - startedAt,
+    outcome: 'success',
+  };
   return { success: true, data: finalPayload };
 }
 
