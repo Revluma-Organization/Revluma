@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 
+from ..intelligence.operational_metrics import record_stage
 from .rev_system_prompt import REV_SYSTEM_PROMPT, build_rev_prompt
 
 logger = logging.getLogger("rev.responder")
@@ -338,10 +340,21 @@ def compose_web_research(message: str, understanding, history_text: str,
     prompt = (PERSONA + "\nAnswer this public-information research question using Google Search. "
               "Give a clear answer with sources. Do not invent citations. "
               "Never request or disclose private store records.\nQuestion: " + message[:500])
+    started = time.monotonic()
     try:
-        return sanitise(generate(prompt, role="deep", max_tokens=1200,
-                                 timeout=25.0, web_search=True))
+        output = generate(prompt, role="deep", max_tokens=1200,
+                          timeout=25.0, web_search=True)
+        no_sources = isinstance(output, str) and output.rstrip().endswith(
+            "(Web search returned no verifiable sources.)")
+        record_stage("web_research", (time.monotonic() - started) * 1000,
+                     labels={"outcome": "no_sources" if no_sources else "success"})
+        if no_sources:
+            return ("I couldn't verify sources in the current web results, so I won't "
+                    "present a current answer as researched. Please try again shortly.")
+        return sanitise(output)
     except Exception as exc:
+        record_stage("web_research", (time.monotonic() - started) * 1000,
+                     labels={"outcome": "failure"})
         logger.error("responder_web_research_failed error_type=%s", type(exc).__name__)
         return ("I couldn't access current web results right now. "
                 "I don't want to present outdated information as verified research.")

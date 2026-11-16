@@ -69,7 +69,7 @@ def test_web_research_does_not_forward_private_history_or_memories(monkeypatch):
     from src.agents import model_gateway
     def fake_generate(prompt, **kwargs):
         captured.append((prompt, kwargs))
-        return "Verified public research."
+        return "Verified public research.\n\nSources:\n- https://example.org/source"
     monkeypatch.setattr(model_gateway, "generate", fake_generate)
     reply = responder.compose_web_research(
         "What is the latest ecommerce trend?",
@@ -77,11 +77,25 @@ def test_web_research_does_not_forward_private_history_or_memories(monkeypatch):
         "PRIVATE ORDER 12345: customer@example.com",
         [{"memory_key": "customer", "memory_value": "private-secret"}],
     )
-    assert reply == "Verified public research."
+    assert reply.startswith("Verified public research.")
+    assert "https://example.org/source" in reply
     assert "PRIVATE ORDER" not in captured[0][0]
     assert "customer@example.com" not in captured[0][0]
     assert "private-secret" not in captured[0][0]
     assert captured[0][1]["web_search"] is True
+
+
+def test_web_research_without_grounding_sources_is_not_presented_as_researched(monkeypatch):
+    from src.agents import model_gateway
+
+    monkeypatch.setattr(
+        model_gateway, "generate",
+        lambda *args, **kwargs: "Unverified current claim." + "\n\n(Web search returned no verifiable sources.)",
+    )
+    answer = responder.compose_web_research(
+        "What changed this year?", SimpleNamespace(intent="web_research"), "", [])
+    assert "won't present a current answer as researched" in answer
+    assert "Unverified current claim" not in answer
 
 
 def test_knowledge_question_uses_configured_provider_not_hardcoded_anthropic(monkeypatch):

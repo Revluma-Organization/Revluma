@@ -18,6 +18,7 @@ const plan = () => ({
   period: { start: '2026-11-01', end: '2026-11-07' }, question: 'Revenue and checkout',
   question_understanding: understanding(), required_domains: ['revenue', 'checkout'],
   tools: ['store_health', 'integration_health', 'revenue_observations', 'checkout_observations'],
+  max_tool_count: 12,
   tasks: [
     { task_id: '1', domain: 'revenue', specialist: 'revenue', dependencies: ['integration'], attempts: 1 },
     { task_id: '2', domain: 'checkout', specialist: null, dependencies: ['integration'], attempts: 1 },
@@ -42,6 +43,14 @@ test('foreign tenant, evidence, recursion and excess fanout fail closed', () => 
   value.reconciliation.contradictions[0].evidence_references = ['foreign'];
   const errors = validateQuestionOrchestration(value, { organizationId: ORG, evidenceIds: new Set() });
   for (const code of ['orchestration_tenant', 'orchestration_recursion', 'orchestration_fanout', 'orchestration_evidence_reference']) assert.ok(errors.includes(code));
+});
+
+test('tool plans must be unique and stay within the explicit twelve-tool budget', () => {
+  const value = plan();
+  value.tools = Array.from({ length: 13 }, (_, index) => `tool_${index}`);
+  assert.ok(validateQuestionOrchestration(value, { organizationId: ORG }).includes('orchestration_tool_budget'));
+  value.tools = ['store_health', 'store_health'];
+  assert.ok(validateQuestionOrchestration(value, { organizationId: ORG }).includes('orchestration_tool_budget'));
 });
 
 test('invented domains, capabilities and self dependencies are rejected', () => {

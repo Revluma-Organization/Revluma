@@ -3,6 +3,7 @@
 // Task 209 — independent Node boundary for canonical question orchestration.
 const CONTRACT_VERSION = 'rev-question-orchestration-v1';
 const QUESTION_CONTRACT_VERSION = 'rev-question-understanding-v1';
+const MAX_TOOL_COUNT = 12;
 const STATES = new Set(['received', 'understanding', 'planning', 'executing', 'reconciling',
   'composing', 'validating', 'completed', 'partial_success', 'needs_clarification',
   'unsupported', 'failed', 'cancelled']);
@@ -32,6 +33,9 @@ function validateQuestionOrchestration(value, { organizationId = null, evidenceI
   if (typeof value.request_fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(value.request_fingerprint)) errors.push('orchestration_idempotency');
   if (!Array.isArray(value.state_history) || value.state_history.some(entry => !STATES.has(entry?.state))) errors.push('orchestration_state_history');
   if (value.recursion_depth !== 0 || value.max_recursion_depth !== 0) errors.push('orchestration_recursion');
+  if (value.max_tool_count !== MAX_TOOL_COUNT || !Array.isArray(value.tools)
+      || value.tools.some(name => typeof name !== 'string') || value.tools.length > MAX_TOOL_COUNT
+      || new Set(value.tools).size !== value.tools.length) errors.push('orchestration_tool_budget');
   if (!Array.isArray(value.selected_specialists) || value.selected_specialists.some(name => !SPECIALISTS.has(name))
       || value.selected_specialists.length > value.max_specialist_fanout || value.max_specialist_fanout > 3) errors.push('orchestration_fanout');
   if (!Number.isFinite(value.per_specialist_timeout_ms) || value.per_specialist_timeout_ms <= 0

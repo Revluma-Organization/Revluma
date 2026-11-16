@@ -109,22 +109,38 @@ export function storeLabel(ctx: StoreContext): string {
   return host.replace(/\.myshopify\.com$/i, "") || host;
 }
 
-/** True when the store is connected but its first sync has not completed. */
+/** True only when an explicit backend status confirms a sync is running. */
 export function isSyncIncomplete(ctx: StoreContext): boolean {
   if (!ctx.connected) return false;
-  // sync_only_limited means synchronization completed but webhook coverage is
-  // incomplete. Keep that separate from an unfinished initial sync so the UI
-  // can show the more accurate webhook-coverage warning instead.
-  return ["pending", "in_progress"].includes(ctx.syncStatus || "")
-    || ctx.monitoringMode === "awaiting_verified_sync";
+  // Only explicit queued/running sync states are progress. `pending` means the
+  // initial sync is queued; `awaiting_verified_sync` is ambiguous and can also
+  // describe failed, stale, or unknown evidence, so it is not enough by itself.
+  return ["pending", "in_progress"].includes(ctx.syncStatus || "");
+}
+
+/** True when the recorded initial synchronization has not started yet. */
+export function isSyncNotStarted(ctx: StoreContext): boolean {
+  return ctx.connected && ctx.syncStatus === "not_started";
+}
+
+/** True when the latest recorded synchronization failed or was partial. */
+export function hasSyncFailure(ctx: StoreContext): boolean {
+  return ctx.connected && ["failed", "partial"].includes(ctx.syncStatus || "");
+}
+
+/** True when the backend cannot classify synchronization from recorded evidence. */
+export function isSyncStatusUnknown(ctx: StoreContext): boolean {
+  return ctx.connected && ctx.syncStatus === "unknown";
 }
 
 /** True when required webhook topics are missing or failed. */
 export function hasWebhookGap(ctx: StoreContext): boolean {
   if (!ctx.connected || ctx.platform !== "shopify") return false;
-  if (ctx.webhooksRegistered == null || ctx.webhooksRequired == null) return false;
-  return ctx.webhooksRegistered < ctx.webhooksRequired
-    || ["webhooks_pending", "failed"].includes(ctx.setupStatus || "");
+  if (ctx.webhooksRegistered != null && ctx.webhooksRequired != null
+    && ctx.webhooksRegistered < ctx.webhooksRequired) return true;
+  // `failed` is ambiguous (the failure may be sync, authorization, or webhook
+  // setup); only the webhook-specific status identifies a webhook gap.
+  return ctx.setupStatus === "webhooks_pending";
 }
 
 /** True when the last successful sync is old enough that data may be stale. */

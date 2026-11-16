@@ -306,6 +306,19 @@ def test_49_dependent_history_marks_old_version_superseded():
     assert first["recommendations"][0]["recommendation_id"] != second["recommendations"][0]["recommendation_id"]
 
 
+def test_fresh_product_question_does_not_inherit_prior_revenue_finding():
+    context = {"context_window": {"last_selected_finding": {
+        "finding_id": FINDING, "title": "Old client title"}}}
+    db = finding_db()
+    result = run_investigation(ORG, USER, "How many products are low inventory?",
+        conversation_id="44444444-4444-4444-8444-444444444444",
+        db=db, now=NOW, context_payload={"conversation_context": context}, persist=False)
+    assert result["investigation"]["intent"] == "product_investigation"
+    assert result["selected_finding"] is None
+    assert result["question_understanding"]["context_used"].get("selected_finding_id") is None
+    assert not any("finding_reference" in params for _, params in db.statements)
+
+
 def test_50_recommendation_history_is_bounded_and_persistent():
     db = finding_db()
     result = run_investigation(ORG, USER, "Investigate this", conversation_id="44444444-4444-4444-8444-444444444444",

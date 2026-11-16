@@ -1443,6 +1443,47 @@ describe('Task 222 — question input lifecycle and submission control', () => {
     expect(screen.queryByText('Initial sync in progress')).not.toBeInTheDocument();
   });
 
+  it('shows a failed sync as needs attention instead of claiming initial sync is in progress', async () => {
+    noHistoryToResume();
+    replies.set('/stores', Promise.resolve(reply({ stores: [{
+      platform: 'shopify',
+      shop_domain: 'revluma-test-store-v1.myshopify.com',
+      connection_status: 'connected',
+      sync_status: 'failed',
+      monitoring_mode: 'awaiting_verified_sync',
+      setup_status: 'failed',
+      webhooks_registered: 12,
+      webhooks_required: 12,
+    }] })));
+
+    renderPage();
+
+    expect(await screen.findByText('Store sync needs attention')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review Integrations' })).toHaveAttribute('href', '/dashboard/integrations');
+    expect(screen.queryByText('Initial sync in progress')).not.toBeInTheDocument();
+    expect(screen.queryByText('Incomplete webhook coverage')).not.toBeInTheDocument();
+  });
+
+  it('shows a queued-not-started state without implying a live sync is running', async () => {
+    noHistoryToResume();
+    replies.set('/stores', Promise.resolve(reply({ stores: [{
+      platform: 'shopify',
+      shop_domain: 'revluma-test-store-v1.myshopify.com',
+      connection_status: 'connected',
+      sync_status: 'not_started',
+      monitoring_mode: 'awaiting_verified_sync',
+      setup_status: 'not_started',
+      webhooks_registered: 12,
+      webhooks_required: 12,
+    }] })));
+
+    renderPage();
+
+    expect(await screen.findByText('Initial sync hasn’t started')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open Integrations' })).toHaveAttribute('href', '/dashboard/integrations');
+    expect(screen.queryByText('Initial sync in progress')).not.toBeInTheDocument();
+  });
+
   it('lets a merchant with no connected store start a conversation without fabricating store context', async () => {
     noHistoryToResume();
     replies.set('/stores', Promise.resolve(reply({ stores: [] })));

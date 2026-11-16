@@ -21,7 +21,7 @@ import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { createPortal } from "react-dom";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Send, Plus, Menu, X, Copy,
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
@@ -37,7 +37,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
 import api, { ApiError } from "@/lib/api";
 import {
-  UNKNOWN_STORE, buildStarters, hasWebhookGap, isSyncIncomplete, isSyncStale,
+  UNKNOWN_STORE, buildStarters, hasSyncFailure, hasWebhookGap, isSyncIncomplete, isSyncNotStarted,
+  isSyncStatusUnknown, isSyncStale,
   storeContextFromResponse, storeLabel, type StoreContext, type StoreListResponse,
 } from "@/lib/revStoreContext";
 import RevAnswerView from "@/components/rev/RevAnswerView";
@@ -1914,12 +1915,65 @@ export default function RevIntell() {
                 <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#d97706" }} />
                 <div>
                   <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
-                    Initial sync in progress
+                    {storeContext.lastSyncedAt ? "Store sync in progress" : "Initial sync in progress"}
                   </p>
                   <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
-                    {storeLabel(storeContext)} is connected but its first sync has not
-                    completed. Answers may be incomplete until it finishes.
+                    {storeContext.lastSyncedAt
+                      ? `${storeLabel(storeContext)} is syncing. Recent changes may not appear until it finishes.`
+                      : `${storeLabel(storeContext)} is connected but its first sync has not completed. Answers may be incomplete until it finishes.`}
                   </p>
+                </div>
+              </motion.div>
+            )}
+
+            {isSyncNotStarted(storeContext) && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.28)" }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#d97706" }} />
+                <div>
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>Initial sync hasn’t started</p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    {storeLabel(storeContext)} is connected, but no initial sync is recorded yet. Check setup in Integrations.
+                  </p>
+                  <Link to="/dashboard/integrations" className="mt-2 inline-block text-xs font-semibold underline underline-offset-2"
+                    style={{ color: isDark ? "#b4a8ff" : "#1F06AC" }}>Open Integrations</Link>
+                </div>
+              </motion.div>
+            )}
+
+            {isSyncStatusUnknown(storeContext) && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.28)" }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#d97706" }} />
+                <div>
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>Sync status couldn’t be verified</p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    Your store remains connected, but Rev cannot confirm whether its data is current.
+                  </p>
+                  <Link to="/dashboard/integrations" className="mt-2 inline-block text-xs font-semibold underline underline-offset-2"
+                    style={{ color: isDark ? "#b4a8ff" : "#1F06AC" }}>Review Integrations</Link>
+                </div>
+              </motion.div>
+            )}
+
+            {storeContext.connected && hasSyncFailure(storeContext) && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.25)" }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#dc2626" }} />
+                <div>
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
+                    Store sync needs attention
+                  </p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    {storeLabel(storeContext)} is connected, but the latest sync failed or finished with gaps. Some data may be incomplete.
+                  </p>
+                  <Link to="/dashboard/integrations" className="mt-2 inline-block text-xs font-semibold underline underline-offset-2"
+                    style={{ color: isDark ? "#b4a8ff" : "#1F06AC" }}>
+                    Review Integrations
+                  </Link>
                 </div>
               </motion.div>
             )}

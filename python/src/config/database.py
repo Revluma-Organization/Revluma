@@ -109,6 +109,47 @@ def _caller_frames(limit: int = 5) -> str:
         return ""
 
 
+def _pop_query_started(connection) -> float | None:
+    """Pop one monotonic query start from a SQLAlchemy connection without SQL data."""
+    try:
+        stack = connection.info.get("_rev_query_started") or []
+        return stack.pop() if stack else None
+    except Exception:  # instrumentation must not affect database execution
+        return None
+
+
+def _record_database_query(connection, outcome: str) -> None:
+    started = _pop_query_started(connection)
+    if started is None:
+        return
+    try:
+        from ..intelligence.operational_metrics import record_stage
+        record_stage("database_query", (time.monotonic() - started) * 1000,
+                     labels={"outcome": outcome})
+    except Exception:  # metrics must never affect database execution
+        return
+
+
+def _attach_query_metrics(engine) -> None:
+    """Measure every SQLAlchemy cursor execution without collecting SQL or binds."""
+    def before_cursor_execute(connection, cursor, statement, parameters, context, executemany):
+        del cursor, statement, parameters, context, executemany
+        connection.info.setdefault("_rev_query_started", []).append(time.monotonic())
+
+    def after_cursor_execute(connection, cursor, statement, parameters, context, executemany):
+        del cursor, statement, parameters, context, executemany
+        _record_database_query(connection, "success")
+
+    def handle_error(exception_context):
+        connection = getattr(exception_context, "connection", None)
+        if connection is not None:
+            _record_database_query(connection, "failure")
+
+    event.listen(engine, "before_cursor_execute", before_cursor_execute)
+    event.listen(engine, "after_cursor_execute", after_cursor_execute)
+    event.listen(engine, "handle_error", handle_error)
+
+
 def _report_pool_pressure(pool, phase: str) -> None:
     """Log checkout pressure, and always swallow its own failures."""
     try:
@@ -220,6 +261,10 @@ class _LazyEngine:
                 },
                 echo=settings.SQL_ECHO,
             )
+
+            # Attach before the first checkout so every statement is measured
+            # without retaining SQL text, bind values, or tenant identifiers.
+            _attach_query_metrics(self._engine)
 
             # Attach before the first checkout so the very first saturation is
             # recorded rather than discovered by a timeout.

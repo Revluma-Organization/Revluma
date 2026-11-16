@@ -19,6 +19,7 @@ from .specialists import SPECIALISTS, execute_specialists
 
 CONTRACT_VERSION = "rev-question-orchestration-v1"
 QUESTION_CONTRACT_VERSION = "rev-question-understanding-v1"
+MAX_TOOL_COUNT = 12
 STATES = ("received", "understanding", "planning", "executing", "reconciling",
           "composing", "validating", "completed", "partial_success",
           "needs_clarification", "unsupported", "failed", "cancelled")
@@ -167,6 +168,9 @@ def build_investigation_plan(*, message: str, intent: str, understanding: dict,
         tools.append("inventory_observations")
     if intent in {"finding_investigation", "store_overview"} and "findings" in available_tools:
         tools.append("findings")
+    tools = list(dict.fromkeys(tools))
+    if len(tools) > MAX_TOOL_COUNT:
+        raise ValueError("Investigation tool budget exceeded")
     selected = [DOMAIN_SPECIALISTS[d] for d in domains if d in DOMAIN_SPECIALISTS]
     selected = list(dict.fromkeys(selected))
     tasks = []
@@ -188,8 +192,8 @@ def build_investigation_plan(*, message: str, intent: str, understanding: dict,
         "request_fingerprint": hashlib.sha256(fingerprint_payload.encode()).hexdigest(),
         "tenant": {"organization_id": organization_id, "store_ids": sorted(store_ids)},
         "period": period, "question": message, "question_understanding": understanding,
-        "required_domains": domains, "tools": tools, "tasks": tasks,
-        "selected_specialists": selected,
+        "required_domains": domains, "tools": tools, "max_tool_count": MAX_TOOL_COUNT,
+        "tasks": tasks, "selected_specialists": selected,
         "excluded_specialists": [
             {"name": name, "reason": "not_required_by_resolved_domains"}
             for name in SPECIALISTS if name not in selected
@@ -393,6 +397,14 @@ def validate_orchestration(value: dict, *, organization_id: str, evidence_ids: s
         errors.append("orchestration_tenant")
     if value.get("recursion_depth") != 0 or value.get("max_recursion_depth") != 0:
         errors.append("orchestration_recursion")
+    planned_tools = value.get("tools")
+    if (value.get("max_tool_count") != MAX_TOOL_COUNT
+            or not isinstance(planned_tools, list)
+            or any(not isinstance(tool, str) for tool in planned_tools)
+            or len(planned_tools) > MAX_TOOL_COUNT
+            or (all(isinstance(tool, str) for tool in planned_tools)
+                and len(planned_tools) != len(set(planned_tools)))):
+        errors.append("orchestration_tool_budget")
     if len(value.get("selected_specialists") or []) > value.get("max_specialist_fanout", 0):
         errors.append("orchestration_fanout")
     for task in value.get("tasks") or []:

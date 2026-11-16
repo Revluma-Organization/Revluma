@@ -1,8 +1,7 @@
 """Low-cardinality, privacy-safe in-process Rev operational metrics.
 
-Deployments can scrape the internal JSON endpoint and combine per-process
-snapshots. Only bounded operational labels are accepted; identifiers and
-merchant content must never be metric labels.
+The snapshot is per Python process, bounded, and is not a durable trace store.
+Never put user text, tenant IDs, conversation IDs, URLs, or credentials in labels.
 """
 from __future__ import annotations
 
@@ -19,8 +18,8 @@ _VALUE = re.compile(r"[a-zA-Z0-9_.:-]{1,48}\Z")
 _MAX_LABELS = 4
 _MAX_SERIES = 512
 _ALLOWED_LABELS = frozenset({
-    "provider", "model", "category", "outcome", "stage", "kind",
-    "from_provider", "to_provider", "from_model", "to_model",
+    "provider", "model", "category", "outcome", "stage", "kind", "route",
+    "source", "tool", "from_provider", "to_provider", "from_model", "to_model",
 })
 
 
@@ -54,6 +53,30 @@ def observe_latency(name: str, milliseconds: int | float) -> None:
     duration = max(0, min(int(milliseconds), 3_600_000))
     with _LOCK:
         _LATENCIES[name].append(duration)
+
+
+def record_stage(stage: str, milliseconds: int | float, *,
+                 labels: Mapping[str, object] | None = None,
+                 attributes: Mapping[str, object] | None = None) -> None:
+    """Record bounded stage counts, outcomes, and latency percentiles.
+
+    ``attributes`` is an extension point for adapters but intentionally is not
+    retained or serialized; stage detail must be represented by safe metrics,
+    not prompt/database content or per-execution identifiers.
+    """
+    del attributes
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,47}", stage):
+        return
+    observe_latency(f"stage_{stage}", milliseconds)
+    record_counter("rev_stage_executions_total", labels={**(labels or {}), "stage": stage})
+
+
+def record_token_usage(provider: str, model: str, *, input_tokens: int = 0,
+                       output_tokens: int = 0) -> None:
+    """Record provider-reported token totals without retaining request content."""
+    safe = {"provider": provider, "model": model}
+    record_counter("model_input_tokens_total", max(0, input_tokens), labels=safe)
+    record_counter("model_output_tokens_total", max(0, output_tokens), labels=safe)
 
 
 def _percentile(values: list[int], fraction: float) -> int:

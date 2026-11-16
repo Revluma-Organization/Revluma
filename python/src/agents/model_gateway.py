@@ -132,6 +132,12 @@ def _gemini_request(model: str, prompt: str, *, role: str, max_tokens: int,
         raise ModelProviderError("gemini", response.status_code, model=model)
     try:
         data = response.json()
+        usage = data.get("usageMetadata") or {}
+        if usage:
+            from ..intelligence.operational_metrics import record_token_usage
+            record_token_usage("gemini", model,
+                               input_tokens=int(usage.get("promptTokenCount") or 0),
+                               output_tokens=int(usage.get("candidatesTokenCount") or 0))
         candidates = data.get("candidates") or []
         candidate = candidates[0] if candidates else {}
         output = "".join(part.get("text", "") for part in
@@ -178,6 +184,12 @@ def _anthropic_request(model: str, prompt: str, *, max_tokens: int, timeout: flo
         elif isinstance(exc, httpx.NetworkError) or "connection" in name:
             status = "network"
         raise ModelProviderError("anthropic", status, model=model) from exc
+    usage = getattr(result, "usage", None)
+    if usage is not None:
+        from ..intelligence.operational_metrics import record_token_usage
+        record_token_usage("anthropic", model,
+                           input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+                           output_tokens=int(getattr(usage, "output_tokens", 0) or 0))
     output = "".join(block.text for block in result.content
                      if getattr(block, "type", "") == "text").strip()
     if not output:
@@ -208,8 +220,10 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
         logger.warning("model_provider_unavailable provider=%s role=%s category=%s correlation_id=%s execution_id=%s",
                        primary, role, category, correlation_id, execution_id)
         try:
-            from ..intelligence.operational_metrics import record_counter
+            from ..intelligence.operational_metrics import record_counter, record_stage
             record_counter("provider_model_failures_total", labels={"provider": primary, "model": "unknown", "category": category})
+            record_stage("model_inference", 0, labels={
+                "provider": primary, "model": "unknown", "outcome": "unavailable"})
         except Exception:
             pass
         raise error
@@ -261,8 +275,10 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
                            provider, model, role, exc.status, exc.category, error_type, elapsed_ms,
                            attempt + 1, correlation_id, execution_id)
             try:
-                from ..intelligence.operational_metrics import record_counter, observe_latency
+                from ..intelligence.operational_metrics import record_counter, observe_latency, record_stage
                 record_counter("provider_requests_total", labels={"provider": provider, "model": model, "outcome": "failure"})
+                record_stage("model_inference", elapsed_ms,
+                             labels={"provider": provider, "model": model, "outcome": "failure"})
                 record_counter("provider_model_failures_total", labels={"provider": provider, "model": model, "category": exc.category})
                 observe_latency("provider_request", elapsed_ms)
             except Exception:
@@ -270,6 +286,14 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
             if exc.category not in RETRYABLE_CATEGORIES or attempt + 1 >= len(attempts):
                 break
             next_provider, next_model = attempts[attempt + 1]
+            try:
+                from ..intelligence.operational_metrics import record_counter
+                record_counter("rev_execution_retries_total", labels={
+                    "stage": "model_inference", "category": exc.category})
+                record_counter("rev_execution_fallbacks_total", labels={
+                    "stage": "model_inference", "category": exc.category})
+            except Exception:
+                pass
             logger.warning("model_provider_fallback_selected from_provider=%s to_provider=%s to_model=%s role=%s category=%s attempt=%d correlation_id=%s execution_id=%s",
                            provider, next_provider, next_model, role, exc.category, attempt + 2,
                            correlation_id, execution_id)
@@ -280,8 +304,10 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
                     provider, model, role, elapsed_ms, attempt + 1, fallback_used,
                     correlation_id, execution_id)
         try:
-            from ..intelligence.operational_metrics import record_counter, observe_latency
+            from ..intelligence.operational_metrics import record_counter, observe_latency, record_stage
             record_counter("provider_requests_total", labels={"provider": provider, "model": model, "outcome": "success"})
+            record_stage("model_inference", elapsed_ms,
+                         labels={"provider": provider, "model": model, "outcome": "success"})
             observe_latency("provider_request", elapsed_ms)
         except Exception:
             pass
@@ -297,3 +323,206 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
     last_error.attempts = min(2, max(1, attempts_made))
     last_error.fallback_used = attempts_made > 1 or last_error.provider != primary
     raise last_error
+
+
+def generate_tool_turn(prompt: str, tools: list[dict], *, role: str = "fast",
+                       max_tokens: int = 500, timeout: float = 20.0,
+                       system: str = "",
+                       correlation_id: str | None = None,
+                       execution_id: str | None = None) -> dict:
+    """Ask a configured provider for one typed function call or a final text turn.
+
+    Tool definitions are supplied by the server's closed capability registry.
+    This API deliberately returns provider/model metadata so orchestration can
+    report the provider that actually answered, rather than configured intent.
+    """
+    if not isinstance(prompt, str) or not prompt or len(prompt) > 48_000:
+        raise ModelProviderError("unknown", "invalid_request", category="invalid_request")
+    if not isinstance(system, str) or len(system) > 4_000:
+        raise ModelProviderError("unknown", "invalid_request", category="invalid_request")
+    if not tools or len(tools) > 16:
+        raise ModelProviderError("unknown", "invalid_request", category="invalid_request")
+    for tool in tools:
+        if not isinstance(tool, dict) or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", str(tool.get("name", ""))):
+            raise ModelProviderError("unknown", "invalid_request", category="invalid_request")
+        schema = tool.get("input_schema")
+        if not isinstance(schema, dict) or schema.get("type") != "object":
+            raise ModelProviderError("unknown", "invalid_request", category="invalid_request")
+
+    primary = os.getenv("AI_PROVIDER", "anthropic").strip().lower()
+    if primary not in {"anthropic", "gemini"}:
+        raise ModelProviderError(primary or "unknown", "unsupported_provider", category="invalid_request")
+    correlation_id = correlation_id or ""
+    execution_id = execution_id or ""
+    attempts = _attempts(primary, role, web_search=False)
+    if not attempts:
+        category = "provider_unavailable" if _task_compatible(primary, web_search=False) else "unsupported_capability"
+        logger.warning("model_tool_turn_unavailable provider=%s role=%s category=%s correlation_id=%s execution_id=%s",
+                       primary, role, category, correlation_id or None, execution_id or None)
+        try:
+            from ..intelligence.operational_metrics import record_counter, record_stage
+            record_counter("provider_model_failures_total", labels={"provider": primary, "model": "unknown", "category": category})
+            record_stage("model_tool_selection", 0, labels={"provider": primary, "model": "unknown", "outcome": "unavailable"})
+        except Exception:
+            pass
+        raise ModelProviderError(primary, "missing_key", category=category)
+    budget = min(max(float(timeout), .05), 120.0)
+    deadline = time.monotonic() + budget
+    last_error = None
+    for index, (provider, model) in enumerate(attempts):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        attempt_timeout = max(.05, min(remaining, budget / len(attempts)))
+        started = time.monotonic()
+        try:
+            if provider == "gemini":
+                if not MODEL_NAME.fullmatch(model):
+                    raise ModelProviderError(provider, "invalid_model", category="invalid_request")
+                declarations = []
+                for tool in tools:
+                    declarations.append({
+                        "name": tool["name"],
+                        "description": str(tool.get("description", ""))[:500],
+                        "parameters": _gemini_schema(tool["input_schema"]),
+                    })
+                payload = {
+                    "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                    "tools": [{"functionDeclarations": declarations}],
+                    "toolConfig": {"functionCallingConfig": {"mode": "ANY"}},
+                    "generationConfig": {"maxOutputTokens": max(32, min(int(max_tokens), 1200))},
+                }
+                if system:
+                    payload["systemInstruction"] = {"parts": [{"text": system}]}
+                if model.startswith("gemini-2.5-"):
+                    payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+                try:
+                    with httpx.Client(timeout=httpx.Timeout(attempt_timeout, connect=min(5.0, attempt_timeout))) as client:
+                        response = client.post(url, headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]}, json=payload)
+                except httpx.TimeoutException as exc:
+                    raise ModelProviderError(provider, "timeout_budget_exhausted", model=model) from exc
+                except httpx.HTTPError as exc:
+                    raise ModelProviderError(provider, "network", model=model) from exc
+                if response.status_code >= 400:
+                    raise ModelProviderError(provider, response.status_code, model=model)
+                data = response.json()
+                usage = data.get("usageMetadata") or {}
+                if usage:
+                    from ..intelligence.operational_metrics import record_token_usage
+                    record_token_usage(provider, model,
+                                       input_tokens=int(usage.get("promptTokenCount") or 0),
+                                       output_tokens=int(usage.get("candidatesTokenCount") or 0))
+                candidates = data.get("candidates") or []
+                candidate = candidates[0] if candidates else {}
+                parts = (candidate.get("content") or {}).get("parts") or []
+                call = next((part["functionCall"] for part in parts
+                             if isinstance(part, dict) and isinstance(part.get("functionCall"), dict)), None)
+                text = "".join(str(part.get("text", "")) for part in parts if isinstance(part, dict))[:8000]
+                if call:
+                    response_value = {"tool_call": {"name": call.get("name"), "arguments": call.get("args") or {}},
+                                      "text": text, "provider": provider, "model": model,
+                                      "usage": {"input_tokens": int(usage.get("promptTokenCount") or 0),
+                                                "output_tokens": int(usage.get("candidatesTokenCount") or 0)}}
+                else:
+                    response_value = {"tool_call": None, "text": text, "provider": provider, "model": model,
+                                      "usage": {"input_tokens": int(usage.get("promptTokenCount") or 0),
+                                                "output_tokens": int(usage.get("candidatesTokenCount") or 0)}}
+            else:
+                if not MODEL_NAME.fullmatch(model):
+                    raise ModelProviderError(provider, "invalid_model", category="invalid_request")
+                try:
+                    import anthropic
+                except ImportError as exc:
+                    raise ModelProviderError(provider, "missing_sdk", category="provider_unavailable") from exc
+                client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"],
+                                              timeout=httpx.Timeout(attempt_timeout, connect=min(5.0, attempt_timeout)))
+                provider_tools = [{"name": item["name"], "description": str(item.get("description", ""))[:500],
+                                   "input_schema": item["input_schema"]} for item in tools]
+                request = {
+                    "model": model, "max_tokens": max(32, min(int(max_tokens), 1200)),
+                    "messages": [{"role": "user", "content": prompt}],
+                    "tools": provider_tools, "tool_choice": {"type": "any"},
+                }
+                if system:
+                    request["system"] = system
+                try:
+                    result = client.messages.create(**request)
+                except Exception as exc:
+                    status = getattr(exc, "status_code", None)
+                    name = type(exc).__name__.lower()
+                    if "timeout" in name:
+                        status = "timeout_budget_exhausted"
+                    elif "connection" in name:
+                        status = "network"
+                    raise ModelProviderError(provider, status, model=model) from exc
+                usage = getattr(result, "usage", None)
+                if usage is not None:
+                    from ..intelligence.operational_metrics import record_token_usage
+                    record_token_usage(provider, model,
+                                       input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+                                       output_tokens=int(getattr(usage, "output_tokens", 0) or 0))
+                blocks = list(getattr(result, "content", []) or [])
+                use = next((block for block in blocks if getattr(block, "type", "") == "tool_use"), None)
+                text = "".join(str(getattr(block, "text", "")) for block in blocks
+                               if getattr(block, "type", "") == "text")[:8000]
+                call = ({"name": getattr(use, "name", None), "arguments": getattr(use, "input", {})}
+                        if use is not None else None)
+                response_value = {"tool_call": call, "text": text, "provider": provider, "model": model,
+                                  "usage": {"input_tokens": int(getattr(usage, "input_tokens", 0) or 0) if usage is not None else 0,
+                                            "output_tokens": int(getattr(usage, "output_tokens", 0) or 0) if usage is not None else 0}}
+            elapsed = int((time.monotonic() - started) * 1000)
+            logger.info("model_tool_turn_success provider=%s model=%s elapsed_ms=%d fallback_used=%s correlation_id=%s execution_id=%s",
+                        provider, model, elapsed, index > 0, correlation_id or None, execution_id or None)
+            try:
+                from ..intelligence.operational_metrics import record_counter, record_stage, observe_latency
+                record_counter("provider_requests_total", labels={"provider": provider, "model": model, "outcome": "success"})
+                record_stage("model_tool_selection", elapsed, labels={"provider": provider, "model": model, "outcome": "success"})
+                observe_latency("provider_request", elapsed)
+                if index > 0:
+                    previous_provider, previous_model = attempts[index - 1]
+                    record_counter("provider_fallbacks_total", labels={
+                        "from_provider": previous_provider, "to_provider": provider,
+                        "from_model": previous_model, "to_model": model})
+            except Exception:
+                pass
+            return response_value
+        except ModelProviderError as exc:
+            last_error = exc
+            logger.warning("model_tool_turn_failed provider=%s model=%s category=%s status=%s correlation_id=%s execution_id=%s",
+                           provider, model, exc.category, exc.status, correlation_id or None, execution_id or None)
+            try:
+                from ..intelligence.operational_metrics import record_counter, record_stage, observe_latency
+                elapsed = int((time.monotonic() - started) * 1000)
+                record_counter("provider_requests_total", labels={"provider": provider, "model": model, "outcome": "failure"})
+                record_counter("provider_model_failures_total", labels={"provider": provider, "model": model, "category": exc.category})
+                record_stage("model_tool_selection", elapsed, labels={"provider": provider, "model": model, "outcome": "failure"})
+                observe_latency("provider_request", elapsed)
+            except Exception:
+                pass
+            if exc.category not in RETRYABLE_CATEGORIES or index + 1 >= len(attempts):
+                break
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            last_error = ModelProviderError(provider, "invalid_response", model=model)
+            last_error.__cause__ = exc
+            break
+    if last_error is None:
+        last_error = ModelProviderError(primary, "timeout_budget_exhausted")
+    raise last_error
+
+
+def _gemini_schema(schema: dict) -> dict:
+    """Convert the small JSON-schema subset used by Rev to Gemini's schema form."""
+    result = {}
+    for key, value in schema.items():
+        if key == "additionalProperties" or (key == "required" and not value):
+            continue
+        if key == "type" and isinstance(value, str):
+            result[key] = value.upper()
+        elif key == "properties" and isinstance(value, dict):
+            result[key] = {name: _gemini_schema(child) for name, child in value.items()}
+        elif key == "items" and isinstance(value, dict):
+            result[key] = _gemini_schema(value)
+        else:
+            result[key] = value
+    return result
