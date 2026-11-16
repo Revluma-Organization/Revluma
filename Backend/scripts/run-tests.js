@@ -44,7 +44,9 @@ function runTests({ root, tests, env = process.env, spawn = spawnSync,
       if (env.GITHUB_ACTIONS === 'true') stdout.write(failureAnnotation(file, output, childEnv));
     }
   }
-  stdout.write(`\nBackend test files: ${tests.length - failures.length} passed, ${failures.length} failed, ${tests.length} total\n`);
+  const summary = `Backend test files: ${tests.length - failures.length} passed, ${failures.length} failed, ${tests.length} total`;
+  stdout.write(`\n${summary}\n`);
+  if (env.GITHUB_ACTIONS === 'true') stdout.write(`::notice title=Complete Backend suite::${summary}\n`);
   for (const file of failures) stderr.write(`FAILED: ${path.relative(root, file)}\n`);
   return failures.length === 0 ? 0 : 1;
 }

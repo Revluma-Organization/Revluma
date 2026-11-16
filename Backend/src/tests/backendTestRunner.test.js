@@ -33,6 +33,7 @@ test('complete Backend runner executes later files after both plain and TAP fail
   assert.equal(result.calls.length, 3);
   assert.equal(result.status, 1);
   assert.match(result.output, /1 passed, 2 failed, 3 total/);
+  assert.match(result.output, /::notice title=Complete Backend suite::Backend test files: 1 passed, 2 failed, 3 total/);
   assert.match(result.output, /::error title=Backend test failed - first.test.js::AssertionError/);
   assert.match(result.output, /at first.test.js:12:3/);
   assert.match(result.output, /::error title=Backend test failed - third.test.js::not ok/);

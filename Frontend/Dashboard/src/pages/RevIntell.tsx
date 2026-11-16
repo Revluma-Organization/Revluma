@@ -1190,7 +1190,11 @@ export default function RevIntell() {
   // history all opt out; nothing is ever invented or pre-filled.
   useEffect(() => {
     if (urlConvId || findingId !== null) return;
-    if (newChatIntentRef.current || resumedBareRouteRef.current) return;
+    // History is debounced and may arrive after the merchant has already
+    // started a fresh draft, attached an image, or submitted a question. An
+    // automatic resume must never reset that work or abort its response.
+    if (newChatIntentRef.current || resumedBareRouteRef.current
+      || inputEditedRef.current || turnPendingRef.current) return;
     const target = conversations[0];
     if (!target) return;
     resumedBareRouteRef.current = true;
@@ -1645,6 +1649,10 @@ export default function RevIntell() {
       setAttachmentError("Choose a JPEG, PNG, WebP or GIF image under 5 MB. Other files and videos are not supported.");
       return;
     }
+    // Selecting a valid image is fresh composition intent, including while
+    // FileReader is still pending. A late initial history response cannot
+    // silently navigate to another conversation and discard the attachment.
+    inputEditedRef.current = true;
     const request = conversationRequestRef.current;
     const reader = new FileReader();
     reader.onload = () => {
