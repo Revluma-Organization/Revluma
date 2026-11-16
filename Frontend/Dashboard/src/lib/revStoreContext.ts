@@ -112,8 +112,11 @@ export function storeLabel(ctx: StoreContext): string {
 /** True when the store is connected but its first sync has not completed. */
 export function isSyncIncomplete(ctx: StoreContext): boolean {
   if (!ctx.connected) return false;
+  // sync_only_limited means synchronization completed but webhook coverage is
+  // incomplete. Keep that separate from an unfinished initial sync so the UI
+  // can show the more accurate webhook-coverage warning instead.
   return ["pending", "in_progress"].includes(ctx.syncStatus || "")
-    || ["awaiting_verified_sync", "sync_only_limited"].includes(ctx.monitoringMode || "");
+    || ctx.monitoringMode === "awaiting_verified_sync";
 }
 
 /** True when required webhook topics are missing or failed. */

@@ -1400,6 +1400,15 @@ describe('Task 222 — question input lifecycle and submission control', () => {
     expect(screen.getByText(/shorten to send/)).toBeInTheDocument();
   });
 
+  it('keeps the composer focus treatment rounded instead of showing a blue textarea outline', () => {
+    noHistoryToResume();
+    renderPage();
+
+    const textarea = screen.getByRole('textbox', { name: 'Message Rev' });
+    expect(textarea.className).toContain('focus-visible:!outline-none');
+    expect(textarea.parentElement?.className).toContain('focus-within:ring-[#1F06AC]/20');
+  });
+
   it('exposes a 44px accessible send control and submits on Enter', async () => {
     noHistoryToResume();
     renderPage();
@@ -1413,6 +1422,25 @@ describe('Task 222 — question input lifecycle and submission control', () => {
     expect(sendButton).toBeEnabled();
     fireEvent.keyDown(field, { key: 'Enter' });
     await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+  });
+
+  it('shows the webhook warning, not an initial-sync warning, when sync is complete but monitoring is limited', async () => {
+    noHistoryToResume();
+    replies.set('/stores', Promise.resolve(reply({ stores: [{
+      platform: 'shopify',
+      shop_domain: 'revluma-test-store-v1.myshopify.com',
+      connection_status: 'connected',
+      sync_status: 'complete',
+      monitoring_mode: 'sync_only_limited',
+      setup_status: 'webhooks_pending',
+      webhooks_registered: 8,
+      webhooks_required: 12,
+    }] })));
+
+    renderPage();
+
+    expect(await screen.findByText('Incomplete webhook coverage')).toBeInTheDocument();
+    expect(screen.queryByText('Initial sync in progress')).not.toBeInTheDocument();
   });
 
   it('lets a merchant with no connected store start a conversation without fabricating store context', async () => {

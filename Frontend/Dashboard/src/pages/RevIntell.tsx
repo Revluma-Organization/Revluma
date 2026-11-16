@@ -606,11 +606,11 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disab
   const over = value.length > maxLength;
   const nearCap = value.length > maxLength - 120;
   return (
-    <div className="rounded-2xl shadow-sm overflow-visible" style={{ background: card, border: `1px solid ${over ? "#dc2626" : border}` }}>
+    <div className="rounded-2xl shadow-sm overflow-visible focus-within:ring-2 focus-within:ring-[#1F06AC]/20" style={{ background: card, border: `1px solid ${over ? "#dc2626" : border}` }}>
       <textarea ref={inputRef} value={value} onChange={onChange} onKeyDown={onKeyDown}
         placeholder={placeholder} aria-label="Message Rev" rows={2} disabled={disabled}
         maxLength={maxLength}
-        className="w-full bg-transparent text-[0.9rem] outline-none resize-none px-5 pt-4 pb-2 max-h-36 [scrollbar-width:none] leading-relaxed"
+        className="w-full bg-transparent text-[0.9rem] outline-none focus-visible:!outline-none resize-none px-5 pt-4 pb-2 max-h-36 [scrollbar-width:none] leading-relaxed"
         style={{ color: t1, minHeight: 26 }} />
       {nearCap && (
         <p className="m-0 px-5 pb-1 text-[0.68rem] tabular-nums" aria-live="polite"
