@@ -271,6 +271,177 @@
             pointer-events: none;
         }
 
+        /* ── Enterprise-light hero: editorial atmosphere + product preview ── */
+        .hero-enterprise {
+            isolation: isolate;
+            min-height: min(900px, 100svh);
+            display: flex;
+            align-items: center;
+            padding: clamp(7.5rem, 12vh, 9rem) clamp(1.25rem, 5vw, 5rem) clamp(4.5rem, 8vh, 6rem);
+            background: #f4f6f8;
+            color: #111827;
+        }
+        .hero-enterprise-video {
+            position: absolute;
+            inset: 0;
+            z-index: -2;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            opacity: .10;
+            filter: grayscale(1) brightness(1.55) contrast(.72);
+            pointer-events: none;
+        }
+        .hero-enterprise-wash {
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            background:
+                linear-gradient(90deg, rgba(248,250,252,.98) 0%, rgba(248,250,252,.94) 43%, rgba(248,250,252,.72) 100%),
+                linear-gradient(180deg, rgba(255,255,255,.42), rgba(241,245,249,.88));
+            pointer-events: none;
+        }
+        .hero-enterprise-inner {
+            width: min(1320px, 100%);
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr);
+            align-items: center;
+            gap: clamp(2.5rem, 5vw, 5.5rem);
+        }
+        .hero-copy { position: relative; z-index: 1; max-width: 610px; }
+        .hero-eyebrow {
+            display: flex; align-items: center; gap: 10px;
+            margin: 0 0 1.6rem;
+            color: #536174; font-size: 10px; font-weight: 700;
+            letter-spacing: .17em; text-transform: uppercase;
+        }
+        .hero-eyebrow span { width: 7px; height: 7px; border-radius: 50%; background: #315f9d; }
+        .hero-title {
+            margin: 0; color: #101827;
+            font-family: 'Satoshi', sans-serif;
+            font-size: clamp(2.65rem, 4.2vw, 4.65rem);
+            line-height: 1.045; letter-spacing: -.065em; font-weight: 700;
+            max-width: 680px;
+        }
+        .hero-title span { display: block; color: #64748b; }
+        .hero-description {
+            max-width: 540px; margin: 1.6rem 0 0;
+            color: #596579; font-size: clamp(.98rem, 1.15vw, 1.08rem);
+            line-height: 1.8; font-weight: 400;
+        }
+        .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 2rem; }
+        .hero-primary-cta, .hero-secondary-cta {
+            min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
+            padding: 0 21px; border-radius: 8px; font: 600 13px 'Satoshi', sans-serif;
+            letter-spacing: -.01em; transition: background .2s ease, border-color .2s ease, transform .2s ease;
+            cursor: pointer;
+        }
+        .hero-primary-cta { background: #172b46; color: #fff; border: 1px solid #172b46; }
+        .hero-primary-cta:hover { background: #223d60; transform: translateY(-1px); }
+        .hero-secondary-cta { background: rgba(255,255,255,.72); color: #243247; border: 1px solid #cbd5e1; }
+        .hero-secondary-cta:hover { background: #fff; border-color: #94a3b8; transform: translateY(-1px); }
+        .hero-footnote { margin: 1.15rem 0 0; color: #7b8797; font-size: 11px; letter-spacing: .01em; }
+        .hero-product { position: relative; min-width: 0; perspective: 1400px; }
+        .hero-product-window {
+            overflow: hidden; border: 1px solid rgba(148,163,184,.38); border-radius: 13px;
+            background: rgba(255,255,255,.96);
+            box-shadow: 0 34px 90px rgba(29,47,73,.13), 0 5px 18px rgba(29,47,73,.05);
+            transform: rotateY(-4deg) rotateX(1deg);
+        }
+        .hero-product-topbar {
+            height: 43px; display: flex; align-items: center; justify-content: space-between;
+            padding: 0 16px; border-bottom: 1px solid #e8edf2; color: #7a8797;
+            font-size: 9px; font-weight: 700; letter-spacing: .12em;
+        }
+        .hero-product-topbar b { color: #b2bdc9; padding: 0 5px; }
+        .hero-window-controls { display: flex; gap: 5px; }
+        .hero-window-controls i { width: 6px; height: 6px; border-radius: 50%; background: #d8dee6; }
+        .hero-product-menu { letter-spacing: 2px; color: #9aa5b3; }
+        .hero-product-body { display: grid; grid-template-columns: 158px minmax(0,1fr); min-height: 340px; }
+        .hero-product-sidebar {
+            position: relative; padding: 19px 12px; border-right: 1px solid #edf0f4;
+            background: #fafbfd; color: #8792a1; font-size: 10px;
+        }
+        .hero-product-brand { display: flex; align-items: center; gap: 8px; margin: 0 0 27px 3px; color: #354154; font-weight: 700; }
+        .hero-brand-mark { display: grid; place-items: center; width: 21px; height: 21px; border-radius: 6px; background: #1d3555; color: white; font-size: 11px; }
+        .hero-nav-item { display: flex; align-items: center; gap: 9px; padding: 10px 8px; margin: 3px 0; border-radius: 6px; white-space: nowrap; }
+        .hero-nav-active { background: #eaf0f7; color: #253c5a; font-weight: 700; }
+        .hero-nav-glyph { width: 13px; color: #7e8da1; font-size: 13px; text-align: center; }
+        .hero-sidebar-bottom { position: absolute; bottom: 17px; left: 15px; display: flex; align-items: center; gap: 7px; color: #8792a1; font-size: 9px; }
+        .hero-sidebar-dot { width: 6px; height: 6px; border-radius: 50%; background: #7c9a88; }
+        .hero-product-main { min-width: 0; padding: 25px clamp(15px, 2.2vw, 27px) 18px; }
+        .hero-product-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 22px; }
+        .hero-product-kicker { color: #8793a2; font-size: 8px; font-weight: 700; letter-spacing: .14em; }
+        .hero-product-heading h2 { margin: 7px 0 4px; color: #202c3d; font-size: 20px; font-weight: 700; letter-spacing: -.04em; }
+        .hero-product-heading p { margin: 0; color: #8792a1; font-size: 10px; }
+        .hero-example-label { padding: 5px 7px; border: 1px solid #e2e8ef; border-radius: 4px; color: #8792a1; font-size: 7px; font-weight: 700; letter-spacing: .1em; white-space: nowrap; }
+        .hero-investigation-card { border: 1px solid #e7ecf2; border-radius: 8px; background: #fff; }
+        .hero-investigation-head { display: flex; align-items: center; gap: 10px; padding: 15px 14px; border-bottom: 1px solid #edf1f5; }
+        .hero-investigation-icon { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 7px; background: #eff3f8; color: #365575; font-size: 16px; }
+        .hero-investigation-head strong, .hero-investigation-head small { display: block; }
+        .hero-investigation-head strong { color: #344154; font-size: 10px; }
+        .hero-investigation-head small { margin-top: 3px; color: #929dac; font-size: 8px; }
+        .hero-status { margin-left: auto; padding: 5px 7px; border-radius: 4px; background: #f2f4f6; color: #687586; font-size: 8px; white-space: nowrap; }
+        .hero-evidence-list { padding: 4px 14px; }
+        .hero-evidence-list > div { display: flex; align-items: center; gap: 9px; padding: 12px 0; border-bottom: 1px solid #f0f2f5; }
+        .hero-evidence-list > div:last-child { border-bottom: 0; }
+        .hero-evidence-check { display: grid; place-items: center; width: 19px; height: 19px; flex: 0 0 19px; border-radius: 50%; background: #f0f4f7; color: #5c7389; font-size: 10px; }
+        .hero-evidence-list b, .hero-evidence-list small { display: block; }
+        .hero-evidence-list b { color: #465367; font-size: 9px; font-weight: 700; }
+        .hero-evidence-list small { margin-top: 3px; color: #9aa4b1; font-size: 8px; line-height: 1.4; }
+        .hero-evidence-state { margin-left: auto; color: #8995a4; font-size: 8px; }
+        .hero-product-footer { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; color: #8a96a5; font-size: 8px; }
+        .hero-product-footer span:last-child { display: flex; align-items: center; gap: 6px; }
+        .hero-product-footer i { width: 5px; height: 5px; border-radius: 50%; background: #829a8c; }
+        .hero-product-caption { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 13px; color: #8490a0; font-size: 10px; }
+        .hero-product-caption span { width: 5px; height: 5px; border-radius: 50%; background: #9aa8b7; }
+        @media (max-width: 1024px) {
+            .hero-enterprise { min-height: auto; padding-top: 8.5rem; padding-bottom: 5rem; }
+            .hero-enterprise-inner { grid-template-columns: minmax(0,1fr); gap: 3rem; max-width: 760px; }
+            .hero-copy { max-width: 680px; }
+            .hero-title { max-width: 760px; }
+            .hero-product { width: 100%; }
+            .hero-product-window { transform: none; }
+        }
+        @media (max-width: 560px) {
+            .hero-enterprise { padding: 7.5rem 1.1rem 3.5rem; }
+            .hero-enterprise-inner { gap: 2.5rem; }
+            .hero-eyebrow { margin-bottom: 1.1rem; font-size: 8px; }
+            .hero-title { font-size: clamp(2.45rem, 11vw, 3.5rem); line-height: 1.04; }
+            .hero-description { margin-top: 1.15rem; font-size: .96rem; line-height: 1.7; }
+            .hero-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 1.55rem; }
+            .hero-primary-cta, .hero-secondary-cta { min-height: 43px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
+            .hero-footnote { font-size: 9px; line-height: 1.5; }
+            .hero-product-body { grid-template-columns: 104px minmax(0,1fr); min-height: 290px; }
+            .hero-product-sidebar { padding: 14px 7px; font-size: 8px; }
+            .hero-product-brand { gap: 5px; margin-left: 1px; font-size: 8px; }
+            .hero-brand-mark { width: 18px; height: 18px; }
+            .hero-nav-item { gap: 5px; padding: 9px 5px; font-size: 7px; }
+            .hero-nav-glyph { width: 10px; font-size: 11px; }
+            .hero-sidebar-bottom { left: 8px; bottom: 12px; font-size: 7px; }
+            .hero-product-main { padding: 17px 10px 13px; }
+            .hero-product-heading h2 { font-size: 16px; }
+            .hero-product-heading p { font-size: 8px; }
+            .hero-example-label { font-size: 6px; padding: 4px 5px; }
+            .hero-investigation-head { gap: 6px; padding: 11px 8px; }
+            .hero-investigation-head strong { font-size: 8px; }
+            .hero-investigation-head small { font-size: 7px; }
+            .hero-status { font-size: 6px; padding: 4px; }
+            .hero-evidence-list { padding: 3px 8px; }
+            .hero-evidence-list > div { gap: 6px; padding: 10px 0; }
+            .hero-evidence-list b { font-size: 7px; }
+            .hero-evidence-list small { font-size: 6px; }
+            .hero-evidence-state { font-size: 6px; }
+            .hero-product-footer { font-size: 6px; }
+            .hero-product-caption { justify-content: center; font-size: 8px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .hero-enterprise-video { display: none; }
+            .hero-primary-cta, .hero-secondary-cta { transition: none; }
+        }
+
         .video-promo-section {
             width: 100%;
             max-width: 100%;
@@ -1122,44 +1293,75 @@
     </div>
 
     <!-- ── Hero ── -->
-    <section id="hero-landing"
-        class="relative min-h-[100dvh] flex flex-col items-center justify-center pt-28 pb-12 md:pt-0 md:pb-0 px-6 overflow-hidden">
-        <video autoplay muted loop playsinline class="hero-video">
+    <section id="hero-landing" class="hero-enterprise relative overflow-hidden">
+        <video class="hero-enterprise-video" autoplay muted loop playsinline preload="metadata" aria-hidden="true">
             <source src="assets/videos/growth-video.mp4" type="video/mp4">
         </video>
-        <div class="hero-video-overlay"></div>
-        <div class="bounce-logo-container">
-            <div id="bounceLogo" class="bounce-logo">
-                <img id="bounceLogoImg" src="assets/images/shopifyLoog.png" alt="Shopify Logo">
+        <div class="hero-enterprise-wash" aria-hidden="true"></div>
+
+        <div class="hero-enterprise-inner">
+            <div class="hero-copy">
+                <p class="hero-eyebrow"><span></span> REVENUE INTELLIGENCE FOR SHOPIFY</p>
+                <h1 class="hero-title">
+                    Know where your store is losing revenue.
+                    <span>Understand why. Know what to fix.</span>
+                </h1>
+                <p class="hero-description">
+                    Revluma turns your Shopify data into clear, evidence-backed insights that reveal where you're losing revenue, why it matters, and what to do next.
+                </p>
+                <div class="hero-actions">
+                    <a href="./auth/signup.html" class="hero-primary-cta">Get Started Free</a>
+                    <button @click="$dispatch('open-waitlist')" type="button" class="hero-secondary-cta">Join Waitlist</button>
+                </div>
+                <p class="hero-footnote">Built for Shopify merchants · Evidence before recommendations</p>
+            </div>
+
+            <div class="hero-product" aria-label="Illustrative preview of Revluma's revenue intelligence workspace">
+                <div class="hero-product-window">
+                    <div class="hero-product-topbar">
+                        <div class="hero-window-controls"><i></i><i></i><i></i></div>
+                        <span>REVLUMA <b>/</b> REV INTELLIGENCE</span>
+                        <span class="hero-product-menu">•••</span>
+                    </div>
+                    <div class="hero-product-body">
+                        <aside class="hero-product-sidebar">
+                            <div class="hero-product-brand"><span class="hero-brand-mark">R</span><span>Workspace</span></div>
+                            <div class="hero-nav-item"><span class="hero-nav-glyph">⌂</span> Command Center</div>
+                            <div class="hero-nav-item hero-nav-active"><span class="hero-nav-glyph">◫</span> Rev Intelligence</div>
+                            <div class="hero-nav-item"><span class="hero-nav-glyph">⌘</span> Integrations</div>
+                            <div class="hero-sidebar-bottom"><span class="hero-sidebar-dot"></span> Shopify workspace</div>
+                        </aside>
+                        <div class="hero-product-main">
+                            <div class="hero-product-heading">
+                                <div>
+                                    <span class="hero-product-kicker">REVENUE INTELLIGENCE</span>
+                                    <h2>Investigations</h2>
+                                    <p>Understand what needs attention.</p>
+                                </div>
+                                <span class="hero-example-label">PRODUCT PREVIEW</span>
+                            </div>
+                            <div class="hero-investigation-card">
+                                <div class="hero-investigation-head">
+                                    <span class="hero-investigation-icon">↗</span>
+                                    <div><strong>Checkout performance</strong><small>Investigation overview</small></div>
+                                    <span class="hero-status">Under review</span>
+                                </div>
+                                <div class="hero-evidence-list">
+                                    <div><span class="hero-evidence-check">✓</span><span><b>Observed signals</b><small>Review activity across the customer journey</small></span><span class="hero-evidence-state">Review</span></div>
+                                    <div><span class="hero-evidence-check">✓</span><span><b>Supporting evidence</b><small>Connect findings to verified store data</small></span><span class="hero-evidence-state">Verify</span></div>
+                                    <div><span class="hero-evidence-check">•</span><span><b>Recommended next step</b><small>Prioritize an action based on the evidence</small></span><span class="hero-evidence-state">Next</span></div>
+                                </div>
+                            </div>
+                            <div class="hero-product-footer"><span>Evidence-led analysis</span><span><i></i> Read-only preview</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="hero-product-caption"><span></span> A clearer view of what matters across your store</div>
             </div>
         </div>
-        <div class="absolute inset-0 z-0 grid-bg opacity-20"></div>
+    </section>
 
-        <div class="relative z-10 text-center max-w-5xl mx-auto w-full px-4">
-
-                        <h1 class="premium-headline text-4xl sm:text-[40px] md:text-5xl tracking-tighter leading-[1.05] mb-6">
-                Know where your store is losing revenue.<br>
-                <span>Understand why. Know what to fix.</span>
-            </h1>
-
-            <p class="text-[#A1A1AA] text-lg md:text-xl max-w-2xl mx-auto mb-8 font-light leading-relaxed">
-                Revluma turns your Shopify data into clear, evidence-backed insights that reveal where you're losing revenue, why it matters, and what to do next.
-            </p>
-
-            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
-
-  <!-- Get Started Free Button -->
-  <a href="./auth/signup.html" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide text-center hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
-    Get Started Free
-  </a>
-
-  <!-- Join Waitlist Button -->
-  <button @click="$dispatch('open-waitlist')" type="button" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
-    Join Waitlist
-  </button>
-            </div>
-
-            <div x-data="{ waitlistModal: false }" x-init="$watch('waitlistModal', value => document.body.style.overflow = value ? 'hidden' : '')" @open-waitlist.window="waitlistModal = true" x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/85 flex justify-center overflow-y-auto p-4 backdrop-blur-md" x-cloak
+    <div x-data="{ waitlistModal: false }" x-init="$watch('waitlistModal', value => document.body.style.overflow = value ? 'hidden' : '')" @open-waitlist.window="waitlistModal = true" x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/85 flex justify-center overflow-y-auto p-4 backdrop-blur-md" x-cloak
       x-transition:enter="transition ease-out duration-300"
       x-transition:enter-start="opacity-0"
       x-transition:enter-end="opacity-100"
@@ -1182,7 +1384,7 @@
                              <div class="flex justify-between items-start mb-8">
                                  <div>
                                      <span class="text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500" x-text="detailsDone ? 'All set' : (step === 1 ? 'Step 1 of 2' : 'Step 2 of 2')"></span>
-                                     <h2 class="text-2xl md:text-[1.7rem] font-display font-bold text-white mt-1.5 leading-tight" x-text="detailsDone ? 'You\'re all set' : (step === 1 ? 'Secure your spot' : 'You\'re on the list')"></h2>
+                                     <h2 class="text-2xl md:text-[1.7rem] font-display font-bold text-white mt-1.5 leading-tight" x-text="detailsDone ? 'You\\'re all set' : (step === 1 ? 'Secure your spot' : 'You\\'re on the list')"></h2>
                                  </div>
                                  <button @click="waitlistModal = false" class="shrink-0 text-zinc-500 hover:text-white transition-colors p-2 -mr-2 -mt-1 rounded-full hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-white/50">
                                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1192,12 +1394,7 @@
                              </div>
 
                              <!-- Progress rail -->
-                             <div x-show="!detailsDone" class="flex gap-1.5 mb-9" x-cloak>
-                                 <div class="h-[3px] flex-1 rounded-full bg-white transition-colors duration-300"></div>
-                                 <div class="h-[3px] flex-1 rounded-full transition-colors duration-300" :class="step >= 2 ? 'bg-white' : 'bg-white/10'"></div>
-                             </div>
-
-                             <!-- ───────────────────────── STEP 1 — secure my spot ───────────────────────── -->
+    <!-- ───────────────────────── STEP 1 — secure my spot ───────────────────────── -->
                              <form x-ref="step1Form" x-show="step === 1" method="POST" @input="isValid = $el.checkValidity()" @change="isValid = $el.checkValidity()" x-init="isValid = $el.checkValidity()" @submit.prevent="submitStep1($event)" class="space-y-5">
                                  <div style="position:absolute; left:-9999px; top:-9999px;" aria-hidden="true">
                                    <label for="hp_field">Leave this unchecked</label>
@@ -3332,103 +3529,7 @@
 
         document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
 
-        // Bouncing logo animation with icon cycling on edge hits
-        const bounceContainer = document.getElementById('hero-landing');
-        const bounceLogo = document.getElementById('bounceLogo');
-        const bounceLogoImg = document.getElementById('bounceLogoImg');
-
-        // ── BOUNCE LOGOS CONFIG ──────────────────────────────────────────────
-        // To add more logos: just push another object into this array.
-        // { src: 'path/to/image.png', alt: 'Name' }
-        // The animation will automatically include them in the rotation cycle.
-        // ────────────────────────────────────────────────────────────────────
-        const logos = [
-            { src: 'assets/images/shopifyLoog.png', alt: 'Shopify' },
-            { src: 'assets/images/woocomrceLogo.webp', alt: 'WooCommerce' },
-            { src: 'assets/images/meta-logo.png', alt: 'Meta' },
-            { src: 'assets/images/google-ads-logo.webp', alt: 'Google Ads' },
-            { src: 'assets/images/tiktok-logo.png', alt: 'TikTok Shop' },
-            { src: 'assets/images/bigCommerce-logo.png', alt: 'BigCommerce' },
-
-            // ── ADD MORE LOGOS BELOW THIS LINE ──
-            // { src: 'assets/images/your-logo.png', alt: 'Your Platform' },
-        ];
-        let logoIndex = 0;
-
-        let position = { x: 24, y: 24 };
-        let velocity = { x: 130, y: 110 };
-        let lastTime = null;
-
-        const updateBounceBounds = () => {
-            const bounds = bounceContainer.getBoundingClientRect();
-            const logoBounds = bounceLogo.getBoundingClientRect();
-            return {
-                width: bounds.width - logoBounds.width,
-                height: bounds.height - logoBounds.height
-            };
-        };
-
-        const setLogo = (index) => {
-            logoIndex = index % logos.length;
-            bounceLogoImg.src = logos[logoIndex].src;
-            bounceLogoImg.alt = logos[logoIndex].alt;
-        };
-
-        const nextLogo = () => {
-            setLogo((logoIndex + 1) % logos.length);
-        };
-
-        const animateBounce = (timestamp) => {
-            if (!lastTime) lastTime = timestamp;
-            const dt = Math.min((timestamp - lastTime) / 1000, 0.032);
-            lastTime = timestamp;
-
-            const bounds = updateBounceBounds();
-            let collided = false;
-
-            position.x += velocity.x * dt;
-            position.y += velocity.y * dt;
-
-            if (position.x <= 0) {
-                position.x = 0;
-                velocity.x = Math.abs(velocity.x);
-                collided = true;
-            } else if (position.x >= bounds.width) {
-                position.x = bounds.width;
-                velocity.x = -Math.abs(velocity.x);
-                collided = true;
-            }
-
-            if (position.y <= 0) {
-                position.y = 0;
-                velocity.y = Math.abs(velocity.y);
-                collided = true;
-            } else if (position.y >= bounds.height) {
-                position.y = bounds.height;
-                velocity.y = -Math.abs(velocity.y);
-                collided = true;
-            }
-
-            bounceLogo.style.transform = `translate(${position.x}px, ${position.y}px)`;
-
-            if (collided) {
-                nextLogo();
-            }
-
-            requestAnimationFrame(animateBounce);
-        };
-
-        window.addEventListener('load', () => {
-            setLogo(0);
-            requestAnimationFrame(animateBounce);
-        });
-
-        window.addEventListener('resize', () => {
-            const bounds = updateBounceBounds();
-            position.x = Math.min(position.x, bounds.width);
-            position.y = Math.min(position.y, bounds.height);
-        });
-    </script>
+        // Hero decoration is intentionally static and icon-free.\n    </script>
     <script>
         // Feature image upload handler
         function loadImage(input, imgId) {
