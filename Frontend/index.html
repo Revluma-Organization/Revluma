@@ -1394,7 +1394,12 @@
                              </div>
 
                              <!-- Progress rail -->
-    <!-- ───────────────────────── STEP 1 — secure my spot ───────────────────────── -->
+                             <div x-show="!detailsDone" class="flex gap-1.5 mb-9" x-cloak>
+                                 <div class="h-[3px] flex-1 rounded-full bg-white transition-colors duration-300"></div>
+                                 <div class="h-[3px] flex-1 rounded-full transition-colors duration-300" :class="step >= 2 ? 'bg-white' : 'bg-white/10'"></div>
+                             </div>
+
+                             <!-- ───────────────────────── STEP 1 — secure my spot ───────────────────────── -->
                              <form x-ref="step1Form" x-show="step === 1" method="POST" @input="isValid = $el.checkValidity()" @change="isValid = $el.checkValidity()" x-init="isValid = $el.checkValidity()" @submit.prevent="submitStep1($event)" class="space-y-5">
                                  <div style="position:absolute; left:-9999px; top:-9999px;" aria-hidden="true">
                                    <label for="hp_field">Leave this unchecked</label>
