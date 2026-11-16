@@ -2,7 +2,9 @@
 
 const path = require('path');
 
-const MAX_DIAGNOSTIC_CHARS = 12000;
+// Actions truncates annotation messages to 4096 characters. Stay below that
+// limit so the trailing assertion and stack are retrievable through the API.
+const MAX_DIAGNOSTIC_CHARS = 3000;
 
 function redactDiagnostics(output, env = process.env) {
   let text = String(output || '').replace(/\u001b\[[0-9;]*m/g, '');

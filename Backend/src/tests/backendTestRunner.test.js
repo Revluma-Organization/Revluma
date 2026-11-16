@@ -69,6 +69,13 @@ test('check diagnostics redact environment secrets, connection URLs and credenti
   }
 });
 
+test('long test logs retain the final assertion and stack below the Actions API truncation limit', () => {
+  const stack = 'AssertionError: expected complete, got unknown\n    at verifyPersistedStore (test.js:270:10)';
+  const result = failureAnnotation('callback.test.js', 'verbose logs\n'.repeat(1000) + stack, {});
+  assert.ok(result.length < 4096);
+  assert.match(result, /AssertionError: expected complete, got unknown%0A    at verifyPersistedStore/);
+});
+
 test('annotations are bounded and cannot inject workflow commands through newlines or percent escapes', () => {
   const result = failureAnnotation('unsafe,name.test.js', 'x'.repeat(MAX_DIAGNOSTIC_CHARS * 2)
     + '\n::warning::not a command\r\n100% done', {});
