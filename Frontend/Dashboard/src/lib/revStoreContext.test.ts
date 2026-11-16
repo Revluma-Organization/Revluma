@@ -59,6 +59,7 @@ describe("data-health detection", () => {
     expect(isSyncIncomplete({ ...CONNECTED, syncStatus: "pending" })).toBe(true);
     expect(isSyncIncomplete({ ...CONNECTED, syncStatus: "in_progress" })).toBe(true);
     expect(isSyncIncomplete({ ...CONNECTED, monitoringMode: "awaiting_verified_sync" })).toBe(true);
+    expect(isSyncIncomplete({ ...CONNECTED, syncStatus: "complete", monitoringMode: "sync_only_limited" })).toBe(false);
     expect(isSyncIncomplete(CONNECTED)).toBe(false);
   });
 
