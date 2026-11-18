@@ -94,7 +94,7 @@
       if (!token) { window.location.href = '/auth/login.html'; return; }
 
       try {
-        const API = window.REVLUMA_CONFIG?.API_BASE_URL || 'https://revluma-backend.onrender.com/api/v1';
+        const API = window.REVLUMA_CONFIG?.API_BASE_URL || 'https://revluma-backend-lqve.onrender.com/api/v1';
 
         // Verify server-side — frontend cannot forge this
         const res = await fetch(`${API}/subscriptions/verify/${encodeURIComponent(reference)}`, {
