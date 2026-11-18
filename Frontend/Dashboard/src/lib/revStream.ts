@@ -36,7 +36,8 @@ export interface InvestigationStep {
   id: string;
   tool: string;
   label: string;
-  status: "pending" | "running" | "completed" | "failed";
+  /** ``skipped``: Rev's agent judged this planned source unnecessary; no evidence from it is claimed. */
+  status: "pending" | "running" | "completed" | "failed" | "skipped";
   detail?: string | null;
 }
 
@@ -434,7 +435,7 @@ export async function streamRevAnswer({
             id: typeof data.id === "string" ? data.id : String(data.tool),
             tool: String(data.tool),
             label: typeof data.label === "string" ? data.label : String(data.tool).replace(/_/g, " "),
-            status: (["pending", "running", "completed", "failed"].includes(String(data.status))
+            status: (["pending", "running", "completed", "failed", "skipped"].includes(String(data.status))
               ? String(data.status)
               : "running") as InvestigationStep["status"],
             detail: typeof data.detail === "string" ? data.detail : null,

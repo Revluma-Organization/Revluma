@@ -84,6 +84,7 @@ from ..intelligence.conversation_reliability import (
     bounded_history_text, build_context_summary, validate_context_summary,
 )
 from ..intelligence.question_orchestration import (
+    MAX_TOOL_COUNT,
     build_investigation_plan,
     cross_domain_narrative,
     execute_orchestrated_specialists,
@@ -3159,6 +3160,104 @@ def _validate_narrative(text_value: str, facts: list[dict], items: list[dict]) -
     return True, "ok"
 
 
+def _trace_token_usage(objective_trace: dict, web_trace: dict) -> dict:
+    """Actual provider-reported token usage for the agent/web runtime."""
+    trace = objective_trace if objective_trace.get("token_total") is not None else web_trace
+    usage = trace.get("usage") if isinstance(trace.get("usage"), dict) else {}
+    input_tokens = trace.get("input_tokens", usage.get("input_tokens"))
+    output_tokens = trace.get("output_tokens", usage.get("output_tokens"))
+    total = trace.get("token_total")
+    if total is None and isinstance(input_tokens, int) and isinstance(output_tokens, int):
+        total = input_tokens + output_tokens
+    return {"input": input_tokens, "output": output_tokens, "total": total,
+            "scope": "agent_runtime_only",
+            "note": "Excludes routing/understanding and fallback narrative calls, whose providers do not report usage here."}
+
+
+def _agent_web_permitted(message: str) -> bool:
+    """Public web research inside a store investigation is opt-in by objective
+    and can be disabled operationally (REV_AGENT_WEB=off)."""
+    import os
+    return os.getenv("REV_AGENT_WEB", "on").strip().lower() not in {"0", "false", "no", "off"}
+
+
+_BRACKET_CITATION = re.compile(r"\s?\[\d{1,3}\]")
+
+
+def _agent_narrative(agent_run: dict | None, *, facts: list[dict], items: list[dict],
+                     deterministic: str, validation_cleared: bool) -> tuple[str | None, dict | None]:
+    """Validate the agent's final answer against the deterministic evidence.
+
+    Returns ``(text_or_None, metadata_or_None)``. ``None`` text means the
+    caller keeps its existing composition path. The validation never trusts
+    the model: every number must be grounded in an evidence item, a
+    deterministic fact, or a server-side calculation; unsafe causal, financial
+    or action language is rejected; cited ids must exist in the ledger.
+    """
+    agent_run = agent_run or {}
+    answer = agent_run.get("answer")
+    clarification = agent_run.get("clarification")
+    if not answer and not clarification:
+        return None, None
+    calculations = list(agent_run.get("calculations") or [])
+    meta: dict[str, Any] = {
+        "contract_version": "rev-agent-answer-v1",
+        "source": "model_agent",
+        "provider": (agent_run.get("trace") or {}).get("provider"),
+        "model": (agent_run.get("trace") or {}).get("model"),
+        "calculations": calculations[:12],
+        "web_sources": [{"id": source.get("id"), "url": source.get("url"), "title": source.get("title")}
+                        for source in (agent_run.get("web_sources") or [])][:8],
+    }
+    if clarification:
+        question = str(clarification.get("question") or "").strip()
+        errors = narrative_guardrail_errors(question)
+        if errors or not question:
+            meta["validation"] = {"status": "rejected", "reason": (errors or ["empty"])[0]}
+            return None, meta
+        meta["validation"] = {"status": "accepted", "kind": "clarification"}
+        meta["clarification"] = {"question": question}
+        if facts and not validation_cleared:
+            return (question + "\n\n## What I could verify so far\n" + deterministic), meta
+        return question, meta
+    if validation_cleared:
+        meta["validation"] = {"status": "rejected", "reason": "evidence_validation_failed"}
+        return None, meta
+    text = _BRACKET_CITATION.sub("", str(answer.get("answer_markdown") or "")).strip()
+    grounding_items = list(items) + [{"value": calc.get("value")} for calc in calculations]
+    grounding_items += [{"value": number} for number in (agent_run.get("ledger_numbers") or set())]
+    valid, reason = _validate_narrative(text, facts, grounding_items)
+    if valid and meta["web_sources"]:
+        # Public research must be cited by URL so the merchant can verify it.
+        cited = set(answer.get("cited_evidence_ids") or [])
+        used = [source for source in meta["web_sources"] if source["id"] in cited]
+        if used and not any(source["url"] in text for source in used):
+            text += "\n\n**Sources**\n" + "\n".join(
+                f"- {source.get('title') or source['url']}: {source['url']}" for source in used)
+    ledger_ids = agent_run.get("ledger_ids") or set()
+    meta.update({
+        "cited_evidence_ids": [identifier for identifier in (answer.get("cited_evidence_ids") or [])
+                               if identifier in ledger_ids][:40],
+        "evidence_sufficiency": answer.get("evidence_sufficiency"),
+        # Model-proposed hypotheses/unknowns are labelled unverified and pass the
+        # same unsafe-language filter; they never become facts or claims.
+        "hypotheses_unverified": [entry for entry in (answer.get("hypotheses") or [])
+                                  if not narrative_guardrail_errors(entry)][:6],
+        "unknowns": [entry for entry in (answer.get("unknowns") or [])
+                     if not narrative_guardrail_errors(entry)][:6],
+    })
+    if not valid:
+        meta["validation"] = {"status": "rejected", "reason": reason}
+        logger.warning("rev_agent_answer_rejected reason=%s", reason)
+        try:
+            record_counter("rev_validation_failures_total", labels={"stage": "agent_answer"})
+        except Exception:
+            pass
+        return None, meta
+    meta["validation"] = {"status": "accepted", "kind": "answer"}
+    return text, meta
+
+
 def _compose_narrative(*, message: str, intent: str, window: dict, facts: list[dict],
                        comparison_facts: list[dict], hypotheses: list[dict],
                        unknowns: list[str], recommendations: list[dict],
@@ -4725,52 +4824,104 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
             params.pop("latest", None)
         return params
 
-    # LLM-directed selection is constrained to tools already authorized by
-    # intent/domain orchestration. Each actual result is returned to the model
-    # before it selects again; result composition and arithmetic remain in the
-    # deterministic evidence pipeline below.
-    objective_trace = {"mode": "model_tool_loop", "status": "not_started",
+    # Authoritative agent runtime (rev_agent): the model chooses which of the
+    # objective-exposed evidence tools to call, sees every actual result as a
+    # native tool result, decides when evidence is sufficient and writes the
+    # final answer. Server code owns tenant/window scope, argument validation,
+    # budgets and arithmetic. Fact/claim/outcome derivation below stays
+    # deterministic over the same results, and the model's prose is validated
+    # against them before it is shown.
+    objective_trace = {"mode": "native_tool_loop", "status": "not_started",
                        "calls": 0, "selected_tools": [], "model_directed": False}
     objective_active = False
+    agent_run: dict = {}
+    understanding_payload = routed.get("understanding") or {}
+    permit_web = bool(understanding_payload.get("requires_web")) and _agent_web_permitted(message)
     try:
-        from .objective_agent import run_objective_tool_loop
-        objective_request = json.dumps({
+        from .objective_agent import _ARGUMENTS as _AGENT_ARGUMENTS
+        from .rev_agent import run_agent, select_tool_exposure
+        exposed = select_tool_exposure(
+            intent=intent, plan_tools=tools,
+            available={entry["name"] for entry in catalog()} & set(_AGENT_ARGUMENTS),
+            permit_web=permit_web)
+
+        def _agent_step(step_event: dict) -> None:
+            tool_name = step_event.get("tool")
+            if not isinstance(tool_name, str):
+                return
+            step = step_by_tool.get(tool_name)
+            if step is None:
+                step = {"id": _step_id(len(plan), tool_name), "tool": tool_name,
+                        "label": step_event.get("label") or TOOL_STEP_LABELS.get(
+                            tool_name, tool_name.replace("_", " ").title()),
+                        "status": "pending", "detail": None}
+                plan.append(step)
+                step_by_tool[tool_name] = step
+                if tool_name in catalog_names and tool_name not in tools \
+                        and len(orchestration["tools"]) < MAX_TOOL_COUNT:
+                    tools.append(tool_name)
+                    orchestration["tools"].append(tool_name)
+            step["status"] = step_event.get("status") if step_event.get("status") in (
+                "running", "completed", "failed") else "running"
+            if step_event.get("detail"):
+                step["detail"] = step_event["detail"] + (
+                    " Selected by Rev's agent." if step["status"] != "running" else "")
+            _emit({"event": "step", "data": dict(step)})
+
+        catalog_names = {entry["name"] for entry in catalog()}
+        agent_objective = {
             "intent": intent,
             "current_question": message,
             "resolved_reporting_period": {
-                "start": window.get("start"), "end": window.get("end"),
+                "label": window.get("label"), "start": window.get("start"), "end": window.get("end"),
                 "timezone": window.get("timezone"),
+                "compared_to": {key: (window.get("compared_to") or {}).get(key)
+                                for key in ("label", "start", "end")} if window.get("compared_to") else None,
             },
-            # This history is already tenant/user/conversation scoped by the
-            # authenticated context loader; it remains untrusted model input.
+            "period_is_server_owned": "Tools always use this resolved period; do not try to change it.",
+            "store": {key: (store_context or {}).get(key) for key in (
+                "currency", "store_count", "timezone", "plan") if (store_context or {}).get(key) is not None},
+            "connection_check": {"status": store_health.status, "item_count": len(store_health.items)},
+            "followup": bool(classification.get("followup")),
+            "segment": classification.get("segment"),
+            "requested_domains": list(question_understanding.get("required_domains") or [])[:8],
+            # Tenant/user/conversation scoped by the authenticated context
+            # loader; still untrusted model input.
             "recent_conversation": str(routed.get("history_text") or "")[:1800],
-        }, ensure_ascii=True, default=str)
-        objective = run_objective_tool_loop(
-            question=objective_request,
-            candidate_tools=[name for name in tools if name != "store_health"],
-            execute=lambda name, arguments: run_tool(
+        }
+        agent_run = run_agent(
+            objective=agent_objective, exposed_tools=exposed,
+            execute_store_tool=lambda name, arguments: run_tool(
                 name, organization_id, db, _objective_tool_params(name, arguments), now=now),
-            remaining_seconds=lambda: max(0.0, deadline.remaining_ms() / 1000.0),
+            remaining_seconds=lambda: max(0.0, deadline.remaining_ms() / 1000.0 - 12.0),
+            cancelled=_cancelled, on_step=_agent_step,
+            # Pool invariant: never hold a read transaction open across a
+            # provider request.
+            before_model_turn=lambda: release_read_transaction(db),
             correlation_id=(context_payload or {}).get("correlation_id"),
-            execution_id=investigation_id, cancelled=_cancelled)
-        objective_trace = objective.get("trace") or objective_trace
-        objective_trace["status"] = objective.get("status")
-        for selected_result in objective.get("results") or []:
-            if selected_result.tool in step_by_tool:
-                tool_results.append(selected_result)
-                tool_results_by_name[selected_result.tool] = selected_result
-        objective_active = bool(objective_trace.get("calls"))
+            execution_id=investigation_id)
+        objective_trace = agent_run.get("trace") or objective_trace
+        for selected_result in agent_run.get("results") or []:
+            tool_results.append(selected_result)
+            tool_results_by_name[selected_result.tool] = selected_result
+        objective_active = bool(objective_trace.get("model_directed")) and (
+            bool(objective_trace.get("calls")) or bool(agent_run.get("answer"))
+            or bool(agent_run.get("clarification")))
         objective_trace["model_directed"] = objective_active
         objective_trace["fallback_mode"] = None if objective_active else "deterministic_legacy_plan"
+        if agent_run.get("status") == "cancelled" or _cancelled():
+            objective_trace["cancelled"] = True
     except Exception as exc:
         # Preserve the established evidence path when provider/tool orchestration
         # is unavailable, but expose the degraded mode rather than claiming the
         # model selected or adapted any tools.
-        logger.warning("rev_objective_tool_loop_unavailable error_type=%s execution_id=%s",
+        logger.warning("rev_agent_runtime_unavailable error_type=%s execution_id=%s",
                        type(exc).__name__, investigation_id)
         objective_trace.update({"status": "orchestrator_error", "model_directed": False,
                                 "fallback_mode": "deterministic_legacy_plan"})
-    orchestration["objective_agent"] = objective_trace
+        agent_run = {}
+    orchestration["objective_agent"] = {key: value for key, value in objective_trace.items()
+                                        if key not in ("ledger_numbers", "ledger_ids")}
     try:
         record_counter("rev_objective_tool_loop_total", labels={
             "status": str(objective_trace.get("status") or "unknown")[:48],
@@ -4778,8 +4929,15 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
     except Exception:
         pass
 
-    for tool in tools:
+    for tool in list(tools):
         if tool == "store_health":
+            continue
+        if objective_active and step_by_tool.get(tool, {}).get("status") == "failed" \
+                and tool not in tool_results_by_name:
+            # The agent called this source and it failed; keep that honest state.
+            tool_failures.setdefault(tool, {"outcome": "retrieval_failed", "error_class": "tool_execution_failed",
+                                            "retry_eligible": True})
+            skipped.append(f"{TOOL_STEP_LABELS.get(tool, tool)}: query failed.")
             continue
         if tool in tool_results_by_name:
             selected_result = tool_results_by_name[tool]
@@ -5146,7 +5304,17 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
             contributor_analysis=contributor_analysis,
             contribution_facts=contribution_facts,
         )
-        if consistency["status"] == "unchanged":
+        agent_narrative, agent_answer_meta = _agent_narrative(
+            agent_run, facts=facts + all_comparison_facts + decomposition_facts + contribution_facts,
+            items=items + comparison_items, deterministic=deterministic,
+            validation_cleared=bool(validation_errors))
+        if agent_answer_meta:
+            result["agent_answer"] = agent_answer_meta
+            objective_trace["answer_validation"] = agent_answer_meta.get("validation")
+            orchestration["objective_agent"]["answer_validation"] = agent_answer_meta.get("validation")
+        if agent_narrative is not None:
+            narrative, used_model = agent_narrative, "agent_runtime"
+        elif consistency["status"] == "unchanged":
             narrative, used_model = deterministic, "deterministic_consistent_repeat"
         else:
             narrative, used_model = _compose_narrative(
@@ -5456,7 +5624,33 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "model": provider_trace.get("model"),
             "duration_ms": duration_ms,
             "provider_duration_ms": provider_trace.get("duration_ms"),
-            "token_usage": {"total": objective_trace.get("token_total") or web_trace.get("usage")},
+            "token_usage": _trace_token_usage(objective_trace, web_trace),
+            "estimated_cost_usd": provider_trace.get("estimated_cost_usd"),
+            "agent": {
+                "contract_version": objective_trace.get("contract_version") or web_trace.get("contract_version"),
+                "mode": provider_trace.get("mode"),
+                "model_directed": bool(provider_trace.get("model_directed")),
+                "status": provider_trace.get("status"),
+                "stop_reason": provider_trace.get("stop_reason"),
+                "iterations": provider_trace.get("iterations"),
+                "tool_calls": [{key: call.get(key) for key in (
+                    "tool", "status", "source_status", "iteration", "duration_ms", "item_count",
+                    "failure_category", "provider", "model", "source_count", "cache_hit")
+                    if call.get(key) is not None}
+                    for call in (provider_trace.get("tool_calls") or [])][:16],
+                "model_turns": [{key: turn.get(key) for key in (
+                    "iteration", "provider", "model", "input_tokens", "output_tokens", "duration_ms",
+                    "attempts", "fallback_used", "outcome", "category", "stop_reason")
+                    if turn.get(key) is not None}
+                    for turn in (provider_trace.get("model_turns") or [])][:12],
+                "exposed_tools": list(provider_trace.get("exposed_tools") or [])[:14],
+                "budget": provider_trace.get("budget"),
+                "answer_validation": provider_trace.get("answer_validation"),
+                "duplicate_calls": provider_trace.get("duplicate_calls"),
+                "calculations": provider_trace.get("calculations"),
+                "web_searches": provider_trace.get("web_searches"),
+                "fallback_mode": provider_trace.get("fallback_mode"),
+            },
             "tool_selection": list(provider_trace.get("selected_tools") or [])[:8],
             "retries": provider_trace.get("retry_count", 0),
             "fallback_used": bool(provider_trace.get("fallback_used")),
