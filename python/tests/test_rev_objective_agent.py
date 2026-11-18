@@ -42,6 +42,12 @@ def test_model_selects_tools_and_receives_actual_result_before_adapting(monkeypa
     assert [name for name, _ in calls] == ["revenue_observations", "order_observations"]
     assert calls[0][1] == {"compare": True}
     assert result["trace"]["model"] == "gemini-test"
+    assert result["trace"]["duration_ms"] >= 0
+    assert result["trace"]["retry_count"] == 0
+    assert result["trace"]["fallback_used"] is False
+    assert result["trace"]["cancelled"] is False
+    assert [row["tool"] for row in result["trace"]["tool_durations"]] == [
+        "revenue_observations", "order_observations"]
     # Once the only authorized tools have been run, the loop stops without an
     # unnecessary extra provider round.
     assert result["trace"]["token_total"] == 245

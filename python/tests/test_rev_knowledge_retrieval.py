@@ -48,6 +48,26 @@ def test_new_public_knowledge_understanding_omits_private_conversation_history(m
     assert seen == [[]]
 
 
+def test_unavailable_document_corpus_is_disclosed_as_not_searched(monkeypatch):
+    from types import SimpleNamespace
+    from src.agents import responder
+
+    captured = {}
+    monkeypatch.setattr(responder, "_call", lambda role, prompt, *args, **kwargs:
+                       captured.setdefault("prompt", prompt) or "Explanation")
+    understanding = SimpleNamespace(response_mode="direct_answer", intent="knowledge",
+                                    goal="explain Shopify webhooks")
+    responder.compose_knowledge(
+        "How do Shopify webhooks work?", understanding, "", [], True,
+        retrieval_status={"configured_sources": [],
+                          "unavailable_sources": [SHOPIFY_DOCS],
+                          "tenant_memory": "not_requested"})
+    assert "not configured/ingested" in captured["prompt"]
+    assert SHOPIFY_DOCS in captured["prompt"]
+    assert "Do not claim to have searched" in captured["prompt"]
+    assert "model knowledge rather than current documentation" in captured["prompt"]
+
+
 def test_current_web_route_is_exclusive_and_never_receives_private_context():
     route = resolve_knowledge_route(
         "Find current Shopify API changes for my store", "web_research", requires_web=True)

@@ -205,6 +205,11 @@ def run_objective_tool_loop(*, question: str, candidate_tools: list[str],
     model_turns = 0
     status = "completed"
     malformed = 0
+    retry_count = 0
+    fallback_used = False
+    failure_category = None
+    tool_durations_ms: list[dict[str, Any]] = []
+    loop_started = time.monotonic()
 
     for turn in range(MAX_TURNS):
         if cancelled and cancelled():
@@ -247,11 +252,16 @@ def run_objective_tool_loop(*, question: str, candidate_tools: list[str],
                 correlation_id=correlation_id, execution_id=execution_id)
         except ModelProviderError as exc:
             provider, model = exc.provider, exc.model
+            retry_count += max(0, exc.attempts - 1)
+            fallback_used = fallback_used or exc.fallback_used
+            failure_category = exc.category
             status = "provider_unavailable" if not selected else "partial_provider_failure"
             logger.warning("rev_objective_tool_loop_provider_failure category=%s provider=%s model=%s execution_id=%s",
                            exc.category, exc.provider, exc.model, execution_id)
             break
         provider, model = turn_result.get("provider"), turn_result.get("model")
+        retry_count += max(0, int(turn_result.get("attempts") or 1) - 1)
+        fallback_used = fallback_used or bool(turn_result.get("fallback_used"))
         model_turns += 1
         usage = turn_result.get("usage") or {}
         input_used = max(0, int(usage.get("input_tokens") or 0))
@@ -302,12 +312,19 @@ def run_objective_tool_loop(*, question: str, candidate_tools: list[str],
             continue
         used.add(name)
         selected.append(name)
+        tool_started = time.monotonic()
         try:
             result = execute(name, arguments)
+            tool_failure_category = None
         except Exception as exc:  # a single failed capability is recoverable
+            tool_failure_category = "timeout" if isinstance(exc, TimeoutError) else "tool_execution_failed"
+            failure_category = tool_failure_category
             logger.warning("rev_objective_tool_execution_failed tool=%s error_type=%s execution_id=%s",
                            name, type(exc).__name__, execution_id)
             result = None
+        tool_durations_ms.append({"tool": name,
+                                  "duration_ms": round((time.monotonic() - tool_started) * 1000, 2),
+                                  "failure_category": tool_failure_category})
         if result is not None:
             results.append(result)
             safe = _safe_result(result)
@@ -325,7 +342,10 @@ def run_objective_tool_loop(*, question: str, candidate_tools: list[str],
 
     return {"status": status, "results": results, "trace": {
         "mode": "model_tool_loop", "calls": len(selected), "selected_tools": selected,
-        "provider": provider, "model": model, "token_total": min(total_tokens, MAX_TOTAL_TOKENS),
+        "provider": provider, "model": model, "duration_ms": round((time.monotonic() - loop_started) * 1000, 2),
+        "tool_durations": tool_durations_ms, "retry_count": retry_count,
+        "fallback_used": fallback_used, "failure_category": failure_category,
+        "cancelled": status == "cancelled", "token_total": min(total_tokens, MAX_TOTAL_TOKENS),
         "token_budget_used": min(budget_tokens, MAX_TOTAL_TOKENS),
         "estimated_cost_usd": round(min(estimated_cost_usd, MAX_ESTIMATED_COST_USD), 6),
         "cost_limit_usd": MAX_ESTIMATED_COST_USD,

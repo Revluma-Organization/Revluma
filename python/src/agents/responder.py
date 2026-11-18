@@ -143,7 +143,8 @@ def compose_knowledge(message: str, understanding, history_text: str,
                       memories: list[dict], has_store: bool,
                       image_base64: str | None = None,
                       image_media_type: str | None = None,
-                      correlation_id: str | None = None) -> str:
+                      correlation_id: str | None = None,
+                      retrieval_status: dict | None = None) -> str:
     """
     Answer general commerce and Shopify questions using appropriately qualified
     conceptual guidance. Store-specific questions must be investigated through
@@ -177,6 +178,17 @@ def compose_knowledge(message: str, understanding, history_text: str,
             "do not imply that this data is connected."
         )
 
+    retrieval_status = retrieval_status or {}
+    unavailable_sources = retrieval_status.get("unavailable_sources") or []
+    retrieval_note = (
+        "\nRETRIEVAL STATUS: No public documentation corpus was queried. The following "
+        "requested collections are not configured/ingested: "
+        + ", ".join(str(source)[:80] for source in unavailable_sources[:8])
+        + ". Do not claim to have searched or retrieved those documents. If you provide "
+        "general background, explicitly identify it as model knowledge rather than current "
+        "documentation. Recommend live web research when current/version-specific facts matter.\n"
+        if unavailable_sources else ""
+    )
     task = (
         "Answer the merchant's general commerce or Shopify question. Relevant areas include "
         "revenue and financial reconciliation, checkout, products and merchandising, inventory, "
@@ -184,6 +196,7 @@ def compose_knowledge(message: str, understanding, history_text: str,
         "Shopify operations. Use accurate definitions and qualify context-dependent advice. "
         + depth + store_hint + "\n\n"
         + constraint_block
+        + retrieval_note
         + "CONVERSATION CONTEXT (for continuity, not an authority source):\n"
         + (history_text if history_text else "(first message)")
         + f"\n\nMERCHANT QUESTION:\n{message[:800]}\n"

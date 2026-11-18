@@ -542,11 +542,20 @@ def _dynamic_knowledge(message: str, user_id: str, routed: dict) -> str:
         knowledge_args = (
             message, understanding, routed.get("history_text") or "",
             routed.get("memories") or [], bool(routed.get("has_store")))
+        route = routed.get("knowledge_route") or {}
+        retrieval_status = {
+            "configured_sources": route.get("configured_sources", []),
+            "unavailable_sources": route.get("unavailable_sources", []),
+            "tenant_memory": (route.get("tenant_memory_retrieval") or {}).get("status", "not_requested"),
+        }
+        extra = {}
+        if retrieval_status.get("unavailable_sources"):
+            extra["retrieval_status"] = retrieval_status
         if routed.get("correlation_id"):
             text = responder.compose_knowledge(
-                *knowledge_args, correlation_id=routed["correlation_id"])
+                *knowledge_args, correlation_id=routed["correlation_id"], **extra)
         else:
-            text = responder.compose_knowledge(*knowledge_args)
+            text = responder.compose_knowledge(*knowledge_args, **extra)
     except ModelProviderError:
         raise
     except Exception:
@@ -4351,7 +4360,19 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
                 db, organization_id, user_id, message, route=knowledge_route)
             routed["memories"] = memories
             routed["history_text"] = _history_text(conversation_context)
+        routed["knowledge_route"] = knowledge_route.to_dict()
+        if memory_provenance is not None:
+            routed["knowledge_route"]["tenant_memory_retrieval"] = memory_provenance
         else:
+            routed["knowledge_route"]["tenant_memory_retrieval"] = {
+                "source": "tenant_memory", "status": "not_requested", "result_count": 0}
+        if not knowledge_route.configured_sources:
+            routed["knowledge_route"]["retrieval_status"] = "unavailable"
+        elif knowledge_route.unavailable_sources:
+            routed["knowledge_route"]["retrieval_status"] = "partial"
+        else:
+            routed["knowledge_route"]["retrieval_status"] = "available"
+        if not knowledge_route.private_tenant_context:
             # Public documentation, general ecommerce answers, and web research
             # are never augmented with tenant memory or merchant conversation.
             routed["memories"] = []
@@ -5403,11 +5424,37 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         elif not is_general and succeeded:
             record_counter("rev_investigations_total", labels={"outcome": "success"})
         execution_outcome = "success" if succeeded else "failure"
+        objective_trace = ((result.get("orchestration") or {}).get("objective_agent") or {})
+        knowledge_route = result.get("knowledge_route") or {}
         result["execution_metadata"] = {
             "correlation_id": correlation_id, "execution_id": execution_id,
+            "request_id": str(trace_payload.get("request_id") or correlation_id)[:128],
+            "conversation_id": str(conversation_id)[:128] if conversation_id else None,
             "started_at": started_at, "latency_ms": duration_ms,
             "deadline_ms": (trace_payload.get("execution_policy") or {}).get("overall_timeout_ms"),
             "outcome": outcome,
+        }
+        # Structured, privacy-safe execution trace: never include raw merchant
+        # text, prompts, evidence payloads, tokens, or credentials. Source names,
+        # provider metadata and outcome classifications are safe bounded fields.
+        result["execution_trace"] = {
+            "request_id": str(trace_payload.get("request_id") or correlation_id)[:128],
+            "correlation_id": correlation_id, "execution_id": execution_id,
+            "conversation_id": str(conversation_id)[:128] if conversation_id else None,
+            "objective": {"intent": intent, "request_class": knowledge_route.get("request_class")},
+            "routing": {"intent": intent,
+                        "gate": (result.get("understanding") or {}).get("gate"),
+                        "sources": list(knowledge_route.get("sources") or [])[:8]},
+            "provider": objective_trace.get("provider"),
+            "model": objective_trace.get("model"),
+            "duration_ms": duration_ms,
+            "token_usage": {"total": objective_trace.get("token_total")},
+            "tool_selection": list(objective_trace.get("selected_tools") or [])[:8],
+            "retries": objective_trace.get("retry_count", 0),
+            "fallback_used": bool(objective_trace.get("fallback_used")),
+            "failure_category": objective_trace.get("failure_category"),
+            "cancelled": bool(objective_trace.get("cancelled")),
+            "final_status": objective_trace.get("status", outcome),
         }
         return result
     except Exception as exc:

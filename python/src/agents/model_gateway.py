@@ -486,6 +486,8 @@ def generate_tool_turn(prompt: str, tools: list[dict], *, role: str = "fast",
                         "from_model": previous_model, "to_model": model})
             except Exception:
                 pass
+            response_value["attempts"] = index + 1
+            response_value["fallback_used"] = index > 0
             return response_value
         except ModelProviderError as exc:
             last_error = exc
