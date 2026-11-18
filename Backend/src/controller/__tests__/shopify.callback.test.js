@@ -27,8 +27,16 @@ const mockPrisma = {
       access_token: 'encrypted-token',
       installed_at: new Date('2026-01-01T00:00:00Z'),
       last_synced_at: new Date('2026-01-02T00:00:00Z'),
+      // Completion is recorded explicitly; a historical timestamp alone is
+      // not proof that the required initial resources finished syncing.
+      initial_sync_status: 'completed',
+      sync_completed_at: new Date('2026-01-02T00:00:00Z'),
     }],
   },
+  store_sync_domain_states: { findMany: async () => ['products', 'orders', 'abandoned_checkouts'].map(domain => ({
+    store_id: 'store-123', domain, status: 'ok', pagination_complete: true,
+    last_succeeded_at: new Date('2026-01-02T00:00:00Z'),
+  })) },
   webhook_registrations: { findMany: async () => [] },
 };
 
@@ -268,8 +276,35 @@ async function verifyPersistedStoreIsReturnedWithoutCredentials() {
   assert.strictEqual(store.shop_domain, 'revluma-test-store.myshopify.com');
   assert.strictEqual(store.connection_status, 'connected');
   assert.strictEqual(store.setup_status, 'complete');
+  assert.strictEqual(store.sync_status, 'complete');
+  assert.strictEqual(store.diagnostics.synchronization.required_resources_complete, true);
   assert.strictEqual(store.webhooks_registered, REQUIRED_SUBSCRIPTIONS.length);
   assert.strictEqual(Object.hasOwn(store, 'access_token'), false);
+}
+
+async function verifyTimestampAloneDoesNotClaimCompletedSetup() {
+  const findStores = mockPrisma.stores.findMany;
+  const findDomains = mockPrisma.store_sync_domain_states.findMany;
+  try {
+    mockPrisma.stores.findMany = async () => (await findStores()).map(store => ({
+      ...store, initial_sync_status: null, sync_completed_at: null,
+    }));
+    mockPrisma.store_sync_domain_states.findMany = async () => [];
+    let response;
+    const res = { status(code) { return { json(payload) { response = { code, payload }; } }; } };
+    await storeController.getStores({ user: { id: 'merchant-123' } }, res, (error) => { throw error; });
+    assert.strictEqual(response.code, 200);
+    const [store] = response.payload.data.stores;
+    assert.ok(store.last_synced_at, 'the historical timestamp is deliberately present');
+    assert.strictEqual(store.webhooks_registered, REQUIRED_SUBSCRIPTIONS.length);
+    assert.strictEqual(store.sync_status, 'unknown');
+    assert.strictEqual(store.setup_status, 'unknown');
+    assert.strictEqual(store.diagnostics.synchronization.required_resources_complete, false);
+    assert.strictEqual(Object.hasOwn(store, 'access_token'), false);
+  } finally {
+    mockPrisma.stores.findMany = findStores;
+    mockPrisma.store_sync_domain_states.findMany = findDomains;
+  }
 }
 
 async function verifyHistoricalFailuresDoNotOverrideActiveWebhooks() {
@@ -316,6 +351,7 @@ async function verifyFailedWebhookDeliveryCanRetryOnce() {
   await verifyAuthorizationDenialAndRetrySetup();
   await verifyPersistedStoreIsReturnedWithoutCredentials();
   await verifyHistoricalFailuresDoNotOverrideActiveWebhooks();
+  await verifyTimestampAloneDoesNotClaimCompletedSetup();
   await verifyFailedWebhookDeliveryCanRetryOnce();
   console.log('shopify.callback.test.js: all assertions passed');
 })().catch((error) => {

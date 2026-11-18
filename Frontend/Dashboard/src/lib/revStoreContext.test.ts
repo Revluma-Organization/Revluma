@@ -11,8 +11,11 @@ import { describe, expect, it } from "vitest";
 import {
   UNKNOWN_STORE,
   buildStarters,
+  hasSyncFailure,
   hasWebhookGap,
   isSyncIncomplete,
+  isSyncNotStarted,
+  isSyncStatusUnknown,
   isSyncStale,
   storeContextFromResponse,
   storeLabel,
@@ -55,18 +58,34 @@ describe("data-health detection", () => {
     expect(UNKNOWN_STORE.connected).toBe(false);
   });
 
-  it("flags a pending or in-progress first sync", () => {
+  it("only labels an explicit in-progress status as active sync", () => {
     expect(isSyncIncomplete({ ...CONNECTED, syncStatus: "pending" })).toBe(true);
     expect(isSyncIncomplete({ ...CONNECTED, syncStatus: "in_progress" })).toBe(true);
-    expect(isSyncIncomplete({ ...CONNECTED, monitoringMode: "awaiting_verified_sync" })).toBe(true);
+    expect(isSyncIncomplete({ ...CONNECTED, monitoringMode: "awaiting_verified_sync" })).toBe(false);
+    expect(isSyncIncomplete({ ...CONNECTED, syncStatus: "failed", monitoringMode: "awaiting_verified_sync" })).toBe(false);
     expect(isSyncIncomplete({ ...CONNECTED, syncStatus: "complete", monitoringMode: "sync_only_limited" })).toBe(false);
     expect(isSyncIncomplete(CONNECTED)).toBe(false);
   });
 
-  it("flags missing or failed required webhook topics", () => {
+  it("keeps not-started and unknown sync evidence distinct from active progress", () => {
+    expect(isSyncNotStarted({ ...CONNECTED, syncStatus: "not_started" })).toBe(true);
+    expect(isSyncNotStarted({ ...CONNECTED, syncStatus: "in_progress" })).toBe(false);
+    expect(isSyncStatusUnknown({ ...CONNECTED, syncStatus: "unknown" })).toBe(true);
+    expect(isSyncStatusUnknown({ ...CONNECTED, syncStatus: "not_started" })).toBe(false);
+  });
+
+  it("distinguishes a failed sync from an active sync", () => {
+    expect(hasSyncFailure({ ...CONNECTED, syncStatus: "failed" })).toBe(true);
+    expect(hasSyncFailure({ ...CONNECTED, syncStatus: "partial" })).toBe(true);
+    expect(hasSyncFailure({ ...CONNECTED, syncStatus: "in_progress" })).toBe(false);
+    expect(hasSyncFailure({ ...CONNECTED, connected: false, syncStatus: "failed" })).toBe(false);
+  });
+
+  it("flags missing required webhook topics without misclassifying generic setup failure", () => {
     expect(hasWebhookGap({ ...CONNECTED, webhooksRegistered: 7 })).toBe(true);
     expect(hasWebhookGap({ ...CONNECTED, setupStatus: "webhooks_pending" })).toBe(true);
-    expect(hasWebhookGap({ ...CONNECTED, setupStatus: "failed" })).toBe(true);
+    expect(hasWebhookGap({ ...CONNECTED, setupStatus: "failed" })).toBe(false);
+    expect(hasWebhookGap({ ...CONNECTED, setupStatus: "failed", webhooksRegistered: 8 })).toBe(true);
     expect(hasWebhookGap(CONNECTED)).toBe(false);
   });
 

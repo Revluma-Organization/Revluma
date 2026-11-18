@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from src.agents import model_gateway
+from src.intelligence.operational_metrics import reset_for_tests, snapshot
 
 
 def test_gemini_routes_text_to_configured_model(monkeypatch):
@@ -32,6 +33,62 @@ def test_gemini_routes_text_to_configured_model(monkeypatch):
     assert model_gateway.generate("What is verified?", role="deep") == "Verified evidence is unavailable."
     assert "gemini" in calls[0][0]
     assert calls[0][1]["headers"]["x-goog-api-key"] == "test-only"
+
+
+def test_gemini_provider_usage_is_captured_as_token_totals(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
+    reset_for_tests()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def post(self, url, **kwargs):
+            return SimpleNamespace(status_code=200, json=lambda: {
+                "usageMetadata": {"promptTokenCount": 123, "candidatesTokenCount": 45},
+                "candidates": [{"content": {"parts": [{"text": "Answer."}]}}],
+            })
+
+    monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
+    assert model_gateway.generate("safe synthetic prompt") == "Answer."
+    counters = snapshot()["counters"]
+    assert any(counter["name"] == "model_input_tokens_total"
+               and counter["labels"].get("provider") == "gemini"
+               and counter["value"] == 123 for counter in counters)
+    assert any(counter["name"] == "model_output_tokens_total"
+               and counter["labels"].get("provider") == "gemini"
+               and counter["value"] == 45 for counter in counters)
+    assert "safe synthetic prompt" not in str(snapshot())
+
+
+def test_anthropic_provider_usage_is_captured_as_token_totals(monkeypatch):
+    import sys
+
+    monkeypatch.setenv("AI_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-only")
+    reset_for_tests()
+
+    class FakeAnthropic:
+        def __init__(self, **kwargs):
+            self.messages = SimpleNamespace(create=lambda **request: SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="Answer.")],
+                stop_reason="end_turn",
+                usage=SimpleNamespace(input_tokens=77, output_tokens=19),
+            ))
+
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=FakeAnthropic))
+    assert model_gateway.generate("safe synthetic prompt") == "Answer."
+    counters = snapshot()["counters"]
+    assert any(counter["name"] == "model_input_tokens_total"
+               and counter["labels"].get("provider") == "anthropic"
+               and counter["value"] == 77 for counter in counters)
+    assert any(counter["name"] == "model_output_tokens_total"
+               and counter["labels"].get("provider") == "anthropic"
+               and counter["value"] == 19 for counter in counters)
 
 
 def test_gemini_quota_failure_does_not_fallback_to_anthropic(monkeypatch):

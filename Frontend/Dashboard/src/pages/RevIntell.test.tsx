@@ -1317,6 +1317,55 @@ describe('landing continuity (REV-RESUME-001)', () => {
     await waitFor(() => expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/A'));
   });
 
+  it('does not overwrite a typed draft when the initial history arrives late', async () => {
+    const pending = deferred<Reply>(); replies.set('/rev/conversations', pending.promise);
+    renderPage();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
+    fireEvent.change(screen.getByPlaceholderText(/Ask (me|Rev)/), { target: { value: 'My unsent question' } });
+    await act(async () => pending.resolve(reply(history)));
+    expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/);
+    expect(screen.getByPlaceholderText(/Ask (me|Rev)/)).toHaveValue('My unsent question');
+    expect(api.get).not.toHaveBeenCalledWith('/rev/conversation/A');
+  });
+
+  it('does not discard a selected attachment when the initial history arrives late', async () => {
+    const pending = deferred<Reply>(); replies.set('/rev/conversations', pending.promise);
+    vi.mocked(api.post).mockResolvedValue(turnReply(answer('ImageCreated', 'Image draft answer')));
+    const view = renderPage();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
+    fireEvent.change(view.container.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['fixture'], 'fixture.png', { type: 'image/png' })] },
+    });
+    await screen.findByAltText('attachment');
+    await act(async () => pending.resolve(reply(history)));
+    expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/);
+    expect(screen.getByAltText('attachment')).toBeInTheDocument();
+    send('Keep this image');
+    await screen.findByText('Image draft answer');
+    expect(api.post).toHaveBeenCalledWith('/rev/chat', expect.objectContaining({
+      message: 'Keep this image', image_media_type: 'image/png', image_base64: expect.any(String),
+    }));
+    expect(streamRevAnswer).not.toHaveBeenCalled();
+  });
+
+  it('does not cancel an unacknowledged submission when the initial history arrives late', async () => {
+    const pending = deferred<Reply>(); replies.set('/rev/conversations', pending.promise);
+    renderPage();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
+    send('My fresh question');
+    expect(streams).toHaveLength(1);
+    await act(async () => pending.resolve(reply(history)));
+    expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/);
+    expect(streams[0].request.signal?.aborted).toBe(false);
+    await act(async () => {
+      streams[0].request.handlers.onFinal?.(answer('Fresh', 'Answer to the fresh question'));
+      streams[0].result.resolve({ conversationId: 'Fresh', completed: true });
+    });
+    expect(screen.getByText('Answer to the fresh question')).toBeInTheDocument();
+    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/Fresh');
+    expect(api.get).not.toHaveBeenCalledWith('/rev/conversation/A');
+  });
+
   it('keeps the browser Back button pointing at where the merchant came from', async () => {
     renderPage('/dashboard/rev-intell', ['/', '/dashboard/rev-intell']);
     await screen.findByText('Message from A');
@@ -1440,6 +1489,47 @@ describe('Task 222 — question input lifecycle and submission control', () => {
     renderPage();
 
     expect(await screen.findByText('Incomplete webhook coverage')).toBeInTheDocument();
+    expect(screen.queryByText('Initial sync in progress')).not.toBeInTheDocument();
+  });
+
+  it('shows a failed sync as needs attention instead of claiming initial sync is in progress', async () => {
+    noHistoryToResume();
+    replies.set('/stores', Promise.resolve(reply({ stores: [{
+      platform: 'shopify',
+      shop_domain: 'revluma-test-store-v1.myshopify.com',
+      connection_status: 'connected',
+      sync_status: 'failed',
+      monitoring_mode: 'awaiting_verified_sync',
+      setup_status: 'failed',
+      webhooks_registered: 12,
+      webhooks_required: 12,
+    }] })));
+
+    renderPage();
+
+    expect(await screen.findByText('Store sync needs attention')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review Integrations' })).toHaveAttribute('href', '/dashboard/integrations');
+    expect(screen.queryByText('Initial sync in progress')).not.toBeInTheDocument();
+    expect(screen.queryByText('Incomplete webhook coverage')).not.toBeInTheDocument();
+  });
+
+  it('shows a queued-not-started state without implying a live sync is running', async () => {
+    noHistoryToResume();
+    replies.set('/stores', Promise.resolve(reply({ stores: [{
+      platform: 'shopify',
+      shop_domain: 'revluma-test-store-v1.myshopify.com',
+      connection_status: 'connected',
+      sync_status: 'not_started',
+      monitoring_mode: 'awaiting_verified_sync',
+      setup_status: 'not_started',
+      webhooks_registered: 12,
+      webhooks_required: 12,
+    }] })));
+
+    renderPage();
+
+    expect(await screen.findByText('Initial sync hasn’t started')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open Integrations' })).toHaveAttribute('href', '/dashboard/integrations');
     expect(screen.queryByText('Initial sync in progress')).not.toBeInTheDocument();
   });
 

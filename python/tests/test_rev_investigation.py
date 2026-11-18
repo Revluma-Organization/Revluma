@@ -421,6 +421,50 @@ def test_streaming_emits_plan_steps_evidence_then_final():
     assert names.index("plan") < names.index("evidence") < len(names) - 1
 
 
+def test_model_selected_evidence_tools_feed_the_existing_stream_result(monkeypatch):
+    from src.agents import objective_agent
+
+    def one_tool(question, candidate_tools, execute, **kwargs):
+        selected = "revenue_observations"
+        assert selected in candidate_tools
+        actual = execute(selected, {"compare": True})
+        return {
+            "status": "completed", "results": [actual],
+            "trace": {"mode": "model_tool_loop", "calls": 1,
+                      "selected_tools": [selected], "provider": "gemini",
+                      "model": "test-model", "token_total": 42},
+        }
+
+    monkeypatch.setattr(objective_agent, "run_objective_tool_loop", one_tool)
+    result = run_investigation(
+        ORG, USER, "Why did my revenue fall this week?",
+        db=workspace_db(), now=NOW, persist=False)
+
+    agent = result["orchestration"]["objective_agent"]
+    assert agent["model_directed"] is True
+    assert agent["selected_tools"] == ["revenue_observations"]
+    assert agent["provider"] == "gemini"
+    assert any(item["metric"] == "recorded_order_value"
+               for item in result["evidence"]["items"])
+    steps = {step["tool"]: step for step in result["investigation"]["steps"]}
+    assert steps["revenue_observations"]["status"] == "completed"
+    assert steps["order_observations"]["status"] == "skipped"
+
+
+def test_stream_marks_deterministic_plan_as_fallback_when_no_model_credentials(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "anthropic")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("AI_FALLBACK_PROVIDERS", "")
+    result = run_investigation(
+        ORG, USER, "Why did my revenue fall this week?",
+        db=workspace_db(), now=NOW, persist=False)
+    agent = result["orchestration"]["objective_agent"]
+    assert agent["model_directed"] is False
+    assert agent["status"] == "provider_unavailable"
+    assert agent["fallback_mode"] == "deterministic_legacy_plan"
+
+
 def test_checkout_investigation_does_not_invent_abandonment_causes():
     db = workspace_db(event_rows=[])
     result = run_investigation(ORG, USER, "Why are customers abandoning checkout?",

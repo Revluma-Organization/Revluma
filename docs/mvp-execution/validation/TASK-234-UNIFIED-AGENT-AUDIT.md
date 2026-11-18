@@ -1,0 +1,79 @@
+# Rev Intelligence unified agent runtime — source audit and execution results
+
+**Audit date:** 2026-11-13 (UTC)
+**Branch:** `arena/542c36f7-revluma`
+**Base:** `b1e2cc4dd882113da105dc4ce0a586c5ea733ded`
+**Status:** source audit and bounded-runtime changes in progress; production acceptance **NOT VERIFIED**.
+
+This report records source-backed behavior and the small implementation changes made in this continuation. It does not certify a live provider, connected merchant, deployment, database/RLS policy, or production request. The ten pre-existing Task 234 modifications in the checkout were preserved.
+
+## Executive findings
+
+1. **Confirmed active-path web-research bug fixed in source.** The investigation router maps `web_research` to the shared `knowledge` intent. The conversational result previously sent every knowledge intent through `_dynamic_knowledge()`, which calls the general-knowledge composer without Google Search. It now checks `Understanding.requires_web` (or the explicit `web_research` intent) and dispatches only that turn to `responder.compose_web_research()`. The prompt includes the current question only; history, merchant memories, Shopify evidence, and credentials are not forwarded. Existing response type `chat` is retained for Node and UI contract compatibility. If the Gemini gateway explicitly says it obtained no verifiable grounding sources, the responder now suppresses the unverified answer and returns a clear no-source response.
+2. **Unrelated remembered findings no longer hijack a new question.** A persisted selected finding still scopes contextual follow-ups (including “was this fixed?” and “which products are involved?”), but a fresh unrelated store or conversational question is not silently converted to a finding investigation. Broad-prefix turns first classified from inherited intent are rerouted against the current message without prior conversation state or memories. Current web-research requests also bypass inherited finding scope. An explicit current finding selection remains authoritative. Recommendation-history, unrelated-product, and route-level regression tests pass with this narrower rule.
+3. **The question plan now has an explicit 12-tool ceiling.** The canonical Python plan declares `max_tool_count: 12`, rejects over-budget or duplicate tool names, and Node independently enforces the same boundary. The current fixed catalog and closed domain planner remain the only way to choose tools; no SQL or tool name is model-authored.
+4. **The main merchant SSE route is reachable in source:** Dashboard `streamRevAnswer()` → authenticated/rate-limited Node `/api/v1/rev/stream` → Node `mlService.streamInvestigation()` → internal-authenticated Python `/rev/stream` → `stream_investigation()` → `run_investigation()`. The Python API owns a worker-thread session and streams plan, step, evidence, and final events. This is a source trace, not a browser or production request.
+5. **RAG readiness is limited to merchant memories.** Current vector retrieval embeds bounded merchant-memory fields with a deterministic 384-dimensional hashing vectorizer, queries pgvector with organization/user/active/expiry/model filters, and has lexical fallback. This is not general document or Shopify-product RAG: no source-document ingestion/chunk/citation corpus was established by this audit. Shopify evidence remains retrieved through the typed evidence tools.
+6. **Deployment is not production acceptance.** Vercel reports the frontend production deployment READY/PROMOTED at `1f7ae263dc9c7e8cc66931a300647ce257b1ecd9` on `main`, not this branch. Supabase health reports auth, DB, pooler, REST, storage and PgBouncer healthy, but Realtime unhealthy. Neither result identifies deployed Node/Python revisions, verifies the agent fix, or proves DB/RLS readiness. No Render revision, live provider/model configuration, authenticated merchant query, or live citation result was available.
+
+## Source trace and boundaries
+
+### Browser → Node → Python
+
+- Dashboard `Frontend/Dashboard/src/lib/revStream.ts:357-375` posts to the configured API base `/rev/stream`, includes cookies/auth headers and request/correlation IDs, sends conversation/finding IDs when present, and passes an abort signal. `:447-460` accepts only a final envelope with `success === true`, a conversation ID, text, and response type; malformed finals do not become answers.
+- `Backend/src/route/revRoute.js` mounts chat and stream behind `authenticateToken` and the chat rate limiter. `Backend/src/controller/revController.js:1348+` validates the request, resolves the authenticated organization and finding ownership, accepts submissions idempotently, restores conversation context, and calls the stream gateway. It persists a bounded response and closes the SSE stream. Duplicate submissions replay the accepted result or report that the turn is still in progress.
+- `Backend/src/services/mlService.js:1789+` sends the internal request to Python `/rev/stream` with the internal key, correlation/execution IDs, bounded timeout and cancellation signal. It parses SSE, validates evidence events and the final investigation envelope, then returns the final payload to Node for persistence.
+- `python/src/serving/api.py:1413-1438` constrains organization/user/message/context sizes. `:1547+` authenticates the internal caller, creates the DB session inside the stream worker via `session_factory`, and frames SSE events. The JSON fallback is `/rev/investigate`; the older `/orchestrate` endpoint remains used for the image compatibility path and was not removed.
+- Node constructs merchant and conversation context from its authenticated organization and owns transcript persistence. Python validates supplied merchant evidence against the organization, scopes tool queries by the authenticated organization, and independently validates evidence, investigation outcomes, orchestration, claims and response guardrails. No browser-controlled organization/store ID is treated as authority.
+
+### Tools, evidence, orchestration
+
+- `python/src/agents/tools.py` exposes a fixed catalog of typed read-only capabilities (store/integration health, coverage, orders/revenue, checkout/carts, customers, products/inventory, traffic, refunds, findings). `run_tool()` rejects unknown tools, missing organization scope, extra parameters, invalid enum/boolean/reference values and missing periods. Handlers use fixed parameterized SQL and return unavailable/unsupported states rather than false zeroes. No arbitrary SQL execution or merchant mutation tool was found in this active registry.
+- `python/src/intelligence/question_orchestration.py` resolves a closed five-domain set, deduplicates tool lists and specialist selection, plans shared evidence and bounded specialist work, records deterministic request fingerprints/task IDs, and enforces zero recursion, at most three specialists, at most one transient retry, a 5-second per-specialist limit and a 12-second orchestration deadline. Specialist analysis is parallel after evidence retrieval; SQL tools share the request session sequentially.
+- The investigation runtime has a bounded overall deadline (default 100 seconds, clamped at 110 seconds), statement-timeout settings, cancellation checks between tools, and a single transient retry for qualifying tool failures. Tool planning is finite and now independently capped at 12 tools. These are configured/code limits, not measured latency or proof every provider/network operation terminated at the exact deadline.
+- Node owns duplicate-safe conversation submission and the active persisted turn. Python orchestration uses a content/tenant/period fingerprint and stable task IDs. Persistence is explicitly bounded (evidence/facts/claims and other response sections have caps in `revController.js`).
+
+### Providers, live research, citations
+
+- `python/src/agents/model_gateway.py` is the shared model boundary with `fast` and `deep` roles. Source defaults are Anthropic (Haiku fast, Sonnet deep) or Gemini (Flash-Lite fast, Flash deep); environment settings can override them. **These defaults do not establish production configuration.**
+- Gemini is the only provider configured for Google Search grounding in this gateway. Web requests are incompatible with Anthropic unless an explicitly configured task-compatible fallback is available. At most two provider attempts share a monotonic deadline; cross-provider processing requires explicit `AI_FALLBACK_PROVIDERS` configuration. No credentials, environment values, or provider requests were read or sent during this audit.
+- Grounding URLs from Gemini are appended as a visible `Sources:` list in the answer text (HTTPS only, capped at five). The API does not currently return a separate typed `research.sources` object; downstream renders/persists the text. With no grounded URIs the new responder fails closed to a no-source message. The route-level test added here fakes the model boundary and can only prove routing/flag/context behavior, not real search or factual citation quality.
+
+### Validation, failures and observability
+
+- Evidence uses versioned schemas, explicit tenant/store scope, source/period/coverage/freshness and deterministic calculations. Claim validation keeps facts, calculations, hypotheses and unknowns distinct. Python response guardrails and Node `validateInvestigationResponse()` both run on active result envelopes; Node additionally verifies that evidence belongs to the authenticated organization and authorized stores.
+- Python provider errors are typed and normalized; retries are bounded and limited to transient failures. Node/Python/browser timeout ceilings in source are respectively 105 seconds for overall investigation, 100 seconds by default for the Python deadline (capped at 110 seconds), and 130 seconds for browser stream; Python intent classification is 12 seconds, model response composition 25 seconds, and a typical web-grounded composer call is capped at 25 seconds. Node context retrieval is 5 seconds. Values are budgets, not observed p50/p95 latency.
+- Correlation and execution IDs propagate through browser headers, Node transport and Python trace context. Logs avoid prompts, provider keys and raw provider exceptions. Python and Node operational metrics use bounded label dimensions/series; they are process-local instrumentation, not durable multi-instance aggregation. Node persists bounded investigation outcome, claims, orchestration and tool/step data with the transcript.
+
+### RAG and storage readiness
+
+- `python/src/memory/vector_store.py` uses a local `HashingVectorizer` (384 dimensions, word unigrams/bigrams) and pgvector, avoids a hosted embedding dependency, and falls back to the lexical path when vector retrieval fails. Retrieval SQL filters by `organization_id`, active/expiry state, `user_id`/shared-memory semantics, and embedding model; `memory_key`/`memory_value` are bounded before embedding. This is memory retrieval/continuity, not a document RAG system and not a source for store facts.
+- Migrations create the pgvector extension, memory embeddings/job tables and HNSW index; the repository includes API-role lockdown and RLS policies for core merchant tables. This source inspection does not verify that the active Supabase project has the expected migration state, extension/index, policies, grants, or production data coverage. No SQL was executed and no writes were made.
+
+## Changes made in this continuation
+
+- `python/src/agents/investigation.py`: route web-required knowledge to the grounded research composer; do not pass history/memories; fail closed when the gateway reports no grounding sources; ignore prior conversation-selected finding scope for fresh unrelated turns while preserving contextual finding follow-ups. When the ordinary router inherited an intent from a broad prefix, reroute the current question without prior conversation state or memories. New web requests always bypass inherited finding scope.
+- `python/src/agents/responder.py`: suppress model answer text when Gemini grounding reports no verifiable sources.
+- `python/src/intelligence/question_orchestration.py` and `Backend/src/services/revQuestionOrchestration.js`: declare/validate the shared 12-tool budget and uniqueness at both runtime boundaries.
+- Regression coverage: `python/tests/test_rev_web_research_route.py` exercises Python’s actual `/rev/stream` HTTP handler with synthetic DB/model boundaries, checks the final envelope, verifies `web_search=True`, visible source text, no store evidence/tool use, no selected-finding inheritance, and no private history in the provider prompt. `python/tests/test_rev_failure_routing.py` adds a no-grounding-source failure case. Python and Node orchestration validators get over-limit/duplicate-tool tests.
+
+## Verification executed
+
+| Check | Result | What it establishes |
+|---|---|---|
+| `node --test src/services/__tests__/revQuestionOrchestration.test.js` (from `Backend/`) | **6 passed** | Node-side orchestration contract, including 12-tool maximum and duplicate rejection. |
+| Focused Python runtime/provider/evidence/orchestration run (17 modules, including the new HTTP-route regressions and Task 234 48-scenario matrix) | **562 passed** | Synthetic DB/provider boundaries; no production acceptance. Fifteen upstream MLflow/Pydantic deprecation warnings. |
+| `python -m compileall -q ...` on modified Python runtime/tests | **Passed** | Python syntax compilation only. |
+| `git diff --check` | **Passed** after the report update. | Whitespace/conflict-marker hygiene only. |
+| Full 12 assignment-level acceptance checks / full Python suite / CI | **Not run** | The repository's 48-scenario matrix was included in the 562-pass focused run; no separate 12-case inventory was found in the Task 234 docs available in this checkout. The assignment-level 12-test gate is not marked closed. |
+| Live Gemini/Anthropic, Shopify merchant path, production DB/RLS, Node/Python health/revisions | **Not run / unavailable** | No live-provider, merchant or production acceptance claim. |
+
+## Deployment and production state
+
+- Vercel production deployment `dpl_3wENwh82sdeNJaeYRmpQYse3u6Qn` is READY/PROMOTED for `main`, frontend SHA `1f7ae263dc9c7e8cc66931a300647ce257b1ecd9`. It is not this branch and Vercel is not the Node/Python runtime.
+- Supabase project health read: `auth`, `db`, `db_postgres_user`, `pooler`, `rest`, `storage`, and `pg_bouncer` were `ACTIVE_HEALTHY`; `realtime` was `UNHEALTHY` with “Service health check failed”. This is service-health metadata, not SQL migration/RLS/data-readiness verification.
+- Current deployed Node and Python revision SHAs, provider/model environment values, Render health/build SHA, backend logs, authenticated merchant results, live web-search sources and measured latency distributions remain **unknown**. The Python `/health` implementation can expose a build SHA, but was not called. Do not infer these from the Vercel SHA or repository defaults.
+
+## Acceptance disposition and next gate
+
+The confirmed web-routing defect, contextual finding-continuity behavior, and bounded tool-count contract now have source changes and targeted regression coverage. The focused run of 17 Python modules passed 562 tests, including the real `/rev/stream` handler with synthetic boundaries and the repository’s 48-scenario matrix; Node’s orchestration suite passed all six tests. This is not a full repository run or assignment-level acceptance sign-off. Before declaring completion or production readiness: run the full relevant suite and CI; obtain authorized live provider and tenant-safe merchant verification; check actual Node/Python deployed revisions and production configuration without exposing secrets; verify release/deployment state; and confirm required Supabase migration/RLS/data readiness. No merge, deployment, production write, or live merchant query was performed.

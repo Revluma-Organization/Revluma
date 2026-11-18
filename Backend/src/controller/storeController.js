@@ -31,12 +31,18 @@ function responseStore(store, registrations, deliveries, syncRows, events) {
   const reconnecting = diagnostics.connection.state === 'reconnecting';
   const registered = diagnostics.webhooks.registration.verified;
   const required = diagnostics.webhooks.registration.required;
-  const syncStatus = diagnostics.synchronization.status === 'running' || diagnostics.synchronization.status === 'queued'
+  const recordedSyncStatus = diagnostics.synchronization.status;
+  const syncStatus = ['running', 'queued', 'starting'].includes(recordedSyncStatus)
     ? 'in_progress'
-    : ['completed', 'partial'].includes(diagnostics.synchronization.status)
-      ? diagnostics.synchronization.status === 'partial' ? 'failed' : 'complete'
-      : diagnostics.synchronization.status === 'failed' ? 'failed'
-        : store.last_synced_at ? 'complete' : 'pending';
+    : ['completed', 'initial_completed'].includes(recordedSyncStatus)
+      ? 'complete'
+      : ['partial', 'initial_completed_with_limitations'].includes(recordedSyncStatus)
+        ? 'partial'
+        : ['failed', 'stalled'].includes(recordedSyncStatus)
+          ? 'failed'
+          : ['not_started', 'idle'].includes(recordedSyncStatus)
+            ? store.last_synced_at ? 'unknown' : 'not_started'
+            : 'unknown';
   const webhooksRunning = diagnostics.webhooks.topics.some(item => item.registration_status === 'registration_pending');
   const webhooksFailed = diagnostics.webhooks.topics.some(item => item.registration_status === 'registration_failed');
   const safeStore = { ...store };
@@ -65,7 +71,7 @@ function responseStore(store, registrations, deliveries, syncRows, events) {
     })) : null,
     setup_status: !connected && !reconnecting ? 'disconnected'
       : webhooksRunning || syncStatus === 'in_progress' || reconnecting ? 'in_progress'
-        : webhooksFailed || syncStatus === 'failed' || diagnostics.connection.state === 'needs_attention' ? 'failed'
+        : webhooksFailed || ['failed', 'partial'].includes(syncStatus) || diagnostics.connection.state === 'needs_attention' ? 'failed'
           : !diagnostics.webhooks.registration.complete ? 'webhooks_pending' : syncStatus,
   };
 }

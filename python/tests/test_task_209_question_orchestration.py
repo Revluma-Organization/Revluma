@@ -331,6 +331,16 @@ def test_44_repeated_plan_is_idempotent_and_deduplicated():
     assert len(a["tools"]) == len(set(a["tools"]))
 
 
+def test_52_tool_plan_has_an_explicit_unique_count_budget():
+    p = plan(domains=["revenue", "checkout", "integration", "operational", "retention"])
+    assert p["max_tool_count"] == 12
+    assert len(p["tools"]) <= p["max_tool_count"]
+    assert len(p["tools"]) == len(set(p["tools"]))
+    p["tools"] = [f"tool_{index}" for index in range(13)]
+    assert "orchestration_tool_budget" in validate_orchestration(
+        p, organization_id=ORG, evidence_ids=set())
+
+
 def test_45_recursive_invocation_is_rejected():
     p = plan(); p["recursion_depth"] = 1
     assert "orchestration_recursion" in validate_orchestration(p, organization_id=ORG, evidence_ids=set())

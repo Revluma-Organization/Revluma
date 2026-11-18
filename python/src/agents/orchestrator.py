@@ -41,7 +41,6 @@ from .understanding import (
 from . import responder
 from .model_gateway import ModelProviderError
 from ..intelligence.business_state import load_current_business_state, build_business_state, load_business_change_history
-from ..memory.vector_store import retrieve_memory_scores
 from ..intelligence.trace_context import new_trace, trace_context
 from ..intelligence.operational_metrics import record_counter, observe_latency
 from ..intelligence.reliability import record_failure, safe_failure
@@ -851,21 +850,10 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
 
     history      = _load_history(conv_id, db, MAX_HISTORY_TURNS)
     history_text = _format_history(history)
-    memory_query = f"{message} {json.dumps(safe_context_payload, default=str)}"
-    all_memories = _load_memories(organization_id, user_id, db)
-    vector_scores = retrieve_memory_scores(
-        db,
-        organization_id,
-        user_id,
-        memory_query,
-        top_k=8,
-    )
-    memories = _select_relevant_memories(
-        all_memories,
-        message,
-        safe_context_payload,
-        vector_scores=vector_scores,
-    )
+    # Private memories are intentionally not loaded until the request has been
+    # classified. Public knowledge and web research must not query the tenant
+    # memory collection as a side effect of routing.
+    memories: list[dict] = []
 
     # ── 2. UNDERSTAND (before anything else) ──────────────────────────────────
     u = understand(
@@ -888,6 +876,18 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         u.requires_action = False
         u.response_mode = MODE_ANALYSIS
         u.domains = ["revenue"]
+
+    from ..intelligence.knowledge_retrieval import (
+        resolve_knowledge_route, retrieve_tenant_memories,
+    )
+    memory_route = resolve_knowledge_route(
+        message, u.intent, requires_web=bool(u.requires_web), requires_store_data=False)
+    if memory_route.private_tenant_context:
+        memories, _memory_provenance = retrieve_tenant_memories(
+            db, organization_id, user_id, message, route=memory_route)
+    else:
+        memories = []
+
     orchestrator_mode = _classify_orchestrator_mode(u, trigger_type, message)
     logger.debug(
         "understanding_complete",
@@ -1003,7 +1003,10 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         if u.response_mode in (MODE_EXPLANATION, MODE_DIRECT_ANSWER):
             has_store = _has_store(organization_id, db)
             return finish("knowledge",
-                          responder.compose_knowledge(message, u, history_text, memories, has_store))
+                          responder.compose_knowledge(
+                              message, u,
+                              history_text if memory_route.private_tenant_context else "",
+                              memories, has_store))
 
         # conversational, feedback, identity, greeting, casual
         has_store = _has_store(organization_id, db)

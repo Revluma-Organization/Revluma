@@ -268,6 +268,24 @@ test('GET /stores response carries the canonical integration_state per store (ad
 // The store-list contract is "return the stores": if evaluating the canonical
 // state fails, the additive block degrades to null (the UI renders that as
 // `unknown`, fail-closed — never connected) and the list still returns 200.
+test('GET /stores preserves not-started and failed sync states instead of inventing progress', async () => {
+  resetState({ stores: [
+    freshStoreRow(STORE_A, ORG_A, 'not-started.myshopify.com', {
+      initial_sync_status: 'not_started', last_synced_at: null,
+    }),
+    freshStoreRow(STORE_B, ORG_A, 'failed.myshopify.com', {
+      initial_sync_status: 'failed', last_synced_at: null, recovery_status: 'required',
+    }),
+  ] });
+  const { res, nextError } = await call(storeController.getStores, makeReq({ id: USER_A, tenantId: ORG_A }));
+  assert.equal(nextError.error, undefined);
+  assert.equal(res.statusCode, 200);
+  const byDomain = Object.fromEntries(res.body.data.stores.map(store => [store.shop_domain, store]));
+  assert.equal(byDomain['not-started.myshopify.com'].sync_status, 'not_started');
+  assert.equal(byDomain['failed.myshopify.com'].sync_status, 'failed');
+  assert.equal(byDomain['failed.myshopify.com'].recovery_status, 'required');
+});
+
 test('GET /stores degrades to integration_state null when canonical evaluation fails', async () => {
   resetState();
   state.failDomainStates = true;

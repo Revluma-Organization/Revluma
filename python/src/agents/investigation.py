@@ -64,7 +64,7 @@ from ..intelligence.finding_prioritization import (
     prioritize_findings,
 )
 from ..intelligence.query import release_read_transaction, safe_query
-from ..intelligence.operational_metrics import record_counter
+from ..intelligence.operational_metrics import record_counter, record_stage
 from ..intelligence.claim_guardrails import (
     direct_action_or_recovery_answer,
     initialise_action_states,
@@ -542,11 +542,20 @@ def _dynamic_knowledge(message: str, user_id: str, routed: dict) -> str:
         knowledge_args = (
             message, understanding, routed.get("history_text") or "",
             routed.get("memories") or [], bool(routed.get("has_store")))
+        route = routed.get("knowledge_route") or {}
+        retrieval_status = {
+            "configured_sources": route.get("configured_sources", []),
+            "unavailable_sources": route.get("unavailable_sources", []),
+            "tenant_memory": (route.get("tenant_memory_retrieval") or {}).get("status", "not_requested"),
+        }
+        extra = {}
+        if retrieval_status.get("unavailable_sources"):
+            extra["retrieval_status"] = retrieval_status
         if routed.get("correlation_id"):
             text = responder.compose_knowledge(
-                *knowledge_args, correlation_id=routed["correlation_id"])
+                *knowledge_args, correlation_id=routed["correlation_id"], **extra)
         else:
-            text = responder.compose_knowledge(*knowledge_args)
+            text = responder.compose_knowledge(*knowledge_args, **extra)
     except ModelProviderError:
         raise
     except Exception:
@@ -610,6 +619,18 @@ FOLLOWUP_PATTERN = re.compile(
     r"|where (?:is|are) (?:you )?(?:getting|pulling)"
     r"|based on|reach(?:ed)? that conclusion|your conclusion"
     r"|break that down|go deeper|tell me more|explain that)\b")
+FINDING_CONTEXT_REFERENCE_PATTERN = re.compile(
+    r"\b(?:this|that|it|these|those|same|the finding|the issue|the problem|the drop|the"
+    r" increase|the change|the decline|the recommendation|the number|the figure|"
+    r"your conclusion|involved|affected)\b"
+    r"|^(?:what should i do first|what(?:'s| is) next|what next|next step)\b"
+    r"|^what if\b|\binstead\b"
+    r"|^(?:what about|how about) (?:the )?(?:last|this|past|previous|same|mobile|desktop)\b"
+    r"|\b(?:mobile|desktop) (?:customers|users|sales|revenue)\b"
+    r"|^(?:what|which) (?:data|evidence|numbers|sources?|figures?)\b"
+    r"|^where (?:is|are) (?:you )?(?:getting|pulling)\b",
+    re.I,
+)
 # Advice-seeking questions name a domain but ask for expertise, not a data
 # pull ("and what's a good re-engagement cadence?"). They are their own
 # question, never a follow-up refinement of the previous investigation, so
@@ -1426,11 +1447,20 @@ def route_message(message: str, context: dict | None, store_context: dict | None
                     "fast_path")
 
     # L2: model understanding for everything the safeguards do not settle.
+    # Public knowledge is not silently augmented with a prior merchant transcript.
+    # Keep history only for explicit tenant-context requests or a genuine
+    # same-topic follow-up; a new standalone question is understood from itself.
+    from ..intelligence.knowledge_retrieval import explicitly_requests_tenant_context
     from .understanding import understand
+    history_for_understanding = (
+        _model_history(context)
+        if explicitly_requests_tenant_context(text) or (is_followup and not topic_change)
+        else []
+    )
     if correlation_id:
-        understanding = understand(text, _model_history(context), correlation_id=correlation_id)
+        understanding = understand(text, history_for_understanding, correlation_id=correlation_id)
     else:
-        understanding = understand(text, _model_history(context))
+        understanding = understand(text, history_for_understanding)
     routing["understanding"] = understanding.to_dict()
     routing["understanding_obj"] = understanding
 
@@ -3966,9 +3996,12 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
     result = _base_result(message=message, intent=intent, window=window,
                           investigation_id=investigation_id, store_context=store_context,
                           user_id=user_id)
+    understanding = (routed or {}).get("understanding_obj")
+    requires_web = (bool(getattr(understanding, "requires_web", False))
+                    or getattr(understanding, "intent", None) == "web_research")
     result["response_type"] = "chat" if intent in (INTENT_GREETING, INTENT_IDENTITY,
-                                                   INTENT_GENERAL, INTENT_SOCIAL,
-                                                   INTENT_KNOWLEDGE, INTENT_CLARIFY) else "capability"
+                                                     INTENT_GENERAL, INTENT_SOCIAL,
+                                                     INTENT_KNOWLEDGE, INTENT_CLARIFY) else "capability"
     result["investigation"]["status"] = "complete"
     # Conversational turns run no evidence engine, so they carry no follow-up
     # chips (spec §7: never a generic auto-list after every answer).
@@ -3994,6 +4027,16 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
             "- I won't invent a number or a cause when the evidence isn't there.\n\n"
             "Ask me something like \"Why did my revenue change this week?\" to start."
         )
+    elif intent == INTENT_KNOWLEDGE and requires_web:
+        # Keep public research distinct from general knowledge. Deliberately
+        # pass no conversation or memory context to the public web provider.
+        from .objective_agent import run_adaptive_web_research
+        research = run_adaptive_web_research(
+            question=message, understanding=understanding,
+            correlation_id=(routed or {}).get("correlation_id"),
+            execution_id=investigation_id)
+        result["text"] = research["text"]
+        result["web_research_execution"] = research.get("trace") or {}
     elif intent == INTENT_KNOWLEDGE:
         result["text"] = _dynamic_knowledge(message, user_id, routed)
     elif intent == INTENT_CLARIFY:
@@ -4192,7 +4235,6 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
         record_failure(failure, correlation_id=(context_payload or {}).get("correlation_id"),
                        investigation_id=investigation_id)
         try:
-            from ..intelligence.operational_metrics import record_counter
             if stage in {"evidence_retrieval", "specialist_execution"} or category in {"evidence_retrieval_failed", "specialist_failed"}:
                 record_counter("rev_tool_failures_total", labels={"stage": stage[:48], "category": category})
             if "validation" in stage or category == "schema_validation_failed":
@@ -4241,27 +4283,105 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
         _record("timeout" if supplied_context_error == "context_timeout" else "evidence_retrieval_failed",
                 "context_retrieval", fallback=True)
 
+    context_started = time.monotonic()
     conversation_context = load_conversation_context(
         organization_id, user_id, conversation_id, db, context_payload=context_payload)
     store_context = resolve_store_context(organization_id, db)
+    record_stage("context_retrieval", (time.monotonic() - context_started) * 1000,
+                 labels={"outcome": "success"})
+    routing_started = time.monotonic()
     routed = route_message(
         message, conversation_context, store_context,
         correlation_id=(context_payload or {}).get("correlation_id"),
     )
+    record_stage("routing", (time.monotonic() - routing_started) * 1000,
+                 labels={"outcome": "success"})
+    # Private memories are not loaded by default. Knowledge turns opt into the
+    # tenant adapter only after the source-isolated route explicitly requests it.
     routed["history_text"] = _history_text(conversation_context)
-    routed["memories"] = _memories_for(organization_id, user_id, db)
+    routed["memories"] = []
     routed["has_store"] = (store_context or {}).get("store_count", 0) > 0
     classification = routed["classification"]
     intent = classification["intent"]
     selected_reference = selected_finding_reference(
         message, context_payload, conversation_context,
         topic_change=bool(routed.get("topic_change")))
-    if selected_reference and intent != INTENT_READ_ONLY:
-        # Selection is investigation scope, not a prompt. Natural pronoun
-        # follow-ups stay on this finding until an explicit topic change.
+    routed_understanding = routed.get("understanding_obj")
+    current_web_request = (
+        bool(getattr(routed_understanding, "requires_web", False))
+        or getattr(routed_understanding, "intent", None) == "web_research"
+    )
+    contextual_followup = bool(FINDING_CONTEXT_REFERENCE_PATTERN.search(message.strip()))
+    ignore_prior_finding_scope = (
+        selected_reference is not None
+        and selected_reference.get("selection_source") == "conversation_context"
+        and (current_web_request or not contextual_followup)
+    )
+    if ignore_prior_finding_scope and classification.get("inherited_intent"):
+        # The ordinary conversational router may infer an intent from broad
+        # prefixes such as "why" or "and". When a persisted finding is being
+        # deliberately left behind, reroute without inherited conversation
+        # state so an unrelated new question is classified on its own merits.
+        routed = route_message(
+            message, {}, store_context,
+            correlation_id=(context_payload or {}).get("correlation_id"),
+        )
+        routed["history_text"] = ""
+        routed["memories"] = []
+        routed["has_store"] = (store_context or {}).get("store_count", 0) > 0
+        classification = routed["classification"]
+        intent = classification["intent"]
+        routed_understanding = routed.get("understanding_obj")
+        current_web_request = (
+            bool(getattr(routed_understanding, "requires_web", False))
+            or getattr(routed_understanding, "intent", None) == "web_research"
+        )
+    if ignore_prior_finding_scope:
+        # Do not let the ignored reference leak into downstream understanding,
+        # tool parameters, evidence selection, or response metadata.
+        selected_reference = None
+    if selected_reference and intent != INTENT_READ_ONLY and not ignore_prior_finding_scope:
+        # A server-persisted selection scopes continuing store investigations,
+        # but must not hijack a fresh knowledge, web, social, or identity turn.
+        # Explicit current selections remain authoritative for that request.
         intent = INTENT_FINDINGS
         classification = {**classification, "intent": INTENT_FINDINGS,
                           "followup": selected_reference.get("selection_source") == "conversation_context"}
+
+    knowledge_route = None
+    memory_provenance = None
+    if intent == INTENT_KNOWLEDGE:
+        from ..intelligence.knowledge_retrieval import (
+            resolve_knowledge_route, retrieve_tenant_memories,
+        )
+        knowledge_route = resolve_knowledge_route(
+            message, intent,
+            requires_web=current_web_request,
+            requires_store_data=bool(getattr(routed_understanding, "requires_store_data", False)),
+        )
+        record_counter("rev_knowledge_routes_total", labels={"route": knowledge_route.request_class})
+        if knowledge_route.private_tenant_context:
+            memories, memory_provenance = retrieve_tenant_memories(
+                db, organization_id, user_id, message, route=knowledge_route)
+            routed["memories"] = memories
+            routed["history_text"] = _history_text(conversation_context)
+        routed["knowledge_route"] = knowledge_route.to_dict()
+        if memory_provenance is not None:
+            routed["knowledge_route"]["tenant_memory_retrieval"] = memory_provenance
+        else:
+            routed["knowledge_route"]["tenant_memory_retrieval"] = {
+                "source": "tenant_memory", "status": "not_requested", "result_count": 0}
+        if not knowledge_route.configured_sources:
+            routed["knowledge_route"]["retrieval_status"] = "unavailable"
+        elif knowledge_route.unavailable_sources:
+            routed["knowledge_route"]["retrieval_status"] = "partial"
+        else:
+            routed["knowledge_route"]["retrieval_status"] = "available"
+        if not knowledge_route.private_tenant_context:
+            # Public documentation, general ecommerce answers, and web research
+            # are never augmented with tenant memory or merchant conversation.
+            routed["memories"] = []
+            routed["history_text"] = ""
     logger.info(
         "rev_routing",
         extra={
@@ -4349,6 +4469,10 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
                                       investigation_id=investigation_id,
                                       store_context=store_context, user_id=user_id,
                                       window=window, routed=routed)
+        if knowledge_route is not None:
+            result["knowledge_route"] = knowledge_route.to_dict()
+            if memory_provenance is not None:
+                result["knowledge_route"]["tenant_memory_retrieval"] = memory_provenance
         result["understanding"] = {
             "intent": (routed["understanding"] or {}).get("intent") or intent,
             "gate": routed["gate"],
@@ -4454,6 +4578,8 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
     question_understanding["correlation_id"] = (context_payload or {}).get("correlation_id")
     question_understanding["execution_id"] = investigation_id
     tools = list(orchestration["tools"])
+    for selected_tool in tools:
+        record_counter("rev_tool_selections_total", labels={"tool": selected_tool})
     result = _base_result(message=message, intent=intent, window=window,
                           investigation_id=investigation_id, store_context=store_context,
                           user_id=user_id)
@@ -4555,8 +4681,118 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
 
     skipped: list[str] = []
     tool_failures: dict[str, dict] = {}
+
+    def _objective_tool_params(tool: str, model_arguments: dict | None = None) -> dict[str, Any]:
+        # Query scope and period are server-owned. Model arguments can only add
+        # typed, allowlisted filters when the server has not already resolved
+        # that field from the merchant's explicit request/context.
+        params: dict[str, Any] = {"start": window["start"], "end": window["end"]}
+        if tool in ("revenue_observations", "order_observations", "customer_observations", "cart_observations", "checkout_observations"):
+            params["compare"] = bool(window.get("compared_to"))
+        if tool in ("revenue_observations", "order_observations", "customer_observations", "cart_observations", "checkout_observations"):
+            params["timezone"] = window.get("timezone") or "UTC"
+            compared = window.get("compared_to")
+            if compared:
+                params["comparison_start"] = compared["start"]
+                params["comparison_end"] = compared["end"]
+            if window.get("year_over_year"):
+                params["year_over_year"] = True
+        if tool == "order_observations":
+            params.update(order_query)
+        if tool == "findings":
+            params.update(_finding_tool_params(message))
+            if selected_reference:
+                params["finding_reference"] = selected_reference["finding_id"]
+                params.pop("latest", None)
+        if tool in ("product_observations", "inventory_observations"):
+            params.update(_product_tool_params(message))
+            params["timezone"] = window.get("timezone") or "UTC"
+            compared = window.get("compared_to")
+            if compared and tool == "product_observations":
+                params["compare"] = True
+                params["comparison_start"] = compared["start"]
+                params["comparison_end"] = compared["end"]
+        if tool in ("cart_observations", "checkout_observations"):
+            params.update(checkout_query)
+        if classification.get("segment"):
+            params["segment"] = classification["segment"]
+        for key, value in (model_arguments or {}).items():
+            if key not in params:
+                params[key] = value
+        # A persisted selection is always stronger than any model argument.
+        if tool == "findings" and selected_reference:
+            params["finding_reference"] = selected_reference["finding_id"]
+            params.pop("latest", None)
+        return params
+
+    # LLM-directed selection is constrained to tools already authorized by
+    # intent/domain orchestration. Each actual result is returned to the model
+    # before it selects again; result composition and arithmetic remain in the
+    # deterministic evidence pipeline below.
+    objective_trace = {"mode": "model_tool_loop", "status": "not_started",
+                       "calls": 0, "selected_tools": [], "model_directed": False}
+    objective_active = False
+    try:
+        from .objective_agent import run_objective_tool_loop
+        objective_request = json.dumps({
+            "intent": intent,
+            "current_question": message,
+            "resolved_reporting_period": {
+                "start": window.get("start"), "end": window.get("end"),
+                "timezone": window.get("timezone"),
+            },
+            # This history is already tenant/user/conversation scoped by the
+            # authenticated context loader; it remains untrusted model input.
+            "recent_conversation": str(routed.get("history_text") or "")[:1800],
+        }, ensure_ascii=True, default=str)
+        objective = run_objective_tool_loop(
+            question=objective_request,
+            candidate_tools=[name for name in tools if name != "store_health"],
+            execute=lambda name, arguments: run_tool(
+                name, organization_id, db, _objective_tool_params(name, arguments), now=now),
+            remaining_seconds=lambda: max(0.0, deadline.remaining_ms() / 1000.0),
+            correlation_id=(context_payload or {}).get("correlation_id"),
+            execution_id=investigation_id, cancelled=_cancelled)
+        objective_trace = objective.get("trace") or objective_trace
+        objective_trace["status"] = objective.get("status")
+        for selected_result in objective.get("results") or []:
+            if selected_result.tool in step_by_tool:
+                tool_results.append(selected_result)
+                tool_results_by_name[selected_result.tool] = selected_result
+        objective_active = bool(objective_trace.get("calls"))
+        objective_trace["model_directed"] = objective_active
+        objective_trace["fallback_mode"] = None if objective_active else "deterministic_legacy_plan"
+    except Exception as exc:
+        # Preserve the established evidence path when provider/tool orchestration
+        # is unavailable, but expose the degraded mode rather than claiming the
+        # model selected or adapted any tools.
+        logger.warning("rev_objective_tool_loop_unavailable error_type=%s execution_id=%s",
+                       type(exc).__name__, investigation_id)
+        objective_trace.update({"status": "orchestrator_error", "model_directed": False,
+                                "fallback_mode": "deterministic_legacy_plan"})
+    orchestration["objective_agent"] = objective_trace
+    try:
+        record_counter("rev_objective_tool_loop_total", labels={
+            "status": str(objective_trace.get("status") or "unknown")[:48],
+            "model_directed": str(bool(objective_active)).lower()})
+    except Exception:
+        pass
+
     for tool in tools:
         if tool == "store_health":
+            continue
+        if tool in tool_results_by_name:
+            selected_result = tool_results_by_name[tool]
+            step = step_by_tool[tool]
+            step["status"] = "completed" if selected_result.status in (STATUS_AVAILABLE, STATUS_PARTIAL) else "failed"
+            step["detail"] = f"{len(selected_result.items)} evidence item(s), status {selected_result.status}; selected by the objective agent."
+            _emit({"event": "step", "data": step})
+            continue
+        if objective_active:
+            step = step_by_tool[tool]
+            step["status"] = "skipped"
+            step["detail"] = "Not selected by the objective agent; no evidence from this source is claimed."
+            _emit({"event": "step", "data": step})
             continue
         if deadline.expired():
             failure = _record("timeout", "evidence_retrieval", partial=bool(tool_results), fallback=True)
@@ -4568,6 +4804,7 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
             _emit({"event": "step", "data": step})
             continue
         if _cancelled():
+            record_counter("rev_execution_cancellations_total", labels={"stage": "evidence_retrieval"})
             logger.info(
                 "rev_investigation_cancelled intent=%s investigation_id=%s completed_tools=%d",
                 intent, investigation_id, len(tool_results),
@@ -4585,47 +4822,9 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
         step = step_by_tool[tool]
         step["status"] = "running"
         _emit({"event": "step", "data": step})
-        params: dict[str, Any] = {
-            "start": window["start"],
-            "end": window["end"],
-        }
-        if tool in ("revenue_observations", "order_observations", "customer_observations", "cart_observations", "checkout_observations"):
-            params["compare"] = bool(window.get("compared_to"))
-        if tool in ("revenue_observations", "order_observations", "customer_observations", "cart_observations", "checkout_observations"):
-            params["timezone"] = window.get("timezone") or "UTC"
-            compared = window.get("compared_to")
-            if compared:
-                # The resolved comparison window is the single source of truth;
-                # retrieval must not invent its own period definition.
-                params["comparison_start"] = compared["start"]
-                params["comparison_end"] = compared["end"]
-            if window.get("year_over_year"):
-                params["year_over_year"] = True
-        if tool == "order_observations":
-            params.update(order_query)
-        if tool == "findings":
-            params.update(_finding_tool_params(message))
-            if selected_reference:
-                # Server-side identifier wins over prompt text and historical
-                # latest-finding filters on every selected-finding turn.
-                params["finding_reference"] = selected_reference["finding_id"]
-                params.pop("latest", None)
-        if tool in ("product_observations", "inventory_observations"):
-            params.update(_product_tool_params(message))
-            params["timezone"] = window.get("timezone") or "UTC"
-            # Task 206: product contribution ("which product contributed most")
-            # needs the previous window exactly like the revenue tool: the
-            # resolved comparison window is the single source of truth.
-            compared = window.get("compared_to")
-            if compared and tool == "product_observations":
-                params["compare"] = True
-                params["comparison_start"] = compared["start"]
-                params["comparison_end"] = compared["end"]
-        if tool in ("cart_observations", "checkout_observations"):
-            params.update(checkout_query)
-        if classification.get("segment"):
-            params["segment"] = classification["segment"]
+        params = _objective_tool_params(tool)
         tool_attempt = 0
+        tool_started = time.monotonic()
         while True:
             try:
                 tool_result = run_tool(tool, organization_id, db, params, now=now)
@@ -4648,6 +4847,8 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
                 transient = any(token in error_name for token in ("timeout", "connection", "temporary", "operational"))
                 if transient and tool_attempt == 0 and not deadline.expired() and not _cancelled():
                     tool_attempt = 1
+                    record_counter("rev_execution_retries_total", labels={
+                        "stage": "evidence_retrieval", "category": "transient"})
                     _record("timeout" if "timeout" in error_name else "connection_failed",
                             "evidence_retrieval", retry_count=1, partial=bool(tool_results))
                     time.sleep(min(0.05, deadline.remaining_ms() / 1000))
@@ -4659,7 +4860,6 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
                 record_failure(failure, correlation_id=(context_payload or {}).get("correlation_id"),
                                investigation_id=investigation_id)
                 try:
-                    from ..intelligence.operational_metrics import record_counter
                     record_counter("rev_tool_failures_total", labels={"stage": "evidence_retrieval", "category": failure["category"]})
                 except Exception:
                     pass
@@ -4671,6 +4871,8 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
                 step["detail"] = "The read-only query failed; this evidence is unavailable."
                 skipped.append(f"{TOOL_STEP_LABELS.get(tool, tool)}: query failed.")
                 break
+        record_stage("tool_execution", (time.monotonic() - tool_started) * 1000,
+                     labels={"tool": tool, "outcome": "success" if tool_result is not None else "failure"})
         if tool_result is not None:
             tool_results.append(tool_result)
             tool_results_by_name[tool] = tool_result
@@ -4795,7 +4997,6 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
         })
     if any(specialist.get("status") == "error" for specialist in specialists):
         try:
-            from ..intelligence.operational_metrics import record_counter
             record_counter("rev_tool_failures_total", labels={"stage": "specialist_execution", "category": "specialist_failed"})
         except Exception:
             pass
@@ -4844,7 +5045,6 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
         warnings.extend(tool_result.warnings)
     if validation_errors:
         try:
-            from ..intelligence.operational_metrics import record_counter
             record_counter("rev_validation_failures_total", labels={"stage": "evidence_collection"})
         except Exception:
             pass
@@ -5207,6 +5407,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     started = _time.monotonic()
     started_at = datetime.now(timezone.utc).isoformat()
     result = None
+    execution_outcome = "failure"
     try:
         with trace_context(correlation_id, execution_id):
             result = _run_investigation_core(
@@ -5227,19 +5428,62 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             record_counter("rev_general_questions_total", labels={"outcome": "success"})
         elif not is_general and succeeded:
             record_counter("rev_investigations_total", labels={"outcome": "success"})
+        execution_outcome = "success" if succeeded else "failure"
+        objective_trace = ((result.get("orchestration") or {}).get("objective_agent") or {})
+        knowledge_route = result.get("knowledge_route") or {}
+        web_trace = result.get("web_research_execution") or {}
+        provider_trace = objective_trace or web_trace
         result["execution_metadata"] = {
             "correlation_id": correlation_id, "execution_id": execution_id,
+            "request_id": str(trace_payload.get("request_id") or correlation_id)[:128],
+            "conversation_id": str(conversation_id)[:128] if conversation_id else None,
             "started_at": started_at, "latency_ms": duration_ms,
             "deadline_ms": (trace_payload.get("execution_policy") or {}).get("overall_timeout_ms"),
             "outcome": outcome,
         }
+        # Structured, privacy-safe execution trace: never include raw merchant
+        # text, prompts, evidence payloads, tokens, or credentials. Source names,
+        # provider metadata and outcome classifications are safe bounded fields.
+        result["execution_trace"] = {
+            "request_id": str(trace_payload.get("request_id") or correlation_id)[:128],
+            "correlation_id": correlation_id, "execution_id": execution_id,
+            "conversation_id": str(conversation_id)[:128] if conversation_id else None,
+            "objective": {"intent": intent, "request_class": knowledge_route.get("request_class")},
+            "routing": {"intent": intent,
+                        "gate": (result.get("understanding") or {}).get("gate"),
+                        "sources": list(knowledge_route.get("sources") or [])[:8]},
+            "provider": provider_trace.get("provider"),
+            "model": provider_trace.get("model"),
+            "duration_ms": duration_ms,
+            "provider_duration_ms": provider_trace.get("duration_ms"),
+            "token_usage": {"total": objective_trace.get("token_total") or web_trace.get("usage")},
+            "tool_selection": list(provider_trace.get("selected_tools") or [])[:8],
+            "retries": provider_trace.get("retry_count", 0),
+            "fallback_used": bool(provider_trace.get("fallback_used")),
+            "failure_category": provider_trace.get("failure_category"),
+            "cancelled": bool(provider_trace.get("cancelled")),
+            "citations": list(web_trace.get("citations") or [])[:8],
+            "final_status": provider_trace.get("status", outcome),
+        }
         return result
     except Exception as exc:
+        if isinstance(exc, InvestigationCancelled):
+            execution_outcome = "cancelled"
+            record_counter("rev_execution_cancellations_total", labels={"stage": "execution"})
+        else:
+            execution_outcome = "failure"
+            if type(exc).__name__ != "ModelProviderError":
+                record_counter("rev_execution_failures_total", labels={"category": "internal_error"})
         record_counter("rev_requests_total", labels={"kind": "unknown", "outcome": "failure"})
         if isinstance(exc, ValueError):
             record_counter("rev_validation_failures_total", labels={"stage": "response_validation"})
         from .model_gateway import ModelProviderError
         if isinstance(exc, ModelProviderError):
+            record_counter("rev_execution_failures_total", labels={"category": exc.category})
+            if exc.attempts > 1:
+                record_counter("rev_execution_retries_total", labels={"stage": "model_inference", "category": exc.category})
+            if exc.fallback_used:
+                record_counter("rev_execution_fallbacks_total", labels={"stage": "model_inference", "category": exc.category})
             failure = safe_failure(
                 exc.category, "response_composition",
                 retry_count=max(0, exc.attempts - 1), fallback=exc.fallback_used,
@@ -5251,7 +5495,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                            investigation_id=execution_id)
         raise
     finally:
-        observe_latency("rev_execution", int((_time.monotonic() - started) * 1000))
+        total_ms = int((_time.monotonic() - started) * 1000)
+        observe_latency("rev_execution", total_ms)
+        record_stage("execution_total", total_ms,
+                     labels={"outcome": execution_outcome})
 
 
 def _apply_response_adaptation(result: dict, *, message: str, intent: str,

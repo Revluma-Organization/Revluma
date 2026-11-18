@@ -12,8 +12,11 @@ const revController = read('src/controller/revController.js');
 const webhookController = read('src/controller/commerceWebhookController.js');
 const internalController = read('src/controller/internalController.js');
 const internalRoute = read('src/route/internalRoute.js');
+const revStream = read('../Frontend/Dashboard/src/lib/revStream.ts');
 
 assert.ok(app.indexOf("express.raw({ type: 'application/json', limit: '2mb' })") < app.indexOf('express.json('), 'raw webhooks must be mounted before global JSON parsing');
+assert.match(app, /allowedHeaders:\s*\[[^\]]*'X-Correlation-ID'/s, 'CORS must allow the correlation header sent by the Rev stream client');
+assert.match(revStream, /"X-Correlation-ID":\s*submissionId/, 'Rev stream must send its correlation ID for backend tracing');
 assert.ok(webhookController.includes('verifyShopifySignature'), 'commerce webhooks must verify Shopify signatures');
 assert.ok(webhookController.includes('claimDelivery'), 'commerce webhooks must claim deliveries idempotently');
 assert.ok(mlService.includes("path: '/api/alerts/check'"), 'alert calls must use the ML gateway');
