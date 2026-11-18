@@ -13,7 +13,7 @@ const { REQUIRED_SUBSCRIPTIONS } = require('./shopifyWebhookTopics');
 
 /**
  * @param {Array<{id:string, topic:string, uri:string}>} remote
- * @param {string} expectedBaseUrl  e.g. https://revluma-backend-vrsd.onrender.com (no trailing slash)
+ * @param {string} expectedBaseUrl  e.g. https://revluma-backend-lqve.onrender.com (no trailing slash)
  */
 function diffSubscriptions(remote, expectedBaseUrl) {
   const list = Array.isArray(remote) ? remote : [];
