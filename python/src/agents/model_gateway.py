@@ -12,11 +12,20 @@ import logging
 import os
 import re
 import time
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger("rev.model_gateway")
+_last_generation: ContextVar[dict | None] = ContextVar("rev_last_generation", default=None)
+
+
+def last_generation_metadata() -> dict | None:
+    """Provider metadata for this request context; never includes prompts or content."""
+    value = _last_generation.get()
+    return dict(value) if isinstance(value, dict) else None
+
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_FAST_MODEL = os.environ.get("GEMINI_FAST_MODEL", "gemini-2.5-flash-lite")
@@ -204,6 +213,7 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
              image_media_type: str | None = None, web_search: bool = False,
              correlation_id: str | None = None, execution_id: str | None = None) -> str:
     """Generate under one monotonic latency budget and no more than one retry."""
+    _last_generation.set(None)
     primary = os.getenv("AI_PROVIDER", "anthropic").strip().lower()
     if primary not in {"anthropic", "gemini"}:
         raise ModelProviderError(primary or "unknown", "unsupported_provider", category="invalid_request")
@@ -311,6 +321,10 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
             observe_latency("provider_request", elapsed_ms)
         except Exception:
             pass
+        _last_generation.set({"provider": provider, "model": model, "role": role,
+                              "duration_ms": elapsed_ms, "attempts": attempt + 1,
+                              "fallback_used": fallback_used,
+                              "usage": None})
         return output
     if last_error is None:
         last_error = ModelProviderError(primary, "timeout_budget_exhausted")
@@ -329,7 +343,8 @@ def generate_tool_turn(prompt: str, tools: list[dict], *, role: str = "fast",
                        max_tokens: int = 500, timeout: float = 20.0,
                        system: str = "",
                        correlation_id: str | None = None,
-                       execution_id: str | None = None) -> dict:
+                       execution_id: str | None = None,
+                       web_search: bool = False) -> dict:
     """Ask a configured provider for one typed function call or a final text turn.
 
     Tool definitions are supplied by the server's closed capability registry.
@@ -354,9 +369,9 @@ def generate_tool_turn(prompt: str, tools: list[dict], *, role: str = "fast",
         raise ModelProviderError(primary or "unknown", "unsupported_provider", category="invalid_request")
     correlation_id = correlation_id or ""
     execution_id = execution_id or ""
-    attempts = _attempts(primary, role, web_search=False)
+    attempts = _attempts(primary, role, web_search=web_search)
     if not attempts:
-        category = "provider_unavailable" if _task_compatible(primary, web_search=False) else "unsupported_capability"
+        category = "provider_unavailable" if _task_compatible(primary, web_search=web_search) else "unsupported_capability"
         logger.warning("model_tool_turn_unavailable provider=%s role=%s category=%s correlation_id=%s execution_id=%s",
                        primary, role, category, correlation_id or None, execution_id or None)
         try:

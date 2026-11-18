@@ -4030,8 +4030,13 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
     elif intent == INTENT_KNOWLEDGE and requires_web:
         # Keep public research distinct from general knowledge. Deliberately
         # pass no conversation or memory context to the public web provider.
-        from . import responder
-        result["text"] = responder.compose_web_research(message, understanding, "", [])
+        from .objective_agent import run_adaptive_web_research
+        research = run_adaptive_web_research(
+            question=message, understanding=understanding,
+            correlation_id=(routed or {}).get("correlation_id"),
+            execution_id=investigation_id)
+        result["text"] = research["text"]
+        result["web_research_execution"] = research.get("trace") or {}
     elif intent == INTENT_KNOWLEDGE:
         result["text"] = _dynamic_knowledge(message, user_id, routed)
     elif intent == INTENT_CLARIFY:
@@ -5426,6 +5431,8 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         execution_outcome = "success" if succeeded else "failure"
         objective_trace = ((result.get("orchestration") or {}).get("objective_agent") or {})
         knowledge_route = result.get("knowledge_route") or {}
+        web_trace = result.get("web_research_execution") or {}
+        provider_trace = objective_trace or web_trace
         result["execution_metadata"] = {
             "correlation_id": correlation_id, "execution_id": execution_id,
             "request_id": str(trace_payload.get("request_id") or correlation_id)[:128],
@@ -5445,16 +5452,18 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "routing": {"intent": intent,
                         "gate": (result.get("understanding") or {}).get("gate"),
                         "sources": list(knowledge_route.get("sources") or [])[:8]},
-            "provider": objective_trace.get("provider"),
-            "model": objective_trace.get("model"),
+            "provider": provider_trace.get("provider"),
+            "model": provider_trace.get("model"),
             "duration_ms": duration_ms,
-            "token_usage": {"total": objective_trace.get("token_total")},
-            "tool_selection": list(objective_trace.get("selected_tools") or [])[:8],
-            "retries": objective_trace.get("retry_count", 0),
-            "fallback_used": bool(objective_trace.get("fallback_used")),
-            "failure_category": objective_trace.get("failure_category"),
-            "cancelled": bool(objective_trace.get("cancelled")),
-            "final_status": objective_trace.get("status", outcome),
+            "provider_duration_ms": provider_trace.get("duration_ms"),
+            "token_usage": {"total": objective_trace.get("token_total") or web_trace.get("usage")},
+            "tool_selection": list(provider_trace.get("selected_tools") or [])[:8],
+            "retries": provider_trace.get("retry_count", 0),
+            "fallback_used": bool(provider_trace.get("fallback_used")),
+            "failure_category": provider_trace.get("failure_category"),
+            "cancelled": bool(provider_trace.get("cancelled")),
+            "citations": list(web_trace.get("citations") or [])[:8],
+            "final_status": provider_trace.get("status", outcome),
         }
         return result
     except Exception as exc:

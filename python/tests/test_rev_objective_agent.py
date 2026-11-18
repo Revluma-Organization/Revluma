@@ -214,3 +214,54 @@ def test_gemini_tool_call_returns_actual_usage_and_model_metadata(monkeypatch):
     assert response["usage"] == {"input_tokens": 43, "output_tokens": 9}
     assert requests[0][1]["toolConfig"]["functionCallingConfig"]["mode"] == "ANY"
     assert requests[0][1]["tools"][0]["functionDeclarations"][0]["name"] == "revenue_observations"
+
+
+def test_grounded_web_result_is_inspected_before_refined_search_or_stop(monkeypatch):
+    from src.agents import model_gateway, responder
+
+    searches = []
+    outputs = iter([
+        "Current answer from official results.\n\nSources:\n- https://docs.example.test/current",
+        "Follow-up verified detail.\n\nSources:\n- https://status.example.test/latest",
+    ])
+    monkeypatch.setattr(responder, "compose_web_research",
+                        lambda query, *args: (searches.append(query), next(outputs))[1])
+    prompts = []
+    selections = iter([
+        {"tool_call": {"name": "search_public_web", "arguments": {"query": "official status update details"}}},
+    ])
+    def choose(prompt, tools, **kwargs):
+        prompts.append((prompt, tools, kwargs))
+        return next(selections)
+    monkeypatch.setattr(model_gateway, "generate_tool_turn", choose)
+    monkeypatch.setattr(model_gateway, "last_generation_metadata", lambda: {
+        "provider": "gemini", "model": "gemini-test", "attempts": 1,
+        "fallback_used": False,
+    })
+
+    result = objective_agent.run_adaptive_web_research(
+        question="What is the current service status?", understanding=object(),
+        correlation_id="corr", execution_id="exec")
+
+    assert searches == ["What is the current service status?", "official status update details"]
+    assert "https://docs.example.test/current" in prompts[0][0]
+    assert prompts[0][2]["web_search"] is True
+    assert result["trace"]["calls"] == 2
+    assert result["trace"]["provider"] == "gemini"
+    assert "https://status.example.test/latest" in result["text"]
+    assert result["trace"]["citations"] == [
+        "https://docs.example.test/current", "https://status.example.test/latest"]
+
+
+def test_grounded_web_without_sources_fails_honestly_and_does_not_plan_followup(monkeypatch):
+    from src.agents import model_gateway, responder
+
+    monkeypatch.setattr(responder, "compose_web_research", lambda *args:
+                        "I couldn't verify sources in the current web results.")
+    monkeypatch.setattr(model_gateway, "generate_tool_turn",
+                        lambda *args, **kwargs: pytest.fail("do not adapt fabricated search evidence"))
+    result = objective_agent.run_adaptive_web_research(
+        question="Latest update?", understanding=object())
+    assert "couldn't verify sources" in result["text"]
+    assert result["trace"]["status"] == "search_unavailable"
+    assert result["trace"]["failure_category"] == "no_verifiable_search_results"

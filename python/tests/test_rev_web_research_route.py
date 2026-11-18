@@ -49,8 +49,18 @@ def test_rev_stream_routes_current_research_to_grounded_search(monkeypatch):
         provider_calls.append((prompt, kwargs))
         return "Current public result.\n\nSources:\n- https://example.org/current-source"
 
+    selection_calls = []
+    def finish_after_inspection(prompt, tools, **kwargs):
+        selection_calls.append((prompt, tools, kwargs))
+        return {"tool_call": {"name": "finish_research", "arguments": {}}}
+
     monkeypatch.setattr(understanding, "understand", web_research_understanding)
     monkeypatch.setattr(model_gateway, "generate", grounded_provider)
+    monkeypatch.setattr(model_gateway, "generate_tool_turn", finish_after_inspection)
+    monkeypatch.setattr(model_gateway, "last_generation_metadata", lambda: {
+        "provider": "gemini", "model": "gemini-test", "attempts": 1,
+        "fallback_used": False, "duration_ms": 12,
+    })
     question = "What are the latest ecommerce platform changes?"
     private_marker = "PRIVATE ORDER 12345 customer@example.com"
     payload = {
@@ -110,6 +120,16 @@ def test_rev_stream_routes_current_research_to_grounded_search(monkeypatch):
     assert question in prompt
     assert private_marker not in prompt
     assert kwargs["web_search"] is True
+    assert len(selection_calls) == 1
+    selection_prompt, selection_tools, selection_kwargs = selection_calls[0]
+    assert "https://example.org/current-source" in selection_prompt
+    assert "PRIVATE ORDER" not in selection_prompt
+    assert selection_kwargs["web_search"] is True
+    assert {tool["name"] for tool in selection_tools} == {
+        "search_public_web", "finish_research"}
+    assert final["execution_trace"]["provider"] == "gemini"
+    assert final["execution_trace"]["citations"] == [
+        "https://example.org/current-source"]
 
 
 def test_unrelated_why_question_is_rerouted_without_prior_finding_context(monkeypatch):
