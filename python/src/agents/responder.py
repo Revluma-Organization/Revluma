@@ -55,8 +55,10 @@ def _call(role: str, prompt: str, max_tokens: int, timeout: float,
     from .model_gateway import generate
     if role not in {FAST_ROLE, DEEP_ROLE}:
         raise ValueError("Unsupported model role")
-    return generate(prompt, role=role, max_tokens=max_tokens, timeout=timeout,
-                    correlation_id=correlation_id)
+    from ..intelligence.execution_telemetry import model_call_purpose
+    with model_call_purpose("answer_composition"):
+        return generate(prompt, role=role, max_tokens=max_tokens, timeout=timeout,
+                        correlation_id=correlation_id)
 
 
 # ── Conversational / identity / capability / feedback ─────────────────────────
@@ -111,11 +113,13 @@ def compose_conversational(message: str, understanding, history_text: str,
     try:
         if image_base64 and image_media_type:
             from .model_gateway import generate
-            return sanitise(generate(
-                prompt + "\n\nThe merchant uploaded an image. Describe only relevant visible details.",
-                role="fast", max_tokens=300, timeout=10.0,
-                image_base64=image_base64, image_media_type=image_media_type,
-            ))
+            from ..intelligence.execution_telemetry import model_call_purpose
+            with model_call_purpose("answer_composition"):
+                return sanitise(generate(
+                    prompt + "\n\nThe merchant uploaded an image. Describe only relevant visible details.",
+                    role="fast", max_tokens=300, timeout=10.0,
+                    image_base64=image_base64, image_media_type=image_media_type,
+                ))
         return sanitise(_call(FAST_ROLE, prompt, 300, 10.0))
     except Exception as exc:
         logger.error(
@@ -355,8 +359,10 @@ def compose_web_research(message: str, understanding, history_text: str,
               "Never request or disclose private store records.\nQuestion: " + message[:500])
     started = time.monotonic()
     try:
-        output = generate(prompt, role="deep", max_tokens=1200,
-                          timeout=25.0, web_search=True)
+        from ..intelligence.execution_telemetry import model_call_purpose
+        with model_call_purpose("web_search"):
+            output = generate(prompt, role="deep", max_tokens=1200,
+                              timeout=25.0, web_search=True)
         no_sources = isinstance(output, str) and output.rstrip().endswith(
             "(Web search returned no verifiable sources.)")
         record_stage("web_research", (time.monotonic() - started) * 1000,

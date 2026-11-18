@@ -179,3 +179,71 @@ assert.equal(deterministic.modelName, null);
 assert.equal(JSON.parse(deterministic.metadata).execution_mode, 'deterministic');
 assert.equal(fields(bounded({ text: 'x' })).metadata, null);
 console.log('revPersistence agent trace contract test passed');
+
+// TELEMETRY-PERSIST-001: structured execution telemetry and knowledge-source
+// coverage survive persistence as bounded tokens/numbers only. Free text,
+// prompts, queries, merchant content and unknown keys are dropped.
+const withTelemetry = bounded({
+  text: 'Answer.',
+  execution_trace: {
+    provider: 'gemini', model: 'gemini-2.5-flash',
+    investigation_id: '55555555-5555-4555-8555-555555555555',
+    knowledge_sources: {
+      manifest: { shopify_public_docs: 'available', revluma_product_docs: 'available', bad: 'has spaces here' },
+      used: ['shopify_public_docs', 'how do I <script>'],
+      revluma_docs_cited: 1, private_context_used: false, coverage_notes: 0, fallback_mode: null,
+      query: 'merchant query must never persist',
+    },
+    telemetry: {
+      telemetry_version: 'rev-execution-telemetry-v1',
+      identifiers: { request_id: 'req-1', correlation_id: '44444444-4444-4444-8444-444444444444',
+        organization_id: '11111111-1111-4111-8111-111111111111', email: 'owner@example.com' },
+      duration_ms: 812.6,
+      objective: { intent: 'knowledge', request_class: 'shopify_public_documentation', question: 'free text question' },
+      routing: { gate: 'knowledge', sources: ['shopify_public_docs'], followup: true, web_requested: false },
+      stages: [{ stage: 'routing', duration_ms: 3.2, outcome: 'success', detail: 'free text detail' }],
+      model_calls: [{ purpose: 'agent_turn', provider: 'gemini', model: 'gemini-2.5-flash', duration_ms: 400,
+        input_tokens: 900, output_tokens: 80, attempt: 1, fallback_used: false, outcome: 'success',
+        prompt: 'must never persist' }],
+      token_usage: { input: 900, output: 80, total: 980, scope: 'all_model_calls', calls_with_usage: 1,
+        successful_calls: 1 },
+      tools: [{ tool: 'search_shopify_docs', status: 'ok', duration_ms: 210, reused: false, arguments: { q: 'x' } }],
+      knowledge_sources: [{ source: 'shopify_public_docs', status: 'ok', result_count: 3,
+        retrieval_mode: 'live_domain_restricted_search', duration_ms: 210, cache_hit: false }],
+      cache: { shopify_docs_search: { miss: 1, store: 1, 'bad key with spaces': 2 } },
+      retries: 0, fallback_used: false, failure_category: null, cancelled: false,
+      final_status: 'completed', outcome: 'success',
+    },
+  },
+});
+// Objects come from the vm realm; compare plain JSON values.
+const plain = (value) => JSON.parse(JSON.stringify(value));
+const telemetry = plain(withTelemetry.execution_trace.telemetry);
+assert.equal(withTelemetry.execution_trace.investigation_id, '55555555-5555-4555-8555-555555555555');
+assert.equal(telemetry.telemetry_version, 'rev-execution-telemetry-v1');
+assert.equal(telemetry.identifiers.correlation_id, '44444444-4444-4444-8444-444444444444');
+assert.equal(telemetry.identifiers.email, undefined);
+assert.equal(telemetry.identifiers.organization_id, undefined, 'tenant id already lives in its own column');
+assert.equal(telemetry.duration_ms, 813);
+assert.deepEqual(telemetry.objective, { intent: 'knowledge', request_class: 'shopify_public_documentation' });
+assert.deepEqual(telemetry.routing.sources, ['shopify_public_docs']);
+assert.equal(telemetry.routing.followup, true);
+assert.deepEqual(telemetry.stages, [{ stage: 'routing', duration_ms: 3.2, outcome: 'success' }]);
+assert.equal(telemetry.model_calls[0].purpose, 'agent_turn');
+assert.equal(telemetry.model_calls[0].input_tokens, 900);
+assert.equal(telemetry.model_calls[0].prompt, undefined);
+assert.equal(telemetry.token_usage.total, 980);
+assert.equal(telemetry.tools[0].arguments, undefined);
+assert.equal(telemetry.knowledge_sources[0].result_count, 3);
+assert.deepEqual(telemetry.cache, { shopify_docs_search: { miss: 1, store: 1 } });
+assert.equal(telemetry.final_status, 'completed');
+assert.deepEqual(plain(withTelemetry.execution_trace.knowledge_sources.manifest),
+  { shopify_public_docs: 'available', revluma_product_docs: 'available' });
+assert.deepEqual(plain(withTelemetry.execution_trace.knowledge_sources.used), ['shopify_public_docs']);
+const persistedTelemetry = JSON.stringify(withTelemetry);
+for (const secret of ['must never persist', 'owner@example.com', 'free text', '<script>']) {
+  assert.equal(persistedTelemetry.includes(secret), false, `${secret} must not persist`);
+}
+// Absent telemetry degrades to null rather than an invented record.
+assert.equal(bounded({ text: 'x', execution_trace: { provider: null } }).execution_trace.telemetry, null);
+console.log('revPersistence telemetry contract test passed');

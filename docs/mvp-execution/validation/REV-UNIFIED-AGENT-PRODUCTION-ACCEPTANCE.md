@@ -197,3 +197,13 @@ After deployment, a read-only Supabase query should show non-null `model_provide
 - **Live A–F:** not run (section 11).
 
 **Disposition: BUILT, CI-GREEN, MERGED. NOT VERIFIED IN PRODUCTION. NOT ACCEPTED** until gates 10 to 12 have evidence.
+
+## 15. Follow-up: knowledge boundaries, efficiency, telemetry and acceptance tests
+
+See `REV-KNOWLEDGE-EFFICIENCY-TELEMETRY-ACCEPTANCE-2026-11-18.md`. That follow-up adds:
+- source-separated knowledge retrieval with honest coverage;
+- request-scoped reuse only (the cross-request merchant cache was removed);
+- content-free structured execution telemetry;
+- 47 scripted-provider acceptance and contract tests through `/rev/stream`.
+
+It is local and CI evidence only. The production gates in §10–§12 are still unmet, so the disposition above is unchanged.

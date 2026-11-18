@@ -20,6 +20,7 @@ _MAX_SERIES = 512
 _ALLOWED_LABELS = frozenset({
     "provider", "model", "category", "outcome", "stage", "kind", "route",
     "source", "tool", "from_provider", "to_provider", "from_model", "to_model",
+    "status", "stop_reason", "model_directed",
 })
 
 
@@ -69,6 +70,17 @@ def record_stage(stage: str, milliseconds: int | float, *,
         return
     observe_latency(f"stage_{stage}", milliseconds)
     record_counter("rev_stage_executions_total", labels={**(labels or {}), "stage": stage})
+    if not stage.startswith("model_"):
+        # Mirror pipeline stages into the request-scoped execution record.
+        # Model attempts are recorded separately, with provider and tokens.
+        try:
+            from .execution_telemetry import current
+            recorder = current()
+            if recorder is not None:
+                outcome = str((labels or {}).get("outcome") or "success")
+                recorder.record_stage(stage, milliseconds, outcome)
+        except Exception:
+            pass
 
 
 def record_token_usage(provider: str, model: str, *, input_tokens: int = 0,

@@ -1264,10 +1264,100 @@ function _sanitizeExecutionTrace(trace) {
         ? { status: _safeToken(agent.answer_validation.status), reason: _safeToken(agent.answer_validation.reason),
             kind: _safeToken(agent.answer_validation.kind) } : null,
       tool_calls: pick(agent.tool_calls, ['tool', 'status', 'source_status', 'iteration', 'duration_ms',
-        'item_count', 'failure_category', 'provider', 'model', 'source_count', 'cache_hit'], 16),
+        'item_count', 'failure_category', 'provider', 'model', 'source_count', 'cache_hit', 'source', 'reason'], 16),
       model_turns: pick(agent.model_turns, ['iteration', 'provider', 'model', 'input_tokens', 'output_tokens',
         'duration_ms', 'attempts', 'fallback_used', 'outcome', 'category', 'stop_reason'], 12),
     },
+    investigation_id: _safeToken(trace.investigation_id, TRACE_ID),
+    knowledge_sources: _sanitizeKnowledgeSources(trace.knowledge_sources),
+    telemetry: _sanitizeTelemetry(trace.telemetry, pick),
+  };
+}
+
+const TRACE_ID = /^[A-Za-z0-9-]{1,128}$/;
+
+function _tokenMap(value, limit = 8) {
+  const out = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return out;
+  for (const [key, entry] of Object.entries(value).slice(0, limit)) {
+    if (TRACE_TOKEN.test(key) && typeof entry === 'string' && TRACE_TOKEN.test(entry)) out[key] = entry;
+  }
+  return out;
+}
+
+/** Knowledge-source coverage: source names and statuses only, never content. */
+function _sanitizeKnowledgeSources(value) {
+  if (!value || typeof value !== 'object') return null;
+  return {
+    manifest: _tokenMap(value.manifest),
+    used: (Array.isArray(value.used) ? value.used : [])
+      .filter((source) => typeof source === 'string' && TRACE_TOKEN.test(source)).slice(0, 6),
+    revluma_docs_cited: _boundedInt(value.revluma_docs_cited, 100),
+    private_context_used: value.private_context_used === true,
+    coverage_notes: _boundedInt(value.coverage_notes, 20),
+    fallback_mode: _safeToken(value.fallback_mode),
+  };
+}
+
+/**
+ * Structured execution telemetry (rev-execution-telemetry-v1): identifiers,
+ * routing classifications, per-call provider/model/timing/tokens, tool and
+ * cache use, retries, fallback, failure category, cancellation, final status.
+ */
+function _sanitizeTelemetry(value, pick) {
+  if (!value || typeof value !== 'object') return null;
+  const identifiers = value.identifiers && typeof value.identifiers === 'object' ? value.identifiers : {};
+  const usage = value.token_usage && typeof value.token_usage === 'object' ? value.token_usage : {};
+  const routing = value.routing && typeof value.routing === 'object' ? value.routing : {};
+  const cache = {};
+  if (value.cache && typeof value.cache === 'object') {
+    for (const [name, counts] of Object.entries(value.cache).slice(0, 6)) {
+      if (!TRACE_TOKEN.test(name) || !counts || typeof counts !== 'object') continue;
+      cache[name] = {};
+      for (const [outcome, count] of Object.entries(counts).slice(0, 8)) {
+        if (TRACE_TOKEN.test(outcome) && _boundedInt(count, 100000) !== null) cache[name][outcome] = count;
+      }
+    }
+  }
+  const ids = {};
+  for (const key of ['request_id', 'correlation_id', 'execution_id', 'conversation_id', 'investigation_id']) {
+    const id = _safeToken(identifiers[key], TRACE_ID);
+    if (id) ids[key] = id;
+  }
+  return {
+    telemetry_version: _safeToken(value.telemetry_version),
+    identifiers: ids,
+    duration_ms: typeof value.duration_ms === 'number' && Number.isFinite(value.duration_ms)
+      ? Math.round(value.duration_ms) : null,
+    objective: _tokenMap(value.objective),
+    routing: {
+      ..._tokenMap(routing),
+      sources: (Array.isArray(routing.sources) ? routing.sources : [])
+        .filter((source) => typeof source === 'string' && TRACE_TOKEN.test(source)).slice(0, 8),
+      followup: routing.followup === true,
+      private_context_allowed: routing.private_context_allowed === true,
+      web_requested: routing.web_requested === true,
+    },
+    stages: pick(value.stages, ['stage', 'duration_ms', 'outcome'], 40),
+    model_calls: pick(value.model_calls, ['purpose', 'provider', 'model', 'duration_ms', 'input_tokens',
+      'output_tokens', 'attempt', 'fallback_used', 'outcome', 'failure_category'], 24),
+    token_usage: {
+      input: _boundedInt(usage.input), output: _boundedInt(usage.output), total: _boundedInt(usage.total),
+      scope: _safeToken(usage.scope), calls_with_usage: _boundedInt(usage.calls_with_usage, 100),
+      successful_calls: _boundedInt(usage.successful_calls, 100),
+    },
+    tools: pick(value.tools, ['tool', 'status', 'duration_ms', 'reused', 'cache', 'failure_category',
+      'selected_by'], 32),
+    tool_reuse_count: _boundedInt(value.tool_reuse_count, 100),
+    knowledge_sources: pick(value.knowledge_sources, ['source', 'status', 'result_count', 'retrieval_mode',
+      'duration_ms', 'cache_hit'], 12),
+    cache,
+    retries: _boundedInt(value.retries, 100),
+    fallback_used: value.fallback_used === true,
+    failure_category: _safeToken(value.failure_category),
+    cancelled: value.cancelled === true,
+    final_status: _safeToken(value.final_status),
+    outcome: _safeToken(value.outcome),
   };
 }
 

@@ -25,12 +25,40 @@ MERCHANT_EVIDENCE = "merchant_evidence"
 DOCUMENT_COLLECTIONS = frozenset({SHOPIFY_DOCS, ECOMMERCE_KNOWLEDGE, REV_PRODUCT_DOCS})
 AVAILABLE_RETRIEVAL_ADAPTERS = frozenset({TENANT_MEMORY, LIVE_WEB})
 
+
+def available_retrieval_adapters() -> frozenset[str]:
+    """Sources with a working retrieval path right now (real coverage only).
+
+    Always: tenant memory and live web. Revluma documentation is retrievable
+    from the runtime capability/metric registry. Shopify documentation is only
+    retrievable through a configured search-capable provider (live search
+    restricted to Shopify's official documentation domains); no Shopify corpus
+    is ingested. No general ecommerce corpus exists, so it is never listed.
+    """
+    available = set(AVAILABLE_RETRIEVAL_ADAPTERS)
+    try:
+        from .knowledge_sources import source_manifest
+        manifest = source_manifest()
+        for source in (REV_PRODUCT_DOCS, SHOPIFY_DOCS):
+            if (manifest.get(source) or {}).get("status") == "available":
+                available.add(source)
+    except Exception:  # availability must never break routing
+        pass
+    return frozenset(available)
+
 _SHOPIFY_DOCUMENT_QUESTION = re.compile(
     r"\b(?:shopify|shopify's)\b.{0,64}\b(?:docs?|documentation|developer|api|"
     r"graphql|webhooks?|version|reference|guide)\b|"
     r"\b(?:docs?|documentation|developer|api|graphql|webhooks?|reference|guide)\b"
     r".{0,64}\bshopify\b", re.I,
 )
+
+
+def is_public_shopify_documentation_question(message: str) -> bool:
+    """True when the message asks about Shopify's public platform/docs."""
+    return bool(_SHOPIFY_DOCUMENT_QUESTION.search(message or ""))
+
+
 _REV_PRODUCT_QUESTION = re.compile(
     r"\b(?:revluma|revintell|rev intelligence|rev's (?:dashboard|features|capabilities)|"
     r"how does rev work|what can rev)\b", re.I,
@@ -106,8 +134,9 @@ def resolve_knowledge_route(
 
     include_tenant = explicitly_requests_tenant_context(lower)
     sources = selected + ((TENANT_MEMORY,) if include_tenant else ())
-    configured = tuple(source for source in sources if source in AVAILABLE_RETRIEVAL_ADAPTERS)
-    unavailable = tuple(source for source in sources if source not in AVAILABLE_RETRIEVAL_ADAPTERS)
+    adapters = available_retrieval_adapters()
+    configured = tuple(source for source in sources if source in adapters)
+    unavailable = tuple(source for source in sources if source not in adapters)
     return KnowledgeRoute(
         request_class=request_class, sources=sources,
         private_tenant_context=include_tenant,

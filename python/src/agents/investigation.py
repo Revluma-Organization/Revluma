@@ -1381,8 +1381,17 @@ def route_message(message: str, context: dict | None, store_context: dict | None
                     "fast_path")
     continuing_investigation = bool(re.search(
         r"\b(?:continue|resume|retry)(?:\s+(?:the\s+)?(?:previous\s+)?investigation)?\b", lower))
+    # A conceptual question about Shopify's public platform ("how do Shopify
+    # webhooks work?") is public documentation, not a check of this tenant's
+    # connection: it must not open store tools. Status wording or a merchant
+    # reference keeps the integration-health fast path.
+    from ..intelligence.knowledge_retrieval import is_public_shopify_documentation_question
+    public_shopify_docs = is_public_shopify_documentation_question(text) \
+        and not STORE_REFERENCE_PATTERN.search(text) \
+        and not re.search(r"\b(?:working|failing|failed|broken|down|status|healthy|"
+                          r"connected|synced|syncing|last|latest|recent(?:ly)?|missing|delayed)\b", lower)
     if re.search(r"\b(?:sync(?:s|ed|ing)?|connected|connection|integration|webhooks?)\b", lower) \
-            and not continuing_investigation \
+            and not continuing_investigation and not public_shopify_docs \
             and ("?" in text or re.search(r"\b(?:is|are|was|were|did|does|has|have|when|check)\b", lower)):
         return done({"intent": INTENT_COVERAGE, "segment": None, "followup": False},
                     "fast_path")
@@ -3311,7 +3320,9 @@ def _compose_narrative(*, message: str, intent: str, window: dict, facts: list[d
     )
     try:
         timeout = deadline.operation_seconds("response_composition", 25.0) if deadline else 25.0
-        candidate = generate(prompt, role="deep", max_tokens=900, timeout=timeout)
+        from ..intelligence.execution_telemetry import model_call_purpose
+        with model_call_purpose("narrative"):
+            candidate = generate(prompt, role="deep", max_tokens=900, timeout=timeout)
     except ModelProviderError as exc:
         logger.warning("rev_narrative_provider_exhausted category=%s status=%s",
                        exc.category, exc.status)
@@ -4088,9 +4099,213 @@ def _base_result(*, message: str, intent: str, window: dict, investigation_id: s
     }
 
 
+_KNOWLEDGE_TOOL_SOURCES = {
+    "search_shopify_docs": "shopify_public_docs",
+    "search_revluma_docs": "revluma_product_docs",
+    "recall_merchant_context": "tenant_memory",
+}
+
+
+def _knowledge_tool_specs(*, route: dict, message: str, routed: dict, manifest: dict,
+                          correlation_id: str | None, investigation_id: str,
+                          cancelled: Callable[[], bool] | None) -> dict:
+    """Knowledge tools for this route only; each source keeps its boundary.
+
+    * Shopify documentation: live search restricted to Shopify's official
+      documentation hosts, only when a search-capable provider is configured.
+    * Revluma documentation: deterministic search over the runtime registry.
+    * Merchant context: tenant memories already retrieved for this request
+      under the organization/user scope (private; never sent to public search).
+    General ecommerce knowledge has no corpus, so it has no tool.
+    """
+    from .rev_agent import KnowledgeTool
+    from ..intelligence import knowledge_sources as ks
+    from ..intelligence.knowledge_retrieval import (
+        LIVE_WEB, REV_PRODUCT_DOCS, SHOPIFY_DOCS, TENANT_MEMORY, _SHOPIFY_DOCUMENT_QUESTION,
+    )
+
+    def query_schema(name: str, description: str, hint: str) -> dict:
+        return {"name": name, "description": description,
+                "input_schema": {"type": "object", "additionalProperties": False, "required": ["query"],
+                                 "properties": {"query": {"type": "string", "minLength": 2, "maxLength": 300,
+                                                          "description": hint}}}}
+
+    sources = set(route.get("sources") or [])
+    specs: dict = {}
+    shopify_relevant = SHOPIFY_DOCS in sources or (
+        LIVE_WEB in sources and bool(_SHOPIFY_DOCUMENT_QUESTION.search(message or "")))
+    if shopify_relevant and (manifest.get(SHOPIFY_DOCS) or {}).get("status") == "available":
+        specs["search_shopify_docs"] = KnowledgeTool(
+            name="search_shopify_docs",
+            schema=query_schema(
+                "search_shopify_docs",
+                "Search Shopify's official documentation (shopify.dev, help.shopify.com, changelog.shopify.com) "
+                "live. Use for how Shopify works: features, settings, APIs, versions, limits and dates.",
+                "A generic documentation query. Never include store names, domains, customers or orders."),
+            execute=lambda arguments: ks.search_shopify_docs(
+                arguments["query"], timeout=20.0, cancelled=cancelled,
+                correlation_id=correlation_id, execution_id=investigation_id),
+            source=SHOPIFY_DOCS, visibility="public", public_query=True, thread_safe=True,
+            label="Searching Shopify documentation", id_prefix="shopify_")
+    if REV_PRODUCT_DOCS in sources:
+        specs["search_revluma_docs"] = KnowledgeTool(
+            name="search_revluma_docs",
+            schema=query_schema(
+                "search_revluma_docs",
+                "Search Revluma's documentation generated from Rev's own capability catalogue, metric "
+                "definitions and policies. Use for what Rev can do and how Revluma metrics are defined.",
+                "What to look up in Revluma's documentation."),
+            execute=lambda arguments: ks.search_revluma_docs(arguments["query"]),
+            source=REV_PRODUCT_DOCS, visibility="public", public_query=False, thread_safe=True,
+            label="Searching Revluma documentation", id_prefix="rvdoc_")
+    if TENANT_MEMORY in sources and route.get("private_tenant_context"):
+        memories = list(routed.get("memories") or [])
+        provenance = route.get("tenant_memory_retrieval") or {}
+        specs["recall_merchant_context"] = KnowledgeTool(
+            name="recall_merchant_context",
+            schema=query_schema(
+                "recall_merchant_context",
+                "Recall this merchant's own saved context (preferences, goals, notes) from this workspace. "
+                "Private: use only in this answer.",
+                "What context to recall."),
+            execute=lambda arguments: ks.prefetched_tenant_context(memories, provenance, arguments["query"]),
+            source=TENANT_MEMORY, visibility="private", public_query=False, thread_safe=True,
+            label="Recalling your saved context", id_prefix="tenant_")
+    return specs
+
+
+def _knowledge_agent_answer(message: str, *, routed: dict, investigation_id: str,
+                            cancelled: Callable[[], bool] | None = None) -> dict | None:
+    """Answer a knowledge turn with the authoritative agent runtime.
+
+    Returns ``None`` when the agent could not run or finish, so the caller can
+    use the established composer path. The answer never claims a source that
+    was not retrieved: sources are attached only from cited retrieval ids, and
+    unavailable coverage is disclosed deterministically.
+    """
+    from .rev_agent import AgentBudget, WEB_TOOL, run_agent
+    from ..intelligence import knowledge_sources as ks
+    from ..intelligence.knowledge_retrieval import (
+        ECOMMERCE_KNOWLEDGE, LIVE_WEB, REV_PRODUCT_DOCS, SHOPIFY_DOCS, TENANT_MEMORY,
+    )
+    from .objective_agent import _BRACKET_CITATION, _URL, _sources_block
+
+    route = dict(routed.get("knowledge_route") or {})
+    if not route:
+        return None
+    correlation_id = routed.get("correlation_id")
+    manifest = ks.source_manifest()
+    specs = _knowledge_tool_specs(route=route, message=message, routed=routed, manifest=manifest,
+                                  correlation_id=correlation_id, investigation_id=investigation_id,
+                                  cancelled=cancelled)
+    exposed = list(specs)
+    sources = list(route.get("sources") or [])
+    if LIVE_WEB in sources:
+        exposed.insert(0, WEB_TOOL)
+    guard = ks.PublicQueryGuard()
+    private_history = str(routed.get("history_text") or "") if route.get("conversation_history") else ""
+    if private_history:
+        guard.add_private_text(private_history)
+    for document in ks.tenant_documents(routed.get("memories")):
+        guard.add_private_text(document["text"])
+    coverage = {source: {key: (manifest.get(source) or {}).get(key) for key in ("status", "retrieval_mode", "reason")}
+                for source in sources if source in manifest}
+    if LIVE_WEB in sources:
+        from . import agent_gateway
+        web_ready = bool(agent_gateway.agent_capability_status().get("web_search"))
+        coverage[LIVE_WEB] = {"status": "available" if web_ready else "unavailable",
+                              "retrieval_mode": "live_web_search" if web_ready else None,
+                              "reason": None if web_ready else "No search-capable provider is configured."}
+    objective = {
+        "objective": "answer_knowledge_question",
+        "current_question": message,
+        "request_class": route.get("request_class"),
+        "knowledge_sources": coverage,
+        "store_connected": bool(routed.get("has_store")),
+    }
+    if private_history:
+        objective["recent_conversation"] = private_history[:1800]
+    budget = AgentBudget(max_tool_calls=min(4, AgentBudget().max_tool_calls),
+                         max_iterations=min(4, AgentBudget().max_iterations),
+                         max_duration_seconds=min(45.0, AgentBudget().max_duration_seconds))
+    try:
+        run = run_agent(objective=objective, exposed_tools=exposed, execute_store_tool=lambda *_: None,
+                        budget=budget, remaining_seconds=lambda: budget.max_duration_seconds,
+                        cancelled=cancelled, mode="knowledge", knowledge_tools=specs,
+                        public_query_guard=guard, correlation_id=correlation_id,
+                        execution_id=investigation_id)
+    except Exception as exc:
+        logger.warning("rev_knowledge_agent_unavailable error_type=%s execution_id=%s",
+                       type(exc).__name__, investigation_id)
+        return None
+    trace = run.get("trace") or {}
+    trace["knowledge_source_manifest"] = {source: entry.get("status") for source, entry in coverage.items()}
+    if run.get("status") == "clarification_requested" and run.get("clarification"):
+        return {"text": run["clarification"]["question"], "trace": trace, "sources": [], "clarification": True}
+    answer = run.get("answer")
+    if run.get("status") != "completed" or not answer:
+        return {"fallback": True, "trace": trace}
+    entries = run.get("knowledge_entries") or {}
+    web_by_id = {source["id"]: source for source in run.get("web_sources") or []}
+    cited = [identifier for identifier in answer.get("cited_evidence_ids") or []
+             if identifier in entries or identifier in web_by_id]
+    public_sources, revluma_titles, private_used = [], [], False
+    for identifier in cited:
+        entry = entries.get(identifier) or {}
+        if identifier in web_by_id or (entry.get("visibility") == "public" and entry.get("url")):
+            source = web_by_id.get(identifier) or {"url": entry["url"], "title": entry.get("title")}
+            if source["url"] not in {existing["url"] for existing in public_sources}:
+                public_sources.append({"url": source["url"], "title": source.get("title")})
+        elif entry.get("source") == REV_PRODUCT_DOCS and entry.get("title"):
+            if entry["title"] not in revluma_titles:
+                revluma_titles.append(entry["title"])
+        elif entry.get("source") == TENANT_MEMORY:
+            private_used = True
+    verified = {source["url"] for source in public_sources}
+    text = _BRACKET_CITATION.sub("", answer.get("answer_markdown") or "")
+    text = _URL.sub(lambda match: match.group(0) if match.group(0).rstrip(".,;") in verified else "", text).strip()
+    notes = []
+    used = set(trace.get("knowledge_sources_used") or [])
+    cited_sources = {(entries.get(identifier) or {}).get("source") for identifier in cited}
+    if SHOPIFY_DOCS in sources and SHOPIFY_DOCS not in cited_sources:
+        if (manifest.get(SHOPIFY_DOCS) or {}).get("status") != "available":
+            notes.append("Shopify's documentation couldn't be searched for this answer, so Shopify-specific "
+                         "details are from general knowledge and may be out of date.")
+        elif SHOPIFY_DOCS in used:
+            notes.append("No Shopify documentation result supported this answer, so Shopify-specific details "
+                         "are unverified.")
+    if ECOMMERCE_KNOWLEDGE in sources and not cited:
+        notes.append("This is general ecommerce guidance from Rev's own knowledge; no ecommerce reference "
+                     "library was searched.")
+    if LIVE_WEB in sources and not public_sources:
+        notes.append("No current public source supported this answer, so it may not reflect recent changes.")
+    unknowns = [item for item in answer.get("unknowns") or [] if item.strip()]
+    if unknowns:
+        text += "\n\n**Not verified**\n" + "\n".join(f"- {item}" for item in unknowns[:4])
+    if notes:
+        text += "\n\n" + "\n".join(f"_{note}_" for note in notes)
+    if revluma_titles:
+        text += "\n\n**Revluma documentation**\n" + "\n".join(f"- {title}" for title in revluma_titles[:6])
+    if public_sources:
+        text += "\n\n" + _sources_block(public_sources[:8])
+    trace["citations"] = [source["url"] for source in public_sources][:8]
+    trace["revluma_docs_cited"] = len(revluma_titles)
+    trace["private_context_used"] = private_used
+    trace["coverage_notes"] = len(notes)
+    # The same claim guardrails as every other merchant-facing answer: an
+    # agent answer that fails them is never delivered (the established
+    # composer path answers instead) rather than failing the whole response.
+    guardrail_errors = narrative_guardrail_errors(text)
+    if guardrail_errors:
+        trace["guardrail_rejections"] = sorted(set(guardrail_errors))[:6]
+        return {"fallback": True, "trace": trace}
+    return {"text": text, "trace": trace, "sources": public_sources, "clarification": False}
+
+
 def _conversation_result(message: str, classification: dict, *, investigation_id: str,
                          store_context: dict, user_id: str, window: dict,
-                         routed: dict | None = None) -> dict:
+                         routed: dict | None = None,
+                         cancelled: Callable[[], bool] | None = None) -> dict:
     intent = classification["intent"]
     result = _base_result(message=message, intent=intent, window=window,
                           investigation_id=investigation_id, store_context=store_context,
@@ -4105,6 +4320,7 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
     # Conversational turns run no evidence engine, so they carry no follow-up
     # chips (spec §7: never a generic auto-list after every answer).
     routed = routed or {}
+    knowledge_answer = None
     if intent in (INTENT_GREETING, INTENT_SOCIAL, INTENT_IDENTITY):
         result["text"] = _dynamic_conversational(message, classification, intent,
                                                  user_id, routed)
@@ -4126,9 +4342,19 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
             "- I won't invent a number or a cause when the evidence isn't there.\n\n"
             "Ask me something like \"Why did my revenue change this week?\" to start."
         )
+    elif intent == INTENT_KNOWLEDGE and (knowledge_answer := _knowledge_agent_answer(
+            message, routed=routed, investigation_id=investigation_id, cancelled=cancelled)) \
+            and not knowledge_answer.get("fallback"):
+        # Authoritative runtime: the model chooses among the source-separated
+        # knowledge tools exposed for this route.
+        result["text"] = knowledge_answer["text"]
+        result["knowledge_agent_execution"] = knowledge_answer["trace"]
+        if knowledge_answer.get("clarification"):
+            result["response_type"] = "chat"
     elif intent == INTENT_KNOWLEDGE and requires_web:
-        # Keep public research distinct from general knowledge. Deliberately
-        # pass no conversation or memory context to the public web provider.
+        # Fallback when the agent runtime cannot run: keep public research
+        # distinct from general knowledge, and pass no conversation or memory
+        # context to the public web provider.
         from .objective_agent import run_adaptive_web_research
         research = run_adaptive_web_research(
             question=message, understanding=understanding,
@@ -4146,6 +4372,13 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
             goal="invite the merchant to share what they need today and offer "
                  "store analysis naturally, without listing features robotically")
         # kind None + INTENT_GENERAL inside the composer maps to the offer fallback.
+    if knowledge_answer and knowledge_answer.get("fallback"):
+        # The agent ran but could not finish (provider unavailable, malformed
+        # output, budget). Record that honestly next to the fallback answer.
+        result["knowledge_agent_execution"] = {
+            **(knowledge_answer.get("trace") or {}),
+            "fallback_mode": "adaptive_web_research" if requires_web else "knowledge_composer",
+            "model_directed": False}
     result["response_mode"] = RESPONSE_MODE_CONVERSATIONAL
     result["mode_reason"] = "the answer uses no store investigation"
     return result
@@ -4567,7 +4800,7 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
         result = _conversation_result(message, classification,
                                       investigation_id=investigation_id,
                                       store_context=store_context, user_id=user_id,
-                                      window=window, routed=routed)
+                                      window=window, routed=routed, cancelled=_cancelled)
         if knowledge_route is not None:
             result["knowledge_route"] = knowledge_route.to_dict()
             if memory_provenance is not None:
@@ -4831,6 +5064,14 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
     # budgets and arithmetic. Fact/claim/outcome derivation below stays
     # deterministic over the same results, and the model's prose is validated
     # against them before it is shown.
+    # One memo per investigation: an identical (tool, server-resolved params)
+    # request reuses the already-validated result of this same request instead
+    # of querying again. Merchant evidence is never reused across requests:
+    # webhook ingestion changes data without moving any reliable watermark, so
+    # a cross-request cache could present stale evidence as current.
+    from ..intelligence.evidence_cache import RequestToolMemo
+    tool_memo = RequestToolMemo(
+        run=lambda name, tool_params: run_tool(name, organization_id, db, tool_params, now=now))
     objective_trace = {"mode": "native_tool_loop", "status": "not_started",
                        "calls": 0, "selected_tools": [], "model_directed": False}
     objective_active = False
@@ -4891,8 +5132,7 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
         }
         agent_run = run_agent(
             objective=agent_objective, exposed_tools=exposed,
-            execute_store_tool=lambda name, arguments: run_tool(
-                name, organization_id, db, _objective_tool_params(name, arguments), now=now),
+            execute_store_tool=lambda name, arguments: tool_memo(name, _objective_tool_params(name, arguments)),
             remaining_seconds=lambda: max(0.0, deadline.remaining_ms() / 1000.0 - 12.0),
             cancelled=_cancelled, on_step=_agent_step,
             # Pool invariant: never hold a read transaction open across a
@@ -4985,7 +5225,7 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
         tool_started = time.monotonic()
         while True:
             try:
-                tool_result = run_tool(tool, organization_id, db, params, now=now)
+                tool_result = tool_memo(tool, params)
                 break
             except ToolAuthorizationError:
                 logger.error("rev_tool_authorization_failed tool=%s correlation_id=%s execution_id=%s",
@@ -5567,6 +5807,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     """Trace and measure every execution, including direct/non-stream callers."""
     from ..intelligence.trace_context import new_trace, trace_context
     from ..intelligence.operational_metrics import record_counter, observe_latency
+    from ..intelligence import execution_telemetry
     import time as _time
     trace_payload = dict(context_payload or {})
     correlation_id, execution_id = new_trace(
@@ -5576,8 +5817,19 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     started_at = datetime.now(timezone.utc).isoformat()
     result = None
     execution_outcome = "failure"
+    # Structured execution record: identifiers, routing, provider/model per
+    # call, timings, provider-reported tokens, tool use, retries, fallback,
+    # failure category, cancellation and final status. Never message text,
+    # prompts, evidence values or customer data (see execution_telemetry).
+    recorder = execution_telemetry.ExecutionRecorder(
+        request_id=str(trace_payload.get("request_id") or correlation_id)[:128],
+        correlation_id=correlation_id, execution_id=execution_id,
+        conversation_id=str(conversation_id)[:128] if conversation_id else None,
+        organization_id=organization_id, investigation_id=execution_id)
+    telemetry_status = "failed"
+    telemetry_outcome = None
     try:
-        with trace_context(correlation_id, execution_id):
+        with trace_context(correlation_id, execution_id), execution_telemetry.recording(recorder):
             result = _run_investigation_core(
                 organization_id, user_id, message, conversation_id=conversation_id,
                 db=db, context_payload=trace_payload, now=now, emit=emit,
@@ -5600,6 +5852,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         objective_trace = ((result.get("orchestration") or {}).get("objective_agent") or {})
         knowledge_route = result.get("knowledge_route") or {}
         web_trace = result.get("web_research_execution") or {}
+        knowledge_trace = result.get("knowledge_agent_execution") or {}
+        if knowledge_trace and (not web_trace or not knowledge_trace.get("fallback_mode")):
+            # The knowledge agent answered (or no other runtime did).
+            web_trace = knowledge_trace
         provider_trace = objective_trace or web_trace
         result["execution_metadata"] = {
             "correlation_id": correlation_id, "execution_id": execution_id,
@@ -5635,7 +5891,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                 "iterations": provider_trace.get("iterations"),
                 "tool_calls": [{key: call.get(key) for key in (
                     "tool", "status", "source_status", "iteration", "duration_ms", "item_count",
-                    "failure_category", "provider", "model", "source_count", "cache_hit")
+                    "failure_category", "provider", "model", "source_count", "cache_hit", "source", "reason")
                     if call.get(key) is not None}
                     for call in (provider_trace.get("tool_calls") or [])][:16],
                 "model_turns": [{key: turn.get(key) for key in (
@@ -5659,9 +5915,45 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "citations": list(web_trace.get("citations") or [])[:8],
             "final_status": provider_trace.get("status", outcome),
         }
+        if knowledge_trace:
+            result["execution_trace"]["knowledge_sources"] = {
+                "manifest": dict(knowledge_trace.get("knowledge_source_manifest") or {}),
+                "used": list(knowledge_trace.get("knowledge_sources_used") or [])[:6],
+                "revluma_docs_cited": knowledge_trace.get("revluma_docs_cited"),
+                "private_context_used": bool(knowledge_trace.get("private_context_used")),
+                "coverage_notes": knowledge_trace.get("coverage_notes"),
+                "fallback_mode": knowledge_trace.get("fallback_mode"),
+            }
+        understanding = result.get("understanding") or {}
+        recorder.set_objective(intent=intent, request_class=knowledge_route.get("request_class"),
+                               response_mode=result.get("response_mode") or understanding.get("response_mode"),
+                               objective_kind=provider_trace.get("objective_mode") or (
+                                   "store" if not is_general else "general"))
+        recorder.set_routing(intent=intent, gate=understanding.get("gate"),
+                             sources=list(knowledge_route.get("sources") or []),
+                             route=knowledge_route.get("request_class"),
+                             agent_mode=provider_trace.get("mode"),
+                             followup=bool(((result.get("conversation_context") or {}).get("followup"))
+                                           or (result.get("investigation") or {}).get("followup")
+                                           or (((result.get("investigation") or {}).get("context_used")
+                                                or {}).get("followup"))),
+                             private_context_allowed=bool(knowledge_route.get("private_tenant_context")),
+                             web_requested=bool(knowledge_route.get("current_web_search")
+                                                or (result.get("web_research_execution") or {})))
+        if objective_trace.get("cancelled") or provider_trace.get("cancelled"):
+            recorder.note_cancelled()
+        if provider_trace.get("failure_category"):
+            recorder.note_failure(provider_trace.get("failure_category"))
+        telemetry_status = "completed" if succeeded else "failed"
+        telemetry_outcome = outcome
+        telemetry = recorder.summary(final_status=telemetry_status, outcome=telemetry_outcome)
+        result["execution_trace"]["telemetry"] = telemetry
+        result["execution_trace"]["investigation_id"] = execution_id
         return result
     except Exception as exc:
         if isinstance(exc, InvestigationCancelled):
+            recorder.note_cancelled()
+            telemetry_status = "cancelled"
             execution_outcome = "cancelled"
             record_counter("rev_execution_cancellations_total", labels={"stage": "execution"})
         else:
@@ -5687,8 +5979,17 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             exc.execution_id = execution_id
             record_failure(failure, correlation_id=correlation_id,
                            investigation_id=execution_id)
+            recorder.note_failure(exc.category)
+        elif not isinstance(exc, InvestigationCancelled):
+            recorder.note_failure("validation_failed" if isinstance(exc, ValueError) else "internal_error")
         raise
     finally:
+        try:
+            telemetry = ((result or {}).get("execution_trace") or {}).get("telemetry") \
+                or recorder.summary(final_status=telemetry_status, outcome=telemetry_outcome)
+            execution_telemetry.emit(telemetry)
+        except Exception:
+            pass
         total_ms = int((_time.monotonic() - started) * 1000)
         observe_latency("rev_execution", total_ms)
         record_stage("execution_total", total_ms,
