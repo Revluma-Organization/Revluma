@@ -19,6 +19,7 @@ const fnSource = source.slice(start, end);
 const context = { MAX_PERSISTED_EVIDENCE_ITEMS: Number(constMatch[1]), exports: {} };
 vm.createContext(context);
 const bounded = vm.runInContext(`${fnSource}; _boundedResultForPersistence;`, context);
+const executionFields = vm.runInContext('_executionPersistenceFields;', context);
 
 // A conversational turn keeps its mode all the way to the browser and the DB.
 const conversational = bounded({
@@ -75,6 +76,7 @@ test('streamed assistant turn is persisted with tenant, trace and replayable res
   const context = {
     prisma,
     uuidv4: () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    _executionPersistenceFields: executionFields,
     exports: {},
   };
   vm.createContext(context);
@@ -93,6 +95,8 @@ test('streamed assistant turn is persisted with tenant, trace and replayable res
     text: 'Recorded revenue was USD 42.00.',
     investigation: { intent: 'revenue_investigation', steps: [], tools_used: ['revenue_observations'] },
     evidence: { items: [{ id: 'evidence-1' }] },
+    execution_trace: { provider: 'gemini', model: 'gemini-2.5-flash',
+      token_usage: { input: 1200, output: 64, total: 1264 }, agent: { model_directed: true } },
   });
   const messageId = await insertMessage({
     organizationId, conversationId, userId, sequenceNumber: 2, correlationId,
@@ -115,6 +119,12 @@ test('streamed assistant turn is persisted with tenant, trace and replayable res
   assert.equal(recovered.correlation_id, correlationId);
   assert.equal(recovered.execution_metadata.outcome, 'success');
   assert.equal(recovered.text, 'Recorded revenue was USD 42.00.');
+  assert.match(sql, /model_name, model_provider/);
+  assert.match(sql, /input_tokens, output_tokens, metadata/);
+  assert.equal(values.includes('gemini'), true, 'actual provider is persisted');
+  assert.equal(values.includes('gemini-2.5-flash'), true, 'actual model is persisted');
+  assert.equal(values.includes(1200) && values.includes(64), true, 'actual token usage is persisted');
+  assert.equal(recovered.execution_trace.model, 'gemini-2.5-flash');
 
   const streamStart = source.indexOf('exports.chatStream = async');
   const streamEnd = source.indexOf('// ── GET /api/v1/rev/tools', streamStart);
@@ -122,3 +132,50 @@ test('streamed assistant turn is persisted with tenant, trace and replayable res
   assert.match(streamHandler, /if \(streamed\.success\)[\s\S]*?_insertRevMessage\(/,
     'successful streamed answers must be persisted before the final SSE frame is emitted');
 });
+
+// AGENT-PERSIST-001: the actual provider/model/tokens of each answer travel
+// with the payload (sanitized) and fill the dedicated columns; no hardcoded
+// placeholder misrepresents the model used.
+assert.ok(!source.includes("'investigation-pipeline', 'rev-model-gateway'"),
+  'hardcoded model placeholders must not be persisted');
+const fields = executionFields;
+const traced = bounded({
+  text: 'Recorded order value is 1250.00 USD.',
+  execution_trace: {
+    provider: 'anthropic', model: 'claude-sonnet-4-6', duration_ms: 8123.4,
+    token_usage: { input: 2400, output: 120, total: 2520, scope: 'agent_runtime_only', note: 'free text dropped' },
+    estimated_cost_usd: 0.009, retries: 0, fallback_used: false, cancelled: false,
+    tool_selection: ['revenue_observations', 'DROP TABLE x; --'],
+    citations: ['https://example.org/a', 'javascript:alert(1)'],
+    prompt: 'must never persist', merchant_text: 'must never persist',
+    agent: {
+      model_directed: true, stop_reason: 'model_finished', iterations: 2,
+      tool_calls: [{ tool: 'revenue_observations', status: 'completed', duration_ms: 41, arguments: { secret: 1 } }],
+      model_turns: [{ iteration: 1, provider: 'anthropic', model: 'claude-sonnet-4-6', input_tokens: 900,
+        output_tokens: 40, raw_error: 'secret provider detail' }],
+    },
+  },
+  agent_answer: { source: 'model_agent', cited_evidence_ids: ['ev_1'], validation: { status: 'accepted', kind: 'answer' } },
+});
+assert.equal(traced.execution_trace.provider, 'anthropic');
+assert.equal(traced.execution_trace.model, 'claude-sonnet-4-6');
+assert.equal(traced.execution_trace.token_usage.input, 2400);
+assert.deepEqual(traced.execution_trace.tool_selection, ['revenue_observations']);
+assert.deepEqual(traced.execution_trace.citations, ['https://example.org/a']);
+assert.equal(JSON.stringify(traced).includes('must never persist'), false);
+assert.equal(JSON.stringify(traced).includes('secret provider detail'), false);
+assert.equal(traced.execution_trace.agent.tool_calls[0].arguments, undefined);
+assert.equal(traced.agent_answer.validation.status, 'accepted');
+const columns = fields(traced);
+assert.equal(columns.modelProvider, 'anthropic');
+assert.equal(columns.modelName, 'claude-sonnet-4-6');
+assert.equal(columns.inputTokens, 2400);
+assert.equal(columns.outputTokens, 120);
+assert.equal(JSON.parse(columns.metadata).execution_mode, 'model_agent');
+// A deterministic answer records no provider/model instead of a placeholder.
+const deterministic = fields(bounded({ text: 'x', execution_trace: { provider: null, model: null } }));
+assert.equal(deterministic.modelProvider, null);
+assert.equal(deterministic.modelName, null);
+assert.equal(JSON.parse(deterministic.metadata).execution_mode, 'deterministic');
+assert.equal(fields(bounded({ text: 'x' })).metadata, null);
+console.log('revPersistence agent trace contract test passed');

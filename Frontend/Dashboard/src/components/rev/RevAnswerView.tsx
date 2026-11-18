@@ -39,13 +39,15 @@ function deriveState(payload: RevAnswerPayload, streaming: boolean): AnswerState
   const state = evidenceState(payload.evidence);
   const degraded = recordList<SpecialistsSummary>(payload.specialists).some(specialist => specialist.status !== "success")
     || ["partial", "insufficient_data", "failed"].includes(payload.investigation?.status)
-    || recordList<InvestigationStep>(payload.investigation?.steps).some(step => step.status !== "completed");
+    || recordList<InvestigationStep>(payload.investigation?.steps)
+      .some(step => step.status !== "completed" && step.status !== "skipped");
   return state === "verified" && degraded ? "partial" : state;
 }
 
 /** Honest wording for a step status — never claims completion for a step that did not complete. */
 const STEP_STATUS_WORD: Record<string, string> = {
   pending: "did not run", running: "was still running", completed: "completed", failed: "failed",
+  skipped: "was not needed for this question",
 };
 
 function stepStatusWord(status: unknown): string {

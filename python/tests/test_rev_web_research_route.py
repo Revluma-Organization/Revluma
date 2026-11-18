@@ -9,7 +9,7 @@ import json
 
 from fastapi.testclient import TestClient
 
-from src.agents import investigation, model_gateway, understanding
+from src.agents import agent_gateway, investigation, model_gateway, understanding
 from src.intelligence import knowledge_retrieval
 from src.intelligence.operational_metrics import reset_for_tests, snapshot
 from src.serving import api
@@ -43,24 +43,28 @@ def test_rev_stream_routes_current_research_to_grounded_search(monkeypatch):
         )
 
     reset_for_tests()
+    agent_gateway.clear_web_cache()
     provider_calls = []
 
-    def grounded_provider(prompt, **kwargs):
-        provider_calls.append((prompt, kwargs))
-        return "Current public result.\n\nSources:\n- https://example.org/current-source"
+    def grounded_search(query, **kwargs):
+        provider_calls.append((query, kwargs))
+        return {"status": "ok", "summary": "Current public result.",
+                "sources": [{"url": "https://example.org/current-source", "title": "Current source"}],
+                "provider": "gemini", "model": "gemini-test", "searches": 1, "attempts": 1,
+                "fallback_used": False, "duration_ms": 12,
+                "usage": {"input_tokens": 200, "output_tokens": 30}}
 
     selection_calls = []
-    def finish_after_inspection(prompt, tools, **kwargs):
-        selection_calls.append((prompt, tools, kwargs))
-        return {"tool_call": {"name": "finish_research", "arguments": {}}}
+    def finish_after_inspection(**kwargs):
+        selection_calls.append(kwargs)
+        return {"text": "", "tool_calls": [{"id": "f", "name": "finish_research", "arguments": {}}],
+                "usage": {"input_tokens": 50, "output_tokens": 4}, "provider": "gemini",
+                "model": "gemini-test", "attempts": 1, "fallback_used": False,
+                "assistant": {"role": "assistant", "content": []}}
 
     monkeypatch.setattr(understanding, "understand", web_research_understanding)
-    monkeypatch.setattr(model_gateway, "generate", grounded_provider)
-    monkeypatch.setattr(model_gateway, "generate_tool_turn", finish_after_inspection)
-    monkeypatch.setattr(model_gateway, "last_generation_metadata", lambda: {
-        "provider": "gemini", "model": "gemini-test", "attempts": 1,
-        "fallback_used": False, "duration_ms": 12,
-    })
+    monkeypatch.setattr(agent_gateway, "web_search", grounded_search)
+    monkeypatch.setattr(agent_gateway, "chat", finish_after_inspection)
     question = "What are the latest ecommerce platform changes?"
     private_marker = "PRIVATE ORDER 12345 customer@example.com"
     payload = {
@@ -116,17 +120,16 @@ def test_rev_stream_routes_current_research_to_grounded_search(monkeypatch):
                for counter in metrics["counters"])
     assert understanding_histories == [[]]
     assert len(provider_calls) == 1
-    prompt, kwargs = provider_calls[0]
-    assert question in prompt
-    assert private_marker not in prompt
-    assert kwargs["web_search"] is True
+    query, _ = provider_calls[0]
+    assert query == question
+    assert private_marker not in query
     assert len(selection_calls) == 1
-    selection_prompt, selection_tools, selection_kwargs = selection_calls[0]
+    selection_prompt = json.dumps(selection_calls[0]["messages"])
     assert "https://example.org/current-source" in selection_prompt
     assert "PRIVATE ORDER" not in selection_prompt
-    assert selection_kwargs["web_search"] is True
-    assert {tool["name"] for tool in selection_tools} == {
+    assert {tool["name"] for tool in selection_calls[0]["tools"]} == {
         "search_public_web", "finish_research"}
+    assert final["execution_trace"]["token_usage"]["input"] == 250
     assert final["execution_trace"]["provider"] == "gemini"
     assert final["execution_trace"]["citations"] == [
         "https://example.org/current-source"]

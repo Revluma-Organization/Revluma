@@ -422,33 +422,92 @@ def test_streaming_emits_plan_steps_evidence_then_final():
 
 
 def test_model_selected_evidence_tools_feed_the_existing_stream_result(monkeypatch):
-    from src.agents import objective_agent
+    """The native agent runtime is the front door: the model picks a tool, sees
+    the real result as a tool result, then finishes with grounded prose."""
+    from src.agents import agent_gateway
 
-    def one_tool(question, candidate_tools, execute, **kwargs):
-        selected = "revenue_observations"
-        assert selected in candidate_tools
-        actual = execute(selected, {"compare": True})
-        return {
-            "status": "completed", "results": [actual],
-            "trace": {"mode": "model_tool_loop", "calls": 1,
-                      "selected_tools": [selected], "provider": "gemini",
-                      "model": "test-model", "token_total": 42},
-        }
+    turns = []
 
-    monkeypatch.setattr(objective_agent, "run_objective_tool_loop", one_tool)
+    def fake_chat(*, system, messages, tools, **kwargs):
+        turns.append({"messages": [dict(m) for m in messages], "tools": [t["name"] for t in tools]})
+        if len(turns) == 1:
+            return {"text": "", "tool_calls": [{"id": "c1", "name": "revenue_observations",
+                                                "arguments": {"compare": True}}],
+                    "stop_reason": "tool_use", "usage": {"input_tokens": 900, "output_tokens": 40},
+                    "assistant": {"role": "assistant", "content": [
+                        {"type": "tool_call", "id": "c1", "name": "revenue_observations",
+                         "arguments": {"compare": True}}]},
+                    "provider": "gemini", "model": "gemini-test", "duration_ms": 5, "attempts": 1,
+                    "fallback_used": False}
+        result_block = messages[-1]["content"][0]
+        payload = json.loads(result_block["content"])
+        value_item = next(item for item in payload["items"] if item["metric"] == "recorded_order_value")
+        return {"text": "", "tool_calls": [{"id": "c2", "name": "finish_answer", "arguments": {
+                    "answer_markdown": (f"Recorded order value for this period is {value_item['value']} "
+                                        f"{value_item['currency']} based on synchronized orders."),
+                    "cited_evidence_ids": [value_item["id"]], "evidence_sufficiency": "partial",
+                    "hypotheses": [], "unknowns": ["Traffic evidence was not reviewed."]}}],
+                "stop_reason": "tool_use", "usage": {"input_tokens": 1500, "output_tokens": 80},
+                "assistant": {"role": "assistant", "content": []},
+                "provider": "gemini", "model": "gemini-test", "duration_ms": 6, "attempts": 1,
+                "fallback_used": False}
+
+    monkeypatch.setattr(agent_gateway, "chat", fake_chat)
+    events = []
     result = run_investigation(
         ORG, USER, "Why did my revenue fall this week?",
-        db=workspace_db(), now=NOW, persist=False)
+        db=workspace_db(), now=NOW, persist=False, emit=events.append)
 
     agent = result["orchestration"]["objective_agent"]
     assert agent["model_directed"] is True
     assert agent["selected_tools"] == ["revenue_observations"]
     assert agent["provider"] == "gemini"
+    assert agent["stop_reason"] == "model_finished"
+    assert "store_health" not in agent["exposed_tools"]
+    # Objective-filtered exposure: related tools, never the full catalogue.
+    assert "revenue_observations" in turns[0]["tools"]
+    assert "finish_answer" in turns[0]["tools"] and "calculate" in turns[0]["tools"]
+    assert len(agent["exposed_tools"]) <= 10
+    # The second model turn received the real tool result.
+    assert turns[1]["messages"][-1]["content"][0]["type"] == "tool_result"
     assert any(item["metric"] == "recorded_order_value"
                for item in result["evidence"]["items"])
     steps = {step["tool"]: step for step in result["investigation"]["steps"]}
     assert steps["revenue_observations"]["status"] == "completed"
     assert steps["order_observations"]["status"] == "skipped"
+    assert result["text"].startswith("Recorded order value for this period is")
+    assert result["agent_answer"]["validation"]["status"] == "accepted"
+    trace = result["execution_trace"]
+    assert trace["provider"] == "gemini" and trace["model"] == "gemini-test"
+    assert trace["token_usage"]["input"] == 2400 and trace["token_usage"]["output"] == 120
+    assert trace["agent"]["model_directed"] is True
+    step_events = [event["data"] for event in events if event["event"] == "step"]
+    assert all(isinstance(step["tool"], str) and step["status"] in
+               {"pending", "running", "completed", "failed", "skipped"} for step in step_events)
+    assert any(step["tool"] == "revenue_observations" and step["status"] == "running" for step in step_events)
+
+
+def test_agent_answer_with_unsupported_number_falls_back_to_deterministic(monkeypatch):
+    from src.agents import agent_gateway
+
+    calls = iter([
+        {"text": "", "tool_calls": [{"id": "a", "name": "revenue_observations", "arguments": {}}],
+         "usage": {"input_tokens": 10, "output_tokens": 5}, "stop_reason": "tool_use",
+         "assistant": {"role": "assistant", "content": []}, "provider": "anthropic",
+         "model": "claude-sonnet-4-6", "attempts": 1, "fallback_used": False},
+        {"text": "", "tool_calls": [{"id": "b", "name": "finish_answer", "arguments": {
+            "answer_markdown": "Revenue fell by 48213.77 USD because of a pricing change.",
+            "cited_evidence_ids": [], "evidence_sufficiency": "sufficient"}}],
+         "usage": {"input_tokens": 10, "output_tokens": 5}, "stop_reason": "tool_use",
+         "assistant": {"role": "assistant", "content": []}, "provider": "anthropic",
+         "model": "claude-sonnet-4-6", "attempts": 1, "fallback_used": False},
+    ])
+    monkeypatch.setattr(agent_gateway, "chat", lambda **kwargs: next(calls))
+    result = run_investigation(ORG, USER, "Why did my revenue fall this week?",
+                               db=workspace_db(), now=NOW, persist=False)
+    assert "48213.77" not in result["text"]
+    assert result["agent_answer"]["validation"]["status"] == "rejected"
+    assert result["orchestration"]["objective_agent"]["model_directed"] is True
 
 
 def test_stream_marks_deterministic_plan_as_fallback_when_no_model_credentials(monkeypatch):

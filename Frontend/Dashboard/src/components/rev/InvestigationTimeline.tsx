@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ChevronDown, CircleAlert, Circle, Loader2, ShieldCheck } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, Circle, CircleSlash, Loader2, ShieldCheck } from "lucide-react";
 import type { InvestigationStep, RevInvestigationMeta } from "@/lib/revStream";
 import { formatPeriod, recordList, textValue } from "@/lib/revPresentation";
 
@@ -16,6 +16,7 @@ function StepIcon({ status }: { status: InvestigationStep["status"] }) {
   if (status === "completed") return <Check size={13} strokeWidth={3} color="#067647" />;
   if (status === "running") return <Loader2 size={13} className="animate-spin" color="#1F06AC" />;
   if (status === "failed") return <CircleAlert size={13} color="#B42318" />;
+  if (status === "skipped") return <CircleSlash size={12} color="#98A2B3" />;
   return <Circle size={10} color="#98A2B3" />;
 }
 
@@ -36,7 +37,10 @@ export function InvestigationTimeline({ steps: originalSteps, investigation, str
   }
   const complete = steps.filter((step) => step.status === "completed").length;
   const failed = steps.filter((step) => step.status === "failed").length;
-  const completeInvestigation = complete === steps.length && (!investigation?.status || investigation.status === "complete");
+  // Sources the agent judged unnecessary are neither completed nor failed.
+  const skipped = steps.filter((step) => step.status === "skipped").length;
+  const considered = steps.length - skipped;
+  const completeInvestigation = complete === considered && (!investigation?.status || investigation.status === "complete");
   const label = streaming ? "Investigating your store evidence"
     : failed ? "Investigation has failed checks"
     : completeInvestigation ? "Investigation complete" : "Investigation incomplete";
@@ -65,8 +69,9 @@ export function InvestigationTimeline({ steps: originalSteps, investigation, str
           {label}
         </span>
         <span style={{ fontSize: "0.72rem", color: muted, marginLeft: 2 }}>
-          {complete}/{steps.length} checks
+          {complete}/{considered} checks
           {failed ? ` · ${failed} unavailable` : ""}
+          {skipped ? ` · ${skipped} not needed` : ""}
         </span>
         <ChevronDown
           size={14}

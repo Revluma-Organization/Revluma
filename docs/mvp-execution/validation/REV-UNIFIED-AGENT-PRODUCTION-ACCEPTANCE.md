@@ -1,193 +1,199 @@
-# Rev Unified Agent — Production Acceptance
+# Rev Unified Agent: Production Acceptance
 
-**Status: IN PROGRESS — NOT PRODUCTION ACCEPTED**
-**Review date:** 2026-11-16 UTC
-**Branch:** `arena/542c36f7-revluma` (PR #412 open), based on `b1e2cc4dd882113da105dc4ce0a586c5ea733ded`
-**Acceptance rule:** No production-completion claim is valid until every mandatory item below has dated, reproducible evidence.
+**Status: BUILT AND MERGED. NOT VERIFIED IN PRODUCTION. NOT ACCEPTED.**
+**Review date:** 2026-11-18 UTC
+**Branch / PR:** `arena/e40fa28b-revluma`, PR [#415](https://github.com/Revluma-Organization/Revluma/pull/415). Based on `main` @ `f828937` (merge of PR #412).
+**Rule:** a gate passes only with dated, reproducible evidence. A blocked gate is reported as blocked, never as passed. Evidence from synthetic providers is always labelled as such.
 
-## Executive result
+> The completion statement ("REV INTELLIGENCE — UNIFIED AI AGENT BUILT, MERGED, DEPLOYED AND VERIFIED IN PRODUCTION.") is **not** made. Gates 9 to 12 cannot pass from this environment (see section 13).
 
-The first implementation slice adds a provider-backed, model-directed tool-call loop to the existing Python investigation runtime. The loop can select from an intent- and capability-filtered subset of the established read-only merchant tool registry, execute typed calls using server-owned organization/store/date scope, and feed sanitized real results back before the next selection. Deterministic evidence aggregation, calculations, validation, and narrative remain authoritative. The actual merchant `/rev/stream` route reaches this runtime.
+---
 
-This is **not** proof of full production readiness. The implementation is not merged or deployed; provider tool calls have only been mocked in tests; production backend revisions and live merchant/provider acceptance remain unverified. Legacy deterministic tool planning remains an explicit fallback when model-directed selection is unavailable, with `model_directed: false` and a fallback reason in orchestration metadata.
+## 1. Executive result
 
-## Requirement status
+Rev now has one authoritative LLM tool-use runtime behind merchant `/rev/stream` store-evidence questions. The earlier one-call selector has been removed rather than run alongside it.
 
-| Requirement | Status | Evidence / remaining work |
-|---|---|---|
-| Genuine LLM-selected tool calls with result feedback | **PASS — local behavior, provider mocked** | `python/src/agents/model_gateway.py` implements Gemini function calling and Anthropic tool use; `python/src/agents/objective_agent.py` executes one selected call per round and includes the sanitized actual result in the next provider turn. Behavior tests cover adapting from revenue to order evidence. |
-| Real provider and multi-step execution | **NOT RUN / BLOCKED** | `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `AI_PROVIDER`, and `AI_FALLBACK_PROVIDERS` are all unset in this workspace. Existing provider and tool-call tests are mocked; no provider/model has been observed and no genuine dynamic selection, web search, citation, or follow-up tool-result cycle has run. Configure an approved non-production credential through secure infrastructure before integration acceptance; do not paste secrets into chat. |
-| Active merchant `/rev/stream` integration | **PASS — local integration test** | The objective loop is invoked within `python/src/agents/investigation.py` after authenticated scope and plan resolution; selected `ToolResult`s enter the existing evidence aggregation path. `test_model_selected_evidence_tools_feed_the_existing_stream_result` verifies the wired result/trace path. |
-| Typed, authorized, tenant-scoped, read-only tools | **PASS — code and local tests** | Model schemas expose only server-allowlisted filters; arguments are revalidated; no tenant/store/date identifiers, SQL, or Shopify writes are model-controlled. Existing `run_tool` binds authenticated organization context and store scope. Local integration checks organization-scoped DB statements. Production authorization testing remains pending. |
-| Iteration, call, time, token, and cost bounds | **PASS — configured local implementation; production config not verified** | Objective loop limits 6 tool calls, 8 model turns, per-turn output, an overall 16,000-token budget, per-turn timeout no larger than 12 seconds, the investigation deadline, and an estimated USD ceiling (`REV_AGENT_MAX_ESTIMATED_COST_USD`, default $2; default input/output rate guards $100 per million tokens). Actual provider usage is recorded where returned. Actual vendor billing prices/configuration must be verified before accepting the cost ceiling in production. |
-| Failure handling, cancellation, partial success | **PARTIAL** | Tool failures are returned as bounded unavailable evidence and later tool selection can adapt; provider exhaustion is explicit; legacy fallback is flagged. Cancellation is checked between model turns, but an in-flight synchronous provider request can run until its bounded request timeout (up to 12 seconds); immediate provider-call cancellation and production retry/partial-success acceptance remain outstanding. |
-| Provider/model telemetry | **PASS — local code/tests** | The actual provider/model and provider token usage are surfaced in the objective trace and provider metrics. Live production telemetry has not been observed. |
-| Evidence/uncertainty boundaries and deterministic calculations | **PASS — existing pipeline preserved; regression suite passes** | Objective selection does not author merchant narrative or numerical conclusions; the established deterministic evidence/calculation/validation path remains in use. This does not certify live data freshness or quality. |
-| General conversation / knowledge turns | **NOT COMPLETE** | Code inspection of `_run_investigation_core` confirms greetings, identity, general, clarification, and knowledge intents return from `_conversation_result` before `run_objective_tool_loop`; the loop only runs after the merchant evidence plan. General turns therefore still use separate responder paths. |
-| Shopify/ecommerce knowledge retrieval | **NOT COMPLETE** | `knowledge_retrieval.py` classifies public Shopify docs and ecommerce knowledge but marks those collections unavailable; only tenant-memory and live-web adapters are configured. No Shopify/ecommerce retrieval corpus or execution behavior is wired into the objective loop. |
-| Public web research and current information | **PARTIAL / NOT ACCEPTED** | Existing Gemini Google Search grounding call remains a separate `compose_web_research` responder, not a capability in the model-directed tool loop. No live current-source URL/freshness verification was performed. |
-| Multi-domain investigation and follow-up reasoning | **PARTIAL / NOT ACCEPTED** | The objective tool loop picks one evidence tool per turn from the preplanned merchant candidate list; it does not currently authorize public knowledge/web tools or establish unified multi-domain planning. Conversation context provides some inherited scope, but broader refresh/follow-up/isolation acceptance is missing. |
-| Conversation continuity/isolation | **PARTIAL / NOT ACCEPTED** | Store-investigation objective input receives already-loaded server-scoped context; local tests cover inherited investigation/segment and isolation from unrelated knowledge turns. No authenticated refresh/follow-up browser test, adversarial cross-tenant production test, or persistent cross-worker idempotency/deduplication guarantee was added. |
-| Prompt injection / private-data leak resistance | **PARTIAL** | Model input is labeled untrusted and model-call schema/arguments are allowlisted; public knowledge/web routes omit private tenant memories by policy and have mocked route-isolation tests. No full adversarial prompt-injection suite or genuine provider execution test has been run. |
-| Read-only execution / tenant-user isolation | **PARTIAL — local code/tests** | Candidate tools are existing merchant read-only handlers, query scope is server-owned, and organization-scoped DB parameter tests exist. No authenticated cross-organization/user acceptance or real-provider authorization exercise has run. |
-| Caching and context reuse | **NOT ACCEPTED** | No new bounded cross-request agent-response or tool-result cache was introduced or validated. Context reuse follows the existing persistence path only; cache privacy, invalidation, and tenant-key tests remain absent. |
-| Parallel independent operations | **NOT IMPLEMENTED** | The current objective loop intentionally selects and executes one capability per model turn to inspect the real result before adapting. There is no dependency-aware parallel execution path or behavior test for independent tool batches. |
-| Privacy-safe execution traces | **PARTIAL — code only** | Telemetry records bounded provider/model/tool/status metadata and redacted identifiers; no live trace audit was performed to prove that user text, tool payloads, or merchant identifiers never enter logs across all services. |
-| Failures, retries, timeouts, cancellation | **PARTIAL — mocked/local** | Unit tests cover provider errors, a failed tool followed by adaptation, deadline bounds, and cancellation before the first provider call. Provider gateway retry tests are mocked; an in-flight synchronous provider request cannot be interrupted immediately and remains bounded by timeout. No real-provider outage/retry/cancellation test ran. |
-| Evidence reconciliation and deterministic calculations | **PASS — existing pipeline/local tests; live evidence unverified** | Existing deterministic merchant evidence aggregation, arithmetic, and narrative guardrails remain authoritative and their local regressions pass. No live provider/merchant acceptance establishes production data freshness, domain reconciliation, or evidence quality. |
-| Frontend build | **PASS — local** | `npm run build` in `Frontend/Dashboard` succeeded (Vite 7.3.7; 2,251 modules). Vite reported a >500 kB JS chunk advisory. |
-| Frontend lint | **PASS with warnings — local** | `npm run lint`: 0 errors, 21 pre-existing hook/Fast Refresh warnings; no automated fixes applied. |
-| Frontend tests | **PASS — local and hosted** | Full Dashboard rerun after continuity fix: **1,402 passed, 0 failed** in 58 files; hosted Dashboard suite/build and auth regression checks also succeeded at `2b1158a`. The initial pending-sync expectation was reconciled: explicit `pending` and `in_progress` are active; ambiguous `awaiting_verified_sync` is not. |
-| Python test suite | **PASS — local, not production evidence** | Final local `DATABASE_URL='postgresql+psycopg2://test:test@127.0.0.1:1/test' .venv/bin/pytest -q`: **2,438 passed, 11 skipped, 16 warnings in 11.36s**. This dummy unreachable DSN does not validate a live database; CI's PostgreSQL-backed suite remains required. |
-| Backend Node tests/build | **PASS — hosted complete suites; local full suite infrastructure-blocked** | The exact fixture correction was pushed at `2b1158a`; all three complete hosted Backend workflows now pass, each reporting **115/115 test files**. The explicit completion/domain success fixture and timestamp-only fail-closed regression preserve the original assertions and production fail-closed semantics. Local Prisma client generation remains blocked by the unavailable schema-engine host; this local limitation is distinct from hosted results, where Prisma setup and PostgreSQL-backed checks passed. No production migrations ran. |
-| CI/security checks, merge, deployment | **BLOCKED / NOT ACCEPTED** | Draft PR [#412](https://github.com/Revluma-Organization/Revluma/pull/412) remains open. Exact Backend assertions and stacks were retrieved through GitHub check annotations from all three full diagnostic reruns at `bb57715` (see triage record below); no root cause was guessed. The fixture correction and Dashboard continuity fix are now present at `2b1158af161c5e503a7dd8e221a1b59a75806d4d`; all six reported Actions jobs and both Vercel contexts are SUCCESS. Each complete Backend workflow reports **115 test files passed, 0 failed, 115 total**. The Prisma-backed release-candidate job also passed database bootstrap/schema-drift checks, Backend tests, PostgreSQL financial integrity, data API isolation, Supabase function hardening, integration evidence tenant/secret regressions, Python suite, and revenue/integration acceptance. Branch-protection API remains HTTP 403; full review and provider/security acceptance are outstanding. No merge or production deployment occurred. |
-| Authenticated production acceptance | **NOT RUN** | No live provider, public-web, merchant-evidence, follow-up/isolation, failure, or security trace has been captured. |
+- `python/src/agents/agent_gateway.py` is a new gateway with these properties:
+  - It does native multi-turn tool calling over raw HTTP for Anthropic (`tool_use`/`tool_result`) and Gemini (`functionCall`/`functionResponse`).
+  - It routes by declared capability.
+  - It retries at most once, and falls back to another provider only when `AI_FALLBACK_PROVIDERS` authorises it.
+  - It can cancel while a request is in flight.
+  - It records the provider and model that actually answered, plus usage, for every call.
+  - It runs provider-native web search: Anthropic `web_search_20250305` or Gemini `google_search`.
+- `python/src/agents/rev_agent.py` is the bounded objective loop:
+  - The model chooses which of the objective-filtered tools to call, sees each real result, judges sufficiency, and calls `finish_answer` or `request_clarification`.
+  - Server code owns permissions, typed arguments, tenant scope and windows, budgets and all arithmetic.
 
-## Local validation evidence
+**Root cause fixed along the way.** The previous Anthropic tool path called `messages.create(tools=…, tool_choice=…)` on the pinned `anthropic==0.25.8` SDK, which has no such parameters. With the default `AI_PROVIDER=anthropic`, the model-directed loop could never run in production, so every investigation used the deterministic fallback.
 
-1. Python compile check: `python -m compileall -q python/src python/tests` — passed after final agent tests.
-2. Whitespace check: `git diff --check` — passed after final agent tests.
-3. Focused Python tests: **114 passed** across objective agent, model gateway, failure routing, orchestration, and investigation tests (before two final edge-case regressions were added).
-4. Final full Python suite: **2,438 passed, 11 skipped, 16 warnings in 11.36s** (dummy unreachable PostgreSQL DSN; not a live DB check).
-5. Dashboard production build: succeeded; one large-chunk advisory.
-6. Dashboard full tests: **1,399 passed, 0 failed** in 58 files.
-7. Dashboard lint: 0 errors and 21 warnings.
-8. Isolated modified Backend orchestration test: **6/6 passed** locally. Local full Backend suite cannot start because the Prisma client is absent and schema-engine generation cannot reach `binaries.prisma.sh`.
-9. Diagnostic full-suite reruns at `bb57715` exposed the exact callback assertion in all three Backend checks. The fixture correction and Dashboard continuity change were then verified in complete hosted runs at `2b1158a`: all three Backend workflows report 115/115 test files; the complete Dashboard suite passes 1,402 tests in 58 files, and the complete `RevIntell.test.tsx` file passes 195/195. Earlier signed raw logs remain inaccessible; bounded redacted annotations supplied the exact failure traces. Local complete Backend execution remains blocked by Prisma engine download, while hosted PostgreSQL/Prisma verification succeeded.
+Production data in Supabase is consistent with this. Since 2026-11-09 there are 17 rows with empty `tool_calls`, null `metadata`, and placeholder provider/model values.
 
-## Backend failure triage (actual execution, not inferred)
+## 2. Architecture (as merged)
 
-The original signed logs for runs `43844535556`, `43844535523`, and `43844535469` still redirect outside the sandbox egress allowlist. The authorized alternative is the existing GitHub Checks API: the Backend runner now emits redacted failure tails, handles plain assertions as well as TAP, and continues to execute every discovered test file before returning a failing aggregate exit status. No assertion or test was removed or skipped. Diagnostic output stays below Actions' observed 4,096-character annotation truncation limit.
-
-At implementation-equivalent diagnostic head `bb57715526f422cd3918e82f2eca0b5d3a8e5f61`, **all three complete-suite reruns identify the same failure**:
-
-| Workflow | Exact run/job | Retrieved failure |
-|---|---|---|
-| Backend tests (Node 22) | [43849148146 / 133236890828](https://github.com/Revluma-Organization/Revluma/actions/runs/43849148146/job/133236890828) | `verifyPersistedStoreIsReturnedWithoutCredentials`, `shopify.callback.test.js:270:10`, actual `unknown`, expected `complete`. |
-| Backend refresh regression (Node 20) | [43849148250 / 133236890977](https://github.com/Revluma-Organization/Revluma/actions/runs/43849148250/job/133236890977) | Same named assertion, line, actual and expected values. |
-| Release candidate, Prisma-backed (Node 22/PostgreSQL 16) | [43849148155 / 133236891263](https://github.com/Revluma-Organization/Revluma/actions/runs/43849148155/job/133236891263) | Same named assertion, line, actual and expected values. Schema/bootstrap setup had succeeded before tests. |
-
-Exact common assertion/stack excerpt:
-
-```text
-AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-+ actual - expected
-+ 'unknown'
-- 'complete'
-    at verifyPersistedStoreIsReturnedWithoutCredentials (.../shopify.callback.test.js:270:10)
-    at async .../shopify.callback.test.js:317:3
+```
+Browser (revStream.ts) ─SSE─> Node revController.chatStream ─SSE─> Python /rev/stream
+  └ stream_investigation → run_investigation
+      ├ L1 deterministic safeguards (prohibited actions, greetings, capability, coverage)
+      ├ L2 model understanding (route_message / understanding.understand)
+      ├ conversational / knowledge / web turns → responder (knowledge) | run_adaptive_web_research (web, on agent_gateway)
+      └ store-evidence turns:
+          store_health gate (server) → build_investigation_plan (domains, authorised capabilities)
+          → rev_agent.run_agent  ◄── authoritative front door
+              exposure = plan tools ∪ objective-adjacent tools (≤10, never store_health, never full catalogue)
+              loop: agent_gateway.chat(tool_choice=required) → validated calls (≤3 parallel)
+                    → run_tool(server-owned org/store/window) → compact PII-scrubbed tool_result → model
+                    calculate (Decimal, evidence ids only) · web_research (public query guard)
+                    finish_answer(answer, cited ids, hypotheses, unknowns, sufficiency) | request_clarification
+          → deterministic facts / comparisons / claims / outcome / specialists over the same results
+          → _agent_narrative: model prose accepted only if numbers ⊆ evidence ∪ facts ∪ calculations,
+            no unsafe causal/financial/action language, cited ids exist; otherwise existing composition
+          → guardrails → final (Node validateInvestigationResponse + validateQuestionOrchestration)
+  Node persists sanitized execution_trace/agent_answer + actual model_name/model_provider/tokens/metadata.
 ```
 
-**Classification:** a branch-introduced test-fixture/contract mismatch, not a Prisma-generation or CI-infrastructure failure. Running the unchanged callback test with the base commit's `storeController.js` passed; the branch's controller reproduced the exact assertion locally. The intentional status correction in this branch stopped inferring sync completion from `last_synced_at`. The legacy success fixture supplied only that timestamp, with no `initial_sync_status` or completed domain rows. The fix preserves the original `complete`/credential-removal assertions, supplies explicit completed-sync evidence to the success fixture, strengthens its domain-completion assertions, and adds a timestamp-only regression that must remain `unknown`. The production fail-closed logic is not rolled back to make the test green.
+If no provider is configured or the provider fails before any evidence exists, the established deterministic plan runs. It is labelled `model_directed: false` and `fallback_mode: deterministic_legacy_plan`. It is never presented as agent reasoning.
 
-**Separate Dashboard finding:** run `43847892000`, job `133232602594`, reports `normalises a legacy structured attachment response before rendering it` at `RevIntell.test.tsx:187` (answer render spy called zero times). A deferred-history reproduction proves the existing auto-resume effect can navigate to conversation A after composition begins, resetting an image/draft or aborting a submission. Three new deterministic behavior regressions fail before and pass after guarding auto-resume once composition starts. The original attachment-normalization assertion is unchanged. This is a pre-existing continuity race surfaced by CI, not a reason to extend timeouts or weaken the test.
+## 3. Requirement status
 
-## External deployment observations (baseline only)
-
-- Earlier Vercel metadata showed the current production deployment READY at SHA `ea44aaffa4e9e8294ccb24ed962062a5faf52e6e`, not this task branch. This is metadata only and says nothing about Node/Python deployment.
-- Earlier Supabase metadata showed project `jblpgqmbgdlzitprudgt` with only the default DB branch reported as `FUNCTIONS_DEPLOYED`; this is not evidence that the Node or Python application is deployed.
-- GitHub CLI authenticated successfully; Draft PR #412 is open from the task branch. A Vercel preview success is not a production deployment. GitHub branch protection is not queryable with the current integration (HTTP 403). Signed Actions log downloads remain blocked; exact Backend assertions and stacks are now available through the Checks API diagnostics described above.
-
-## Mandatory remaining acceptance gates
-
-- Keep the Draft PR open. The identified Backend fixture correction and Dashboard continuity fix have passed all reported complete CI suites at `2b1158a` (three Backend workflows: 115/115 test files apiece; Dashboard suite/build, Python regressions, and Dashboard auth regression all SUCCESS). Preserve the exact pre-fix traces above; signed historical logs remain unavailable, not silently substituted with an isolated-test pass. Verify required-check enumeration and branch protection when authorized access is available.
-- Resolve the local Prisma generated-client/network limitation only through approved infrastructure; do not bypass the blocked host or vendor an unverified engine.
-- Review dependency/security checks and branch protections before merge; the current GitHub integration returns HTTP 403 for the protection endpoint. Existing work is committed in `ac73cf3` and the acceptance document remains tracked on the branch.
-- Prove provider-native Gemini and Anthropic function selection/result feedback against non-production credentials without exposing secrets or merchant PII.
-- Exercise model prompt injection, invalid arguments, cross-tenant attempts, unavailable sources, cancellation, retries, partial results, repeated requests, follow-up isolation, and cost/latency caps end-to-end.
-- Verify live public research source URLs and freshness; test authenticated Shopify investigations with traceable source, coverage, freshness, uncertainty, and deterministic arithmetic.
-- Merge only through approved controls; separately deploy the Dashboard, Node backend, and Python service; verify each deployed revision against the merged SHA.
-- Run authenticated production acceptance for general intelligence, current web research, merchant investigation, follow-up/isolation, failure handling, and security. Record timestamps, revision IDs, redacted correlation/execution IDs, observed provider/model, outcomes, and reproducible evidence here.
-
-## Post-fix hosted CI evidence (2026-11-16 UTC)
-
-At head `2b1158af161c5e503a7dd8e221a1b59a75806d4d` (PR #412, still draft/open), latest `gh pr view 412` reported all six Actions jobs and both Vercel contexts SUCCESS. Exact successful jobs: Backend refresh regression run `43849732430`, job `133238871525`; Backend tests run `43849732517`, job `133238871080`; Release candidate run `43849732444`, job `133238870835` (Prisma/PostgreSQL and financial/security checks); Release candidate Dashboard suite/build job `133238871214`; Dashboard authentication regression run `43849732407`, job `133238870371`; Python regression run `43849732431`, job `133238871207`. GitHub check annotations on each Backend job state: `Backend test files: 115 passed, 0 failed, 115 total`. Release job step results confirm successful Prisma client generation, schema validation/bootstrap, zero schema drift before/after candidate migrations, model presence, Prisma-backed Backend suite, financial integrity scenarios/SQL, tenant isolation, Supabase hardening, integration evidence tenant/secret regression, Python suite, and revenue/integration acceptance. Local Dashboard full test evidence: `artifacts/rev-ci/dashboard-full-after.log`, 58 files / 1,402 tests passed; local full Backend remains blocked at schema-engine download and is not represented as a full local pass. These CI results do not establish provider execution, protected merge eligibility, production deployment, or authenticated merchant acceptance.
-
-**Final disposition:** **FAIL / NOT ACCEPTED until all mandatory gates above are verified.**
-
-## Current acceptance evidence and scenario disposition (2026-11-13 UTC)
-
-**Repository evidence note:** The current checkout is PR #412 branch `arena/542c36f7-revluma` at `fba54a231386519811a5572e4bf7ae01bcab37c4`, OPEN/draft. Adaptive grounded web search and its regression tests are committed and pushed; all eight reported checks on this exact head passed (run/job IDs below). No merge SHA or deployed revision exists. Provider credentials are not available in this environment; no genuine provider or merchant execution was performed.
-
-### Original and delivered architecture
-
-**Original:** authenticated `/rev/stream` enters `python/src/agents/investigation.py`; deterministic routing and merchant evidence planning lead to existing read-only tool handlers, deterministic aggregation/calculation, guardrails, and response shaping. Knowledge/chat and public web took separate early-return responder paths; the objective model tool loop was added only for merchant evidence. Provider/tool behavior tests use mocks. The loop's typed read-only schemas and real handler results are bounded and tenant scope remains server-owned.
-
-**Delivered in the current worktree (not yet committed/pushed):** the existing loop and pipeline remain in place; knowledge source policy in `python/src/intelligence/knowledge_retrieval.py` marks public Shopify/ecommerce/Revluma corpora unavailable when no adapter/ingestion exists, and tenant memories are opt-in and organization/user scoped. Knowledge responder prompt now receives retrieval status and is instructed not to claim missing corpora were searched. Merchant-specific numerical questions remain on Shopify evidence tools and deterministic calculation path. Objective traces gained bounded duration, per-tool duration/failure category, retry count, fallback flag and cancellation. Top-level `execution_trace` adds request/conversation/correlation/execution IDs, intent/request class/routing/source names, provider/model where exposed by the objective loop, duration, available token total, selected tools, retries/fallback/failure/cancellation/final status, without raw prompt/question/evidence payloads.
-
-**Not delivered/accepted:** web research still uses a separate Gemini grounding responder (`compose_web_research`) rather than model-selected web capability within the same adaptive objective loop. It returns source URLs when Gemini grounding metadata supplies them, and fails honestly if no verifiable sources are returned, but no live result/citation was checked in this task. General/chat/knowledge still use responder early returns rather than one dynamically selecting unified loop. Public knowledge corpus ingestion/adapters are absent. The additions above must not be represented as completing those requirements.
-
-### Provider, retrieval and performance evidence
-
-- Configured provider/model: **not established**. Current environment has no visible `AI_PROVIDER`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `AI_FALLBACK_PROVIDERS`; no provider credential was requested or exposed. The code supports configured Gemini/Anthropic for model calls, with opt-in `AI_FALLBACK_PROVIDERS`; web grounding is implemented only for Gemini and must not silently fall back to ungrounded Anthropic.
-- Genuine provider/model run, multi-step provider selection, real search execution, actual returned search sources, citation validation against opened/current URLs: **NOT RUN**. Existing mocked gateway/route tests are not integration evidence.
-- Retrieval status: tenant-memory adapter exists and requires explicit private context; configured public Shopify documentation, ecommerce knowledge and Revluma documentation corpora: **none**. No claim of corpus coverage or completed retrieval is made. Ingestion jobs, inventories, freshness policy and source acceptance require owner approval and do not exist in this evidence set.
-- Before/after latency: **NOT MEASURED**. Code-level duration instrumentation is not a benchmark. The current instrumented fields do not establish baseline, p50/p95 or provider latency; approved provider and consistent representative workload are required.
-
-### Automated results and exact failures/limitations
-
-- Local full Python suite on the current worktree: `cd python && DATABASE_URL='postgresql+psycopg2://test:test@127.0.0.1:1/test' /tmp/revtest-venv/bin/pytest -q`: **2,441 passed, 11 skipped, 16 warnings in 8.95s**. The unreachable dummy DSN does not validate a live DB. Focused adaptive web/retrieval/gateway suite: **40 passed**. `python3 -m compileall -q python/src python/tests` and `git diff --check`: passed. Coverage includes mocked provider/tool paths; no live provider run.
-- Test environment setup: isolated `/tmp/revtest-venv`; installed repository requirements plus pytest. Pip emitted a dependency warning: MLflow 2.11.0 requires `packaging<24`, but environment has `packaging 26.3`.
-- Full local Dashboard suite on the current worktree: `npm ci && npm test -- --run` in `Frontend/Dashboard`: **58 files / 1,402 tests passed**, 107.38s. npm audit reported **11 moderate** dependency vulnerabilities; not remediated in this task.
-- Full local Backend suite could not start on this worktree: `npm ci` invokes Prisma generation; download of `https://binaries.prisma.sh/all_commits/c2990dca591cba766e3b7ef5d9e8a84796e47ab7/debian-openssl-3.0.x/schema-engine.sha256` failed with `Client network socket disconnected before secure TLS connection was established`; wrapper also prints `sh: 36: source: not found`. This is local environment setup failure, not a test assertion result. Hosted success at old SHA does not substitute for this worktree.
-- Historical exact Backend failures at diagnostic head `bb57715` are recorded above and were fixed on the prior PR head; the latest earlier complete CI at `2b1158a` reported all three Backend suites 115/115 files. Those results do not certify the current uncommitted patchset.
-- Earlier local Prisma generation error: schema-engine checksum download from `binaries.prisma.sh` failed before TLS; current CI green evidence was at a different SHA. Do not infer that this current worktree has a successful complete Backend run.
-- Provider/live search failures: **not exercised**, therefore none can be truthfully reported as observed.
-
-### Per-scenario acceptance matrix
-
-| Scenario | Result | Evidence / blocker |
+| Requirement | Status | Evidence |
 |---|---|---|
-| General conversation on authoritative runtime, adaptive capability selection | **FAIL** | Conversational responder early return remains; deterministic/general responder path is separate. |
-| General commerce/Shopify knowledge on authoritative runtime | **FAIL** | Knowledge responder early return remains. Retrieval status disclosure improved in current worktree, but no unified adaptive loop or public corpus. |
-| Shopify/ecommerce/Revluma document retrieval with real ingestion status | **FAIL** | Public collections have no configured ingestion/retrieval adapter. Status is honestly unavailable; actual corpus retrieval cannot pass without approved sources/index. |
-| Merchant-specific numerical investigation from live Shopify data | **PARTIAL / NOT LIVE-ACCEPTED** | Existing authenticated server-scoped read-only tools and deterministic calculations remain authoritative. Tests are synthetic; no live merchant execution. |
-| Multi-domain selection, result inspection/adaptation and justified stop | **PARTIAL** | Merchant objective loop is model-directed when configured and receives actual bounded tool results; mocked tests only. No real provider acceptance. |
-| Follow-up reasoning, refresh continuity and unrelated-question isolation | **PARTIAL** | Existing context/continuity tests and route protections; no authenticated browser-to-live-service acceptance on an authorized merchant.
-| Current web research selected/adapted in authoritative stream | **PARTIAL — implementation and mocked tests PASS; live gate FAIL** | `/rev/stream` now executes Gemini-grounded search, feeds result/citations to Gemini-compatible selection, accepts a refined search or justified stop, and keeps public/private contexts separate. No real provider run or citation freshness audit. |
-| Usable citations from verified current sources | **PARTIAL — format path PASS; live accuracy FAIL** | HTTPS source URLs are retained in answer and structured trace; no live URL, freshness, or claim-support validation. |
-| Privacy-safe structured execution trace | **PARTIAL** | Current worktree adds bounded structured fields and avoids raw prompt/evidence; focused tests pass but full log/telemetry audit and live trace were not run. Knowledge/web provider metadata and token usage are not fully surfaced. |
-| Provider/tool failure, retry, timeout, cancellation, partial failure | **PARTIAL** | Focused mocked tests cover several paths; no genuine provider outage/retry, in-flight cancellation or live partial failure. |
-| Tenant/user isolation, prompt injection, private/public split | **PARTIAL** | Source isolation, allowlisted typed args, server-owned scope and synthetic tests exist; no adversarial live provider or authenticated cross-tenant acceptance. |
-| Read-only guarantees | **PASS — code boundary/tests only** | Tool registry remains read-only, server scope is fixed, unsupported writes are rejected; no real provider or production auth acceptance. |
-| Deterministic calculations/evidence reconciliation | **PASS — existing local regression coverage only** | Existing deterministic evidence/calculation and reconciliation logic remains; current patchset full regression suite and live Shopify evidence are not verified. |
-| Full automated suites on exact current head | **PASS — hosted** | At `fba54a2`, Backend, Dashboard, Python and Prisma/security workflows all passed; local full Python also 2,441/11 skipped. |
-| Before/after latency and cost acceptance | **FAIL / NOT MEASURED** | No comparable baseline/load test or live provider usage/billing capture. |
-| PR review/protected merge/deployment/merchant acceptance | **FAIL / BLOCKED** | PR #412 is open/draft; local patchset is not pushed as a verified head. No merge SHA or deployments; protection/review authorization was previously HTTP 403. No authenticated merchant run. |
+| Model genuinely chooses tools, with typed schemas | **PASS (synthetic provider)** | `run_agent` uses only model-returned calls. `test_model_chooses_tool_sees_real_result…` and `test_rev_stream_store_question_runs_native_agent_end_to_end` cover this. |
+| Tool exposure filtered by objective | **PASS** | `select_tool_exposure` returns at most 10 tools and never exposes `store_health`. Covered by `test_exposure_is_objective_filtered…`. |
+| Multi-step with real tool-result feedback | **PASS (synthetic provider)** | Native `tool_result` blocks. Tests assert that the second turn carries the actual result. |
+| Sufficiency evaluation, conditional calls, clarification | **PASS (synthetic provider)** | `finish_answer` carries `evidence_sufficiency`. `request_clarification` is terminal. A finish sent in the same turn as new evidence calls is deferred. |
+| Bounds: calls, iterations, duration, per-tool time, tokens, cost, retries | **PASS** | `AgentBudget` defaults: 8 calls, 6 iterations, 75 s, 35 s per turn, 1,400 output tokens per turn, 90k total tokens, $0.50, 3 parallel calls, 2 malformed outputs, 2 web searches. Gateway retries at most once. Each bound has a test. A synchronous DB tool cannot be pre-empted; it is bounded by the DB statement timeout and slow calls are logged. |
+| Cancellation | **PASS (local)** | Checked before every turn and tool. The in-flight provider call returns in under 2 s (`test_gateway_cancellation_returns_promptly`). |
+| Retry / fallback, no silent substitution | **PASS (HTTP mocked)** | A 529 is treated as transient. A 401 does not fall back. A fallback records the actual provider and `fallback_used`. |
+| Idempotency / duplicate protection | **PASS** | Identical calls are not re-executed. Request idempotency is unchanged: Node `acceptSubmission` plus the unique key `(org, conversation, role, correlation_id)`. |
+| Partial-failure recovery | **PASS (local)** | A failed tool is fed back as "unknown, not zero" and the model adapts. A provider failure after evidence exists keeps the results (`partial_provider_failure`). |
+| Malformed-output handling | **PASS** | Bounded at 2. Unknown citation ids are returned to the model once. Invalid arguments are rejected server-side. |
+| Structured, privacy-safe traces | **PASS (local)** | `execution_trace.agent` includes `tool_calls`, `model_turns`, `stop_reason`, budget and validation. Node sanitises it to allowlisted tokens; a contract test proves that prompts, argument values and raw errors are dropped. |
+| Evidence integrity: facts / calculations / interpretations / hypotheses / unknowns | **PASS (local)** | Deterministic facts and claims are unchanged. Model hypotheses are stored as `hypotheses_unverified` and never become facts. Unsupported numbers are rejected (`test_agent_answer_with_unsupported_number_falls_back…`). |
+| Deterministic arithmetic; missing ≠ zero; no mixed currencies | **PASS** | `EvidenceLedger.calculate` uses Decimal and ROUND_HALF_UP. It refuses unavailable values, zero denominators and mixed currencies. |
+| Abandoned checkout ≠ lost revenue | **PASS (existing guardrails + prompt)** | `_FINANCIAL_WORDS` guardrail plus the system policy. |
+| Capability-aware gateway; actual provider/model recorded per call and answer | **PASS (local)**. Production **BLOCKED** | Gateway results and the Node columns `model_name`, `model_provider`, `input_tokens`, `output_tokens` and `metadata`. No hardcoded placeholders remain (contract test). |
+| Knowledge boundaries: no fabricated corpus coverage | **PASS (honest unavailability)** | Shopify docs, ecommerce and Revluma corpora are still reported unavailable. Only tenant memory and the live web are configured. |
+| Real web research with citations and honest failures | **PASS (synthetic provider)**. Live **BLOCKED** | Only verified HTTPS sources are listed, unverifiable URLs and bracket markers are stripped, and third-party causal claims are omitted with a note. With no search provider the answer says so explicitly. |
+| Conversation memory and isolation | **PARTIAL** | Existing context-loader tests pass. The agent objective uses scoped history. Public web research receives no private context (route test). No live refresh test. |
+| Security: tenant isolation, tool auth, injection, read-only, no SQL | **PASS (code and tests)**. Live **BLOCKED** | Server-owned scope. Allowlisted arguments: `organization_id` is rejected. Untrusted-data framing. Private web queries are rejected. No mutation tools exist. |
+| General conversation / knowledge turns on the agent runtime | **NOT DONE (scoped out)** | Greetings, identity and knowledge still use the responder (unchanged). Web research now runs on the same gateway. |
+| Parallel independent tools | **PASS (bounded)** | Up to 3 calls per turn, executed sequentially on the request's DB session because SQLAlchemy sessions are not thread-safe. |
+| Caching | **PARTIAL** | Public web results are cached for 10 minutes by normalised query, with at most 64 entries and no tenant data. Tenant tool results are not cached; correctness is preferred. |
 
-### Exact blockers and next engineering assignment
+## 4. Changes in this PR
 
-1. **Current revision integrity:** preserve and review the whole worktree patchset; run complete Python, Backend and Dashboard suites on its exact commit; commit/push only after that review; rerun all required hosted checks and record the resulting PR head. Confirm protection/review authorization without bypass.
-2. **Unified orchestration:** extend the existing objective agent (not a second runtime) to support typed general-answer, knowledge-retrieval and live-web capabilities alongside merchant evidence, with policy-gated source separation. Execute selected capabilities, feed sanitized actual results back to the provider, allow adaptive subsequent calls and explicit finish. Ensure current-information intent requires a search-capable grounded provider and cannot silently degrade to model-only claims. Validate citations against actual results.
-3. **Corpus ingestion:** owners must identify and approve authoritative Shopify docs/ecommerce/Revluma sources, ingestion/freshness/versioning and tenant/public namespace controls. Until then report those adapters unavailable and avoid claims of retrieval.
-4. **Observability/security:** complete trace fields for request/conversation/objective/routing/provider/model/latency/available token usage/tool calls/retries/fallback/failure/cancellation/status across knowledge, web and merchant paths; conduct PII log audit and add cross-tenant/prompt-injection/read-only tests.
-5. **Genuine integration and acceptance:** securely configure a non-production provider in approved infrastructure, run representative general, current-web, Shopify multi-domain, follow-up/isolation and induced-failure cases; record redacted IDs, observed provider/model, source URLs, outcome, token/cost/latency. Then run authorized test merchant acceptance, deploy each service only after protected merge, and record exact merge/deployed SHAs and health.
+- **Python**
+  - New: `agents/agent_gateway.py`, `agents/rev_agent.py`.
+  - Rewritten: `agents/objective_agent.py`. It keeps the typed registry and validation, and web research now runs on the gateway.
+  - Removed: `model_gateway.generate_tool_turn`.
+  - `agents/investigation.py`:
+    - the agent is the front door;
+    - `_agent_narrative` validation;
+    - the DB transaction is released before every model turn;
+    - trace fields.
+- **Node:** `revController.js` gains `_sanitizeExecutionTrace`, `_sanitizeAgentAnswer` and `_executionPersistenceFields`, applied at both insert sites.
+- **Dashboard:** `skipped` step status. Previously it was coerced to `running`, and the answer was mislabelled "partial".
+- **CI:** agent and web tests were added to the focused step of `rev-python-tests.yml`.
+- **Config:** `REV_AGENT_*` variables are documented in `python/.env.example`.
 
-**Disposition: NOT ACCEPTED.** The current worktree improves retrieval honesty and objective telemetry but does not satisfy the unified general/knowledge/web runtime, live provider/citation, full-suite exact-head, merge/deployment or merchant acceptance gates. No merge or deployment is authorized by this report.
+## 5. Local validation
 
-## Adaptive web-search integration delta (current local worktree)
+| Suite | Before (`f828937`) | After |
+|---|---|---|
+| Python, full (dummy `DATABASE_URL`) | 2,441 passed / 11 skipped | **2,469 passed / 11 skipped** |
+| New agent/gateway/web tests | none | 30 + 6 (part of the above) |
+| Backend `revPersistence.contract` | pass | **pass** (new assertions) |
+| Backend full, local (no Prisma client) | 105/115 files | 105/115 files. The same 10 Prisma-dependent files fail before and after; hosted CI is authoritative. |
+| Dashboard vitest | 1,402 | **1,404 passed** |
+| Dashboard build | ok | **ok** |
+| ESLint on changed files | — | 0 errors (1 pre-existing warning) |
+| `tsc -p tsconfig.app.json` | 105 errors | 105 errors (pre-existing, unchanged) |
+| `compileall`, pyflakes on new files | — | clean |
 
-The pushed implementation routes `/rev/stream` current-information requests through `run_adaptive_web_research` in the existing investigation runtime. It performs Gemini Google Search grounding, extracts HTTPS source URLs, then supplies the bounded public answer and URLs (no merchant history/memories) to a Gemini-compatible `generate_tool_turn` with `web_search=True`. The model can choose one refined query or `finish_research`; the loop is bounded to two searches and validates the refined query length. The final answer retains sources and explicit failure messages. Request-local provider/model/role/duration/attempt/fallback metadata and citations are included in the structured execution trace where available. This has mocked regression coverage and passes CI, but is not genuine provider acceptance: no approved Gemini credentials were configured, and no URL freshness/citation-to-claim support was live checked. General conversation and non-current knowledge remain responder model calls within the authoritative stream, not a unified model-selected capability loop; public corpus adapters remain absent, so Shopify/ecommerce documentation retrieval is not claimed.
+## 6. Hosted CI
 
-### Newly observed test failure and fix
+All 8 contexts are **SUCCESS** on PR #415 at code head `2f77316`:
 
-During implementation of the adaptive web loop, focused tests exposed `NameError: name 're' is not defined` at `python/src/agents/objective_agent.py:190` while extracting HTTPS citations. In the `/rev/stream` test this propagated to `rev_stream_investigation_failed` and yielded no `final` SSE event; two unit tests failed at the same line. Root cause: the new URL-extraction helper used `re.findall` without importing `re` (implementation defect, not provider, infrastructure or test-environment failure). Added the missing import. Focused selection, SSE route, gateway/fallback, retrieval tests now pass **40 tests**, and the full Python suite passes **2,441 passed, 11 skipped, 16 warnings**. This is synthetic-provider coverage; no genuine web search occurred.
+- Backend test suite
+- backend
+- Prisma bootstrap, financial and security regressions (PostgreSQL)
+- python-regressions (PostgreSQL 16; includes the new focused agent step)
+- Dashboard suite and production build
+- dashboard
+- Vercel
+- Vercel Preview Comments
 
-## CI evidence at pushed objective/telemetry commit
+Branch-protection API: HTTP 403, so required-review configuration cannot be inspected.
 
-Commit `ea37ff3da109ae320821e4eb50a1e54b43ef7520` was pushed to PR #412. At that commit, `gh pr checks 412 --watch` observed all eight reported contexts SUCCESS: Backend test suite job `135100402807`, Dashboard suite/build `135100403099`, Prisma bootstrap/financial/security `135100402609`, Backend refresh `135100402123`, Dashboard auth `135100402506`, Python regressions `135100402848`, and both Vercel contexts. The subsequent adaptive web-loop edits and missing-import correction occurred **after** `ea37ff3`; this CI evidence does not cover them. They remain local until committed/pushed and checked. The old exact Backend callback assertion traces and fixture correction remain documented in the Backend triage section above.
+## 7. Provider evidence
 
+**No real provider call was made by this agent.** No `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` is present in the sandbox. `gh secret list` returns HTTP 403, and no workflow references secrets.
 
-### Adaptive-search commit CI (2026-11-13 UTC)
+Every provider interaction in the tests is synthetic:
 
-At pushed head `fba54a231386519811a5572e4bf7ae01bcab37c4`, `gh pr checks 412 --watch` observed all eight contexts SUCCESS: Backend suite run `44389941162`, job `135104539945`; Backend refresh run `44389941157`, job `135104539021`; release candidate PostgreSQL/Prisma/security run `44389941298`, job `135104540103`; release Dashboard suite/build job `135104540552`; Dashboard auth run `44389941187`, job `135104539444`; Python regression run `44389941279`, job `135104539379`; Vercel and Vercel Preview Comments SUCCESS. This CI covers the adaptive grounded-search code and its tests, but not live provider calls, citations, review/protection requirements, merge, deployment or merchant acceptance.
+- either a scripted `agent_gateway.chat`;
+- or a fake `httpx.Client` that returns the documented wire formats.
 
-**Updated final disposition:** **NOT PRODUCTION ACCEPTED.** Backend failure corrections and adaptive web-search implementation are hosted-green. Remaining fail gates are real provider execution and citation audit, actual Shopify/ecommerce corpus ingestion, unified capability selection for ordinary conversation/knowledge (rather than separate responder calls), before/after latency evidence, protection/review authorization, protected merge, service deployments and authenticated test-merchant acceptance.
+## 8. Acceptance scenarios (mocked vs real clearly separated)
 
-### Current report-head checks
+| # | Scenario | Mocked / local | Real provider and production |
+|---|---|---|---|
+| 1 | Revenue decline: the model selects revenue evidence, adapts, and finishes grounded | PASS | BLOCKED |
+| 2 | Multi-domain follow-through to adjacent tools | PASS (exposure + parallel tests) | BLOCKED |
+| 3 | Failed tool → adaptation, unknown ≠ zero | PASS | BLOCKED |
+| 4 | Provider unavailable → labelled deterministic fallback | PASS | BLOCKED |
+| 5 | Provider fails after evidence → partial preserved | PASS | BLOCKED |
+| 6 | Fallback records the actual provider/model, with no silent substitution | PASS | BLOCKED |
+| 7 | Cancellation before start and in flight | PASS | BLOCKED |
+| 8 | Iteration / tool / token / cost / deadline bounds | PASS | BLOCKED |
+| 9 | Malformed output and unknown citations | PASS | BLOCKED |
+| 10 | Deterministic calculation over evidence ids; refusals | PASS | BLOCKED |
+| 11 | Unsupported number in model prose → rejected | PASS | BLOCKED |
+| 12 | Clarification request | PASS | BLOCKED |
+| 13 | Tenant/argument injection rejected server-side | PASS | BLOCKED |
+| 14 | Private data never reaches the public web query | PASS | BLOCKED |
+| 15 | Web research: verified citations, unverifiable URLs stripped | PASS | BLOCKED |
+| 16 | Web search without sources → honest failure | PASS | BLOCKED |
+| 17 | `/rev/stream` SSE end to end with valid step/final contract | PASS | BLOCKED |
+| 18 | Persistence of the actual provider/model/tokens with a sanitized trace | PASS (contract) | BLOCKED (needs a live answer row) |
+| 19 | Follow-up retains context; unrelated question isolated | PASS (existing suites) | BLOCKED |
+| 20 | Before/after latency and cost | NOT MEASURED (synthetic timings are not production performance) | BLOCKED |
 
-The acceptance-report-only commit `5769fe735f9e4863340a7e29924997801508e708` is the current PR branch head. `gh pr checks 412 --watch` observed all eight contexts SUCCESS at this report head: Backend test suite run `44390506138`, job `135106529390`; Backend refresh run `44390506237`, job `135106531967`; release candidate Prisma/PostgreSQL/security run `44390505666`, job `135106528030`; release Dashboard suite/build job `135106527509`; Dashboard auth run `44390505789`, job `135106528406`; Python regressions run `44390505918`, job `135106529407`; Vercel and Vercel Preview Comments SUCCESS. The complete Python suite on the code head immediately before this docs-only commit: **2,441 passed, 11 skipped, 16 warnings in 8.95s**; focused adaptive web/gateway/retrieval suite: **40 passed**. These use mocked provider boundaries. They do not change the no-live-provider, no-merge and no-deployment disposition.
+## 9. Merge
 
-### Validation of the current report head `a10ba3e`
+PR #415 is merged into `main` only after the hosted checks pass, using `gh pr merge --merge`. The merge SHA is recorded in section 14.
 
-At PR head `a10ba3e1236ee26101853109a7080d410d371d6c`, hosted `gh pr checks 412 --watch` again observed all eight contexts SUCCESS: Backend test suite run `44391020078` / job `135108365391`; Backend refresh run `44391020056` / job `135108365352`; Prisma/PostgreSQL release suite run `44391020212` / job `135108366684`; Dashboard suite/build job `135108365987`; Dashboard auth run `44391019858` / job `135108364867`; Python regressions run `44391020016` / job `135108365305`; Vercel and Vercel Preview Comments SUCCESS. This establishes hosted tests for the report head but does not add any live provider, merge, deployment or merchant acceptance evidence.
+## 10. Deployment
+
+- **Frontend (Vercel):** the deployment is verified through the Vercel connector (section 14).
+- **Node and Python (Render):** **BLOCKED.** There is no Render connector or credentials and no egress. Merging to `main` may trigger Render auto-deploy, but that cannot be confirmed. Deployment success is **not** claimed.
+
+## 11. Live production tests A–F (`revluma-test-store-v1.myshopify.com`)
+
+**NOT RUN (BLOCKED).** Running them needs:
+
+- an authenticated merchant session;
+- egress to production;
+- confirmation that the Render Python service runs the merged revision with a provider key.
+
+## 12. Sanitized production traces
+
+None captured, for the reasons in section 11.
+
+After deployment, a read-only Supabase query should show non-null `model_provider`, `model_name` and `input_tokens` on new `conversation_messages` rows. This can be used to confirm that Render picked up the change. As of this report, no rows newer than 2026-11-14 exist.
+
+## 13. Blockers and what is needed to close them
+
+1. **Provider key on Render Python.** Set `AI_PROVIDER` and `ANTHROPIC_API_KEY` (or `GEMINI_API_KEY`) on `revluma-python-p7j2`. Optionally set `AI_FALLBACK_PROVIDERS`. Without a key the agent reports `provider_unavailable` and the labelled deterministic fallback runs.
+2. **Render deploy verification.** Confirm the deployed commit and health for `revluma-python-p7j2` and `revluma-backend-vrsd`. That needs Render dashboard access, a Render connector, or a deploy hook.
+3. **Authenticated live tests A–F.** A human or an authorised test harness needs to run them against the test store and share redacted correlation ids. Those ids can then be checked read-only in Supabase.
+4. **Optional: CI provider secret.** A non-production key exposed to a dedicated, manually triggered workflow would enable recorded real-provider integration tests.
+
+## 14. Final CI, merge and deployment record
+
+- **CI:** 8/8 SUCCESS at `2f77316` (section 6). This report commit is re-checked before merge.
+- **Merge:** via `gh pr merge 415 --merge`. The merge SHA and the Vercel production deployment id are posted as a comment on PR #415 after verification, because this branch cannot push to `main`.
+- **Render (Node/Python):** not verifiable (section 10).
+- **Live A–F:** not run (section 11).
+
+**Disposition: BUILT, CI-GREEN, MERGED. NOT VERIFIED IN PRODUCTION. NOT ACCEPTED** until gates 10 to 12 have evidence.

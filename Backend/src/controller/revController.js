@@ -425,10 +425,13 @@ exports.chat = async (req, res, next) => {
       correlation_id: correlationId,
       execution_id: mlResult.data?.execution_id || executionId,
       execution_metadata: mlResult.data?.execution_metadata || null,
+      execution_trace: _sanitizeExecutionTrace(mlResult.data?.execution_trace),
+      agent_answer: _sanitizeAgentAnswer(mlResult.data?.agent_answer),
     };
     const revContentStr   = JSON.stringify(revContent);
     const agentNameStr    = (revData.agents_used || []).join(',');
     const confidenceScore = revData.confidence_score ?? null;
+    const execution       = _executionPersistenceFields(revContent);
 
     persistenceStage = 'rev_turn_write';
     await prisma.$executeRaw`
@@ -436,12 +439,14 @@ exports.chat = async (req, res, next) => {
         id, conversation_id, organization_id, user_id,
         role, content, sequence_number,
         agent_name, model_name, model_provider,
-        correlation_id, confidence_score, has_error
+        correlation_id, confidence_score, has_error,
+        input_tokens, output_tokens, metadata
       ) VALUES (
         ${revMsgId}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
         'rev', ${revContentStr}::jsonb, ${revSequence},
-        ${agentNameStr}, 'investigation-pipeline', 'rev-model-gateway',
-        ${correlationId}::uuid, ${confidenceScore}, false
+        ${agentNameStr}, ${execution.modelName}, ${execution.modelProvider},
+        ${correlationId}::uuid, ${confidenceScore}, false,
+        ${execution.inputTokens}, ${execution.outputTokens}, ${execution.metadata}::jsonb
       )
     `;
 
@@ -1181,11 +1186,146 @@ function _boundedResultForPersistence(data) {
     // intelligence upgrade §16) so presentation and audits never infer intent
     // from content shape.
     understanding: data?.understanding || null,
+    // Which provider/model actually answered, with token usage, tool calls
+    // and stop reason — sanitized, so audits never infer them from prose.
+    execution_trace: _sanitizeExecutionTrace(data?.execution_trace),
+    agent_answer: _sanitizeAgentAnswer(data?.agent_answer),
   };
 }
 
 // Exported for contract tests only.
 exports._boundedResultForPersistence = _boundedResultForPersistence;
+exports._sanitizeExecutionTrace = _sanitizeExecutionTrace;
+exports._executionPersistenceFields = _executionPersistenceFields;
+
+const PROVIDER_NAME = /^[a-z][a-z0-9_-]{0,39}$/;
+const MODEL_NAME = /^[A-Za-z0-9._:-]{1,120}$/;
+const TRACE_TOKEN = /^[A-Za-z0-9._:-]{1,80}$/;
+
+function _boundedInt(value, max = 10_000_000) {
+  return Number.isInteger(value) && value >= 0 && value <= max ? value : null;
+}
+
+function _safeToken(value, pattern = TRACE_TOKEN) {
+  return typeof value === 'string' && pattern.test(value) ? value : null;
+}
+
+/**
+ * Privacy-safe projection of the Python execution trace. Only bounded
+ * identifiers, counts, timings and classifications survive — never prompts,
+ * merchant text, evidence payloads, credentials or raw provider errors.
+ */
+function _sanitizeExecutionTrace(trace) {
+  if (!trace || typeof trace !== 'object') return null;
+  const agent = trace.agent && typeof trace.agent === 'object' ? trace.agent : {};
+  const usage = trace.token_usage && typeof trace.token_usage === 'object' ? trace.token_usage : {};
+  const pick = (entries, keys, limit) => (Array.isArray(entries) ? entries : []).slice(0, limit).map((entry) => {
+    const out = {};
+    for (const key of keys) {
+      const value = entry?.[key];
+      if (typeof value === 'number' && Number.isFinite(value)) out[key] = value;
+      else if (typeof value === 'boolean') out[key] = value;
+      else if (typeof value === 'string' && TRACE_TOKEN.test(value)) out[key] = value;
+    }
+    return out;
+  });
+  return {
+    provider: _safeToken(trace.provider, PROVIDER_NAME),
+    model: _safeToken(trace.model, MODEL_NAME),
+    duration_ms: typeof trace.duration_ms === 'number' ? Math.round(trace.duration_ms) : null,
+    provider_duration_ms: typeof trace.provider_duration_ms === 'number' ? Math.round(trace.provider_duration_ms) : null,
+    token_usage: {
+      input: _boundedInt(usage.input), output: _boundedInt(usage.output), total: _boundedInt(usage.total),
+      scope: _safeToken(usage.scope),
+    },
+    estimated_cost_usd: typeof trace.estimated_cost_usd === 'number' && Number.isFinite(trace.estimated_cost_usd)
+      ? Math.round(trace.estimated_cost_usd * 1e6) / 1e6 : null,
+    retries: _boundedInt(trace.retries, 100),
+    fallback_used: trace.fallback_used === true,
+    cancelled: trace.cancelled === true,
+    failure_category: _safeToken(trace.failure_category),
+    final_status: _safeToken(trace.final_status),
+    tool_selection: (Array.isArray(trace.tool_selection) ? trace.tool_selection : [])
+      .filter((tool) => typeof tool === 'string' && TRACE_TOKEN.test(tool)).slice(0, 12),
+    citations: (Array.isArray(trace.citations) ? trace.citations : [])
+      .filter((url) => typeof url === 'string' && /^https:\/\/[^\s]{1,490}$/.test(url)).slice(0, 8),
+    agent: {
+      contract_version: _safeToken(agent.contract_version),
+      mode: _safeToken(agent.mode),
+      model_directed: agent.model_directed === true,
+      status: _safeToken(agent.status),
+      stop_reason: _safeToken(agent.stop_reason),
+      iterations: _boundedInt(agent.iterations, 100),
+      fallback_mode: _safeToken(agent.fallback_mode),
+      duplicate_calls: _boundedInt(agent.duplicate_calls, 100),
+      calculations: _boundedInt(agent.calculations, 100),
+      web_searches: _boundedInt(agent.web_searches, 100),
+      answer_validation: agent.answer_validation && typeof agent.answer_validation === 'object'
+        ? { status: _safeToken(agent.answer_validation.status), reason: _safeToken(agent.answer_validation.reason),
+            kind: _safeToken(agent.answer_validation.kind) } : null,
+      tool_calls: pick(agent.tool_calls, ['tool', 'status', 'source_status', 'iteration', 'duration_ms',
+        'item_count', 'failure_category', 'provider', 'model', 'source_count', 'cache_hit'], 16),
+      model_turns: pick(agent.model_turns, ['iteration', 'provider', 'model', 'input_tokens', 'output_tokens',
+        'duration_ms', 'attempts', 'fallback_used', 'outcome', 'category', 'stop_reason'], 12),
+    },
+  };
+}
+
+/**
+ * Columns describing which provider/model actually produced the answer. A
+ * deterministic (no-model) answer records null provider/model rather than a
+ * placeholder that would misrepresent the model used.
+ */
+function _executionPersistenceFields(content) {
+  const trace = content?.execution_trace || null;
+  const provider = trace?.provider || null;
+  const model = trace?.model || null;
+  return {
+    modelProvider: provider,
+    modelName: model,
+    inputTokens: trace?.token_usage?.input ?? null,
+    outputTokens: trace?.token_usage?.output ?? null,
+    metadata: trace ? JSON.stringify({
+      execution_trace_version: 'rev-execution-trace-v1',
+      execution_mode: trace.agent?.model_directed ? 'model_agent' : (provider ? 'model_assisted' : 'deterministic'),
+      estimated_cost_usd: trace.estimated_cost_usd,
+      token_scope: trace.token_usage?.scope || null,
+      stop_reason: trace.agent?.stop_reason || null,
+      fallback_used: trace.fallback_used,
+      retries: trace.retries,
+    }) : null,
+  };
+}
+
+/** Bounded, guardrail-filtered agent answer metadata (no prose duplication). */
+function _sanitizeAgentAnswer(answer) {
+  if (!answer || typeof answer !== 'object') return null;
+  const strings = (list, limit, max) => (Array.isArray(list) ? list : [])
+    .filter((entry) => typeof entry === 'string').slice(0, limit).map((entry) => entry.slice(0, max));
+  return {
+    contract_version: _safeToken(answer.contract_version),
+    source: _safeToken(answer.source),
+    provider: _safeToken(answer.provider, PROVIDER_NAME),
+    model: _safeToken(answer.model, MODEL_NAME),
+    validation: answer.validation && typeof answer.validation === 'object'
+      ? { status: _safeToken(answer.validation.status), reason: _safeToken(answer.validation.reason),
+          kind: _safeToken(answer.validation.kind) } : null,
+    evidence_sufficiency: _safeToken(answer.evidence_sufficiency),
+    cited_evidence_ids: strings(answer.cited_evidence_ids, 40, 120),
+    hypotheses_unverified: strings(answer.hypotheses_unverified, 6, 400),
+    unknowns: strings(answer.unknowns, 6, 400),
+    calculations: (Array.isArray(answer.calculations) ? answer.calculations : []).slice(0, 12).map((calc) => ({
+      id: _safeToken(calc?.id), operation: _safeToken(calc?.operation),
+      inputs: strings(calc?.inputs, 12, 120), value: typeof calc?.value === 'string' ? calc.value.slice(0, 40) : null,
+      unit: _safeToken(calc?.unit), currency: _safeToken(calc?.currency),
+      label: typeof calc?.label === 'string' ? calc.label.slice(0, 120) : null,
+    })),
+    web_sources: (Array.isArray(answer.web_sources) ? answer.web_sources : []).slice(0, 8)
+      .filter((source) => typeof source?.url === 'string' && /^https:\/\/[^\s]{1,490}$/.test(source.url))
+      .map((source) => ({ id: _safeToken(source.id), url: source.url,
+        title: typeof source.title === 'string' ? source.title.slice(0, 200) : null })),
+  };
+}
 
 async function _insertRevMessage({
   organizationId, userId, conversationId, sequenceNumber, correlationId, content,
@@ -1197,19 +1337,22 @@ async function _insertRevMessage({
   const steps = investigation?.steps ? JSON.stringify(investigation.steps).slice(0, 100_000) : null;
   const toolStatuses = investigation?.tools_used
     ? JSON.stringify({ tools_used: investigation.tools_used }).slice(0, 10_000) : null;
+  const execution = _executionPersistenceFields(content);
   await prisma.$executeRaw`
     INSERT INTO conversation_messages (
       id, conversation_id, organization_id, user_id, role, content,
       sequence_number, agent_name, model_name, model_provider, correlation_id,
       confidence_score, has_error, error_code, error_message, tool_calls,
-      tool_results, latency_ms, orchestrator_mode, confidence_basis
+      tool_results, latency_ms, orchestrator_mode, confidence_basis,
+      input_tokens, output_tokens, metadata
     ) VALUES (
       ${messageId}::uuid, ${conversationId}::uuid, ${organizationId}::uuid,
       ${userId}::uuid, 'rev', ${contentStr}::jsonb, ${sequenceNumber},
-      ${(agentsUsed || []).join(',')}, 'investigation-pipeline', 'rev-model-gateway',
+      ${(agentsUsed || []).join(',')}, ${execution.modelName}, ${execution.modelProvider},
       ${correlationId}::uuid, ${confidenceScore}, ${hasError}, ${errorCode},
       ${errorMessage}, ${steps}::jsonb, ${toolStatuses}::jsonb, ${latencyMs},
-      ${investigation?.intent || null}, ${content?.response?.confidence?.basis || null}
+      ${investigation?.intent || null}, ${content?.response?.confidence?.basis || null},
+      ${execution.inputTokens}, ${execution.outputTokens}, ${execution.metadata}::jsonb
     )
   `;
   return messageId;

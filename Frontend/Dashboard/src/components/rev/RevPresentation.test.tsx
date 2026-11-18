@@ -398,6 +398,9 @@ describe("investigation status", () => {
     [[step("running")], false, "running", "Investigation incomplete"],
     [[step("completed")], false, "partial", "Investigation incomplete"],
     [[step("running")], true, "running", "Investigating your store evidence"],
+    // A source the agent judged unnecessary is not a failed or missing check.
+    [[step("completed"), step("skipped")], false, "complete", "Investigation complete"],
+    [[step("skipped"), step("failed")], false, "complete", "Investigation has failed checks"],
   ] as Array<[InvestigationStep[], boolean, string, string]>)('labels %j (streaming=%s, status=%s)', (steps, streaming, status, label) => {
     render(<InvestigationTimeline steps={steps} streaming={streaming} investigation={{ status } as RevInvestigationMeta} />);
     fireEvent.click(screen.getByRole("button", { name: new RegExp(label) }));

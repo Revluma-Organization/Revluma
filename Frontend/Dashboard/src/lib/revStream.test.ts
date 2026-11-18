@@ -74,6 +74,8 @@ describe("streamRevAnswer", () => {
       frame("meta", { conversation_id: "conv-1", correlation_id: "corr-1", execution_id: "exec-1" }),
       frame("plan", { intent: "revenue", steps: [{ id: "s1", tool: "orders_summary", label: "Orders", status: "pending" }] }),
       frame("step", { id: "s1", tool: "orders_summary", label: "Orders", status: "completed" }),
+      frame("step", { id: "s2", tool: "traffic_observations", label: "Traffic", status: "skipped" }),
+      frame("step", { id: "s3", tool: "web_research", status: "bogus" }),
       frame("final", finalPayload),
     ]));
     vi.stubGlobal("fetch", fetchMock);
@@ -93,6 +95,9 @@ describe("streamRevAnswer", () => {
     expect(onMeta).toHaveBeenCalledWith({ conversation_id: "conv-1", correlation_id: "corr-1", execution_id: "exec-1" });
     expect(onPlan.mock.calls[0][0].steps).toHaveLength(1);
     expect(onStep).toHaveBeenCalledWith(expect.objectContaining({ tool: "orders_summary", status: "completed" }));
+    // Agent-skipped sources keep their honest state; unknown statuses never read as completed.
+    expect(onStep).toHaveBeenCalledWith(expect.objectContaining({ tool: "traffic_observations", status: "skipped" }));
+    expect(onStep).toHaveBeenCalledWith(expect.objectContaining({ tool: "web_research", status: "running", label: "web research" }));
     expect(onFinal.mock.calls[0][0].evidence.items[0].id).toBe("ev-1");
 
     const [url, init] = fetchMock.mock.calls[0];
