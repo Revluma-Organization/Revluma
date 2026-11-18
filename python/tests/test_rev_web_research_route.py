@@ -21,6 +21,10 @@ async def _allow_internal_test_call():
 
 
 def test_rev_stream_routes_current_research_to_grounded_search(monkeypatch):
+    """Fallback path: the knowledge agent runtime cannot run, so the adaptive
+    grounded-research path answers. The authoritative agent path is covered by
+    test_rev_knowledge_agent.py."""
+    monkeypatch.setattr(investigation, "_knowledge_agent_answer", lambda *args, **kwargs: None)
     monkeypatch.setitem(
         api.app.dependency_overrides,
         api.verify_internal_caller,

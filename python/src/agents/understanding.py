@@ -160,9 +160,11 @@ def understand(message: str, history: list[dict],
             if remaining <= 0:
                 break
             prompt = text_prompt if attempt == 0 else text_prompt + "\nThe previous output was invalid. Return one complete JSON object matching every required field and type; no markup or extra text."
-            raw = generate(prompt, role="fast", max_tokens=700, timeout=remaining,
-                           image_base64=image_base64, image_media_type=image_media_type,
-                           correlation_id=correlation_id)
+            from ..intelligence.execution_telemetry import model_call_purpose
+            with model_call_purpose("understanding"):
+                raw = generate(prompt, role="fast", max_tokens=700, timeout=remaining,
+                               image_base64=image_base64, image_media_type=image_media_type,
+                               correlation_id=correlation_id)
             parsed = _parse(raw)
             if parsed:
                 logger.info("understanding_ok", extra={

@@ -70,3 +70,20 @@ def _stub_optional_composers_for_contract_tests(request, monkeypatch):
         "compose_clarification",
         lambda *_args, **_kwargs: "Which period would you like me to compare?",
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_process_caches():
+    """The process-wide public web-research cache must not leak between tests."""
+    from src.agents import agent_gateway
+
+    agent_gateway.clear_web_cache()
+    yield
+    agent_gateway.clear_web_cache()
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "provider_mocked: runs the real runtime with a scripted AI provider at the HTTP boundary; "
+        "proves contracts, not live-provider quality.")

@@ -19,6 +19,9 @@ import httpx
 
 logger = logging.getLogger("rev.model_gateway")
 _last_generation: ContextVar[dict | None] = ContextVar("rev_last_generation", default=None)
+# Provider-reported usage of the most recent request in this context. Only
+# token counts are kept; never prompts or output.
+_last_usage: ContextVar[dict | None] = ContextVar("rev_last_usage", default=None)
 
 
 def last_generation_metadata() -> dict | None:
@@ -147,6 +150,8 @@ def _gemini_request(model: str, prompt: str, *, role: str, max_tokens: int,
             record_token_usage("gemini", model,
                                input_tokens=int(usage.get("promptTokenCount") or 0),
                                output_tokens=int(usage.get("candidatesTokenCount") or 0))
+            _last_usage.set({"input_tokens": int(usage.get("promptTokenCount") or 0),
+                             "output_tokens": int(usage.get("candidatesTokenCount") or 0)})
         candidates = data.get("candidates") or []
         candidate = candidates[0] if candidates else {}
         output = "".join(part.get("text", "") for part in
@@ -199,6 +204,8 @@ def _anthropic_request(model: str, prompt: str, *, max_tokens: int, timeout: flo
         record_token_usage("anthropic", model,
                            input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
                            output_tokens=int(getattr(usage, "output_tokens", 0) or 0))
+        _last_usage.set({"input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
+                         "output_tokens": int(getattr(usage, "output_tokens", 0) or 0)})
     output = "".join(block.text for block in result.content
                      if getattr(block, "type", "") == "text").strip()
     if not output:
@@ -208,12 +215,26 @@ def _anthropic_request(model: str, prompt: str, *, max_tokens: int, timeout: flo
     return output
 
 
+def _telemetry_model_call(provider: str, model: str | None, elapsed_ms: float, usage: dict | None, *,
+                          category: str | None, outcome: str, attempt: int, fallback_used: bool) -> None:
+    """Report one model attempt to the request-scoped execution recorder."""
+    try:
+        from ..intelligence.execution_telemetry import record_model_call
+        record_model_call(provider=provider, model=model, duration_ms=elapsed_ms,
+                          input_tokens=(usage or {}).get("input_tokens"),
+                          output_tokens=(usage or {}).get("output_tokens"),
+                          attempt=attempt, fallback_used=fallback_used, outcome=outcome, category=category)
+    except Exception:
+        pass
+
+
 def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
              timeout: float = 30.0, image_base64: str | None = None,
              image_media_type: str | None = None, web_search: bool = False,
              correlation_id: str | None = None, execution_id: str | None = None) -> str:
     """Generate under one monotonic latency budget and no more than one retry."""
     _last_generation.set(None)
+    _last_usage.set(None)
     primary = os.getenv("AI_PROVIDER", "anthropic").strip().lower()
     if primary not in {"anthropic", "gemini"}:
         raise ModelProviderError(primary or "unknown", "unsupported_provider", category="invalid_request")
@@ -229,6 +250,8 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
                                    category=category)
         logger.warning("model_provider_unavailable provider=%s role=%s category=%s correlation_id=%s execution_id=%s",
                        primary, role, category, correlation_id, execution_id)
+        _telemetry_model_call(primary, None, 0, None, category=category, outcome="unavailable", attempt=1,
+                              fallback_used=False)
         try:
             from ..intelligence.operational_metrics import record_counter, record_stage
             record_counter("provider_model_failures_total", labels={"provider": primary, "model": "unknown", "category": category})
@@ -293,6 +316,8 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
                 observe_latency("provider_request", elapsed_ms)
             except Exception:
                 pass
+            _telemetry_model_call(provider, model, elapsed_ms, None, category=exc.category, outcome="failure",
+                                  attempt=attempt + 1, fallback_used=attempt > 0 or provider != primary)
             if exc.category not in RETRYABLE_CATEGORIES or attempt + 1 >= len(attempts):
                 break
             next_provider, next_model = attempts[attempt + 1]
@@ -321,10 +346,13 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
             observe_latency("provider_request", elapsed_ms)
         except Exception:
             pass
+        usage = _last_usage.get()
         _last_generation.set({"provider": provider, "model": model, "role": role,
                               "duration_ms": elapsed_ms, "attempts": attempt + 1,
                               "fallback_used": fallback_used,
-                              "usage": None})
+                              "usage": dict(usage) if usage else None})
+        _telemetry_model_call(provider, model, elapsed_ms, usage, category=None, outcome="success",
+                              attempt=attempt + 1, fallback_used=fallback_used)
         return output
     if last_error is None:
         last_error = ModelProviderError(primary, "timeout_budget_exhausted")

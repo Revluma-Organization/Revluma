@@ -6,7 +6,9 @@ from src.intelligence.knowledge_retrieval import (
 )
 
 
-def test_four_knowledge_domains_route_to_distinct_source_namespaces():
+def test_four_knowledge_domains_route_to_distinct_source_namespaces(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     shopify = resolve_knowledge_route("How do Shopify webhooks work?", "knowledge")
     ecommerce = resolve_knowledge_route("What is a product contribution margin?", "knowledge")
     rev = resolve_knowledge_route("How does Rev Intelligence work?", "knowledge")
@@ -18,11 +20,21 @@ def test_four_knowledge_domains_route_to_distinct_source_namespaces():
     assert tenant.sources == (ECOMMERCE_KNOWLEDGE, TENANT_MEMORY)
     assert tenant.private_tenant_context is True
     assert tenant.conversation_history is True
-    # Document collections do not currently have ingestion/retrieval adapters;
-    # they must be visible as unavailable, never silently treated as searched.
+    # Coverage is reported as it really is, never silently treated as searched:
+    # - Revluma docs have a runtime-registry adapter (capabilities, metrics,
+    #   policies), so they are configured;
+    # - no general ecommerce corpus exists, so it is always unavailable;
+    # - Shopify docs are only retrievable through a search-capable provider,
+    #   and this test removes every provider key, so unavailable.
+    assert rev.configured_sources == (REV_PRODUCT_DOCS,)
+    assert rev.unavailable_sources == ()
+    assert ecommerce.configured_sources == ()
+    assert ecommerce.unavailable_sources == (ECOMMERCE_KNOWLEDGE,)
+    assert shopify.configured_sources == ()
+    assert shopify.unavailable_sources == (SHOPIFY_DOCS,)
+    assert tenant.configured_sources == (TENANT_MEMORY,)
+    assert tenant.unavailable_sources == (ECOMMERCE_KNOWLEDGE,)
     for route in (shopify, ecommerce, rev):
-        assert route.configured_sources == ()
-        assert route.unavailable_sources == route.sources
         assert route.model_knowledge_fallback is True
 
 
