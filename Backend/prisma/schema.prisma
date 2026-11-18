@@ -258,7 +258,7 @@ model stores {
   integration_version               Int                                 @default(0)
   integration_changed_at            DateTime?                           @db.Timestamptz(6)
   authorization_verified_at         DateTime?                           @db.Timestamptz(6)
-  initial_sync_status               String                              @default("not_started") @db.VarChar(32)
+  initial_sync_status               String                              @default("not_started") @db.VarChar(48)
   current_sync_job_id               String?                             @db.Uuid
   sync_started_at                   DateTime?                           @db.Timestamptz(6)
   sync_completed_at                 DateTime?                           @db.Timestamptz(6)

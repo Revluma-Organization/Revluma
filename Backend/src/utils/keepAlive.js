@@ -6,7 +6,7 @@ const axios = require('axios');
 require('dotenv').config();
 const logger = require('./logger');
 
-const BACKEND_URL    = process.env.BACKEND_URL    || 'https://revluma-backend.onrender.com';
+const BACKEND_URL    = process.env.BACKEND_URL    || 'https://revluma-backend-lqve.onrender.com';
 const PYTHON_URL     = process.env.PYTHON_SERVICE_URL;
 const PING_INTERVAL  = 10 * 60 * 1000; // 10 minutes
 let intervalHandle = null;

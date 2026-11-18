@@ -3,7 +3,7 @@
   // Local backend typically uses PORT=8000 so it does not collide with Vite (8080).
   window.REVLUMA_API_BASE = isLocal
     ? 'http://localhost:8000/api/v1'
-    : 'https://revluma-backend-vrsd.onrender.com/api/v1';
+    : 'https://revluma-backend-lqve.onrender.com/api/v1';
 })();
 
 window.REVLUMA_GOOGLE_CLIENT_ID = '137716714187-75iq86blnhp09hcg7spvhspgath32eol.apps.googleusercontent.com';

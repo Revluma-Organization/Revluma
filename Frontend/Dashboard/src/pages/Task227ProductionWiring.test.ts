@@ -26,7 +26,7 @@ describe("T227 API configuration and contracts — 20 scenarios", () => {
     ["preserves an explicit port in development", "http://localhost:8000/api/v1", "http://localhost:8000/api/v1", false],
     ["allows non-production loopback", "http://127.0.0.1:8000", "http://127.0.0.1:8000/api/v1", false],
     ["uses the development default", undefined, "http://localhost:8000/api/v1", false],
-    ["accepts the live Render API target", "https://revluma-backend-vrsd.onrender.com/api/v1", "https://revluma-backend-vrsd.onrender.com/api/v1"],
+    ["accepts the live Render API target", "https://revluma-backend-lqve.onrender.com/api/v1", "https://revluma-backend-lqve.onrender.com/api/v1"],
   ])("%s", (_name, raw, expected, production = true) => {
     expect(resolveApiBaseUrl(raw, production)).toBe(expected);
   });

@@ -1,5 +1,5 @@
 /** Authenticated production smoke test. No token or merchant data is printed. */
-const base = process.env.REV_API_BASE_URL || 'https://revluma-backend-vrsd.onrender.com';
+const base = process.env.REV_API_BASE_URL || 'https://revluma-backend-lqve.onrender.com';
 const token = process.env.REV_MERCHANT_ACCESS_TOKEN;
 if (!token) {
   console.error('Set REV_MERCHANT_ACCESS_TOKEN to a valid merchant access token.');

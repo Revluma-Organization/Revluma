@@ -1,4 +1,5 @@
-const WAITLIST_URL = 'https://revluma-backend-vrsd.onrender.com/api/v1/waitlist/join';
+const BACKEND_BASE_URL = (process.env.BACKEND_API_URL || 'https://revluma-backend-lqve.onrender.com').replace(/\/+$/, '');
+const WAITLIST_URL = `${BACKEND_BASE_URL}/api/v1/waitlist/join`;
 
 module.exports = async function joinWaitlist(req, res) {
   res.setHeader('Cache-Control', 'no-store');

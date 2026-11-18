@@ -1,6 +1,6 @@
 class RevlumaAuth {
     constructor() {
-        this.apiBase = window.REVLUMA_API_BASE || 'https://revluma-backend-vrsd.onrender.com/api/v1';
+        this.apiBase = window.REVLUMA_API_BASE || 'https://revluma-backend-lqve.onrender.com/api/v1';
         this.loginPath = '/auth/login.html';
     }
 
