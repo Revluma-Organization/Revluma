@@ -31,7 +31,7 @@ test('all canonical store sync states fit the persisted varchar(48) column', () 
     assert.ok(status.length <= 48, `sync status exceeds stores.initial_sync_status capacity: ${status}`);
   }
 });
-\ntest('assertStatus rejects unknown values and accepts canonical ones', () => {
+test('assertStatus rejects unknown values and accepts canonical ones', () => {
   assert.equal(C.assertStatus('resource_completed').ok, true);
   assert.equal(C.assertStatus('bogus').ok, false);
   assert.equal(C.assertStatus('').ok, false);
