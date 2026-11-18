@@ -26,7 +26,12 @@ test('contract exposes a version and closed canonical sets', () => {
   }
 });
 
-test('all canonical store sync states fit the persisted varchar(48) column', () => {\n  for (const status of Object.values(C.SYNC_STATUS)) {\n    assert.ok(status.length <= 48, `sync status exceeds stores.initial_sync_status capacity: ${status}`);\n  }\n});\n\ntest('assertStatus rejects unknown values and accepts canonical ones', () => {
+test('all canonical store sync states fit the persisted varchar(48) column', () => {
+  for (const status of Object.values(C.SYNC_STATUS)) {
+    assert.ok(status.length <= 48, `sync status exceeds stores.initial_sync_status capacity: ${status}`);
+  }
+});
+\ntest('assertStatus rejects unknown values and accepts canonical ones', () => {
   assert.equal(C.assertStatus('resource_completed').ok, true);
   assert.equal(C.assertStatus('bogus').ok, false);
   assert.equal(C.assertStatus('').ok, false);
