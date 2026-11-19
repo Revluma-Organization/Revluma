@@ -1,6 +1,6 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RevOrb, RevOrbVideo } from "./RevOrb";
+import { RevOrb, RevOrbLoader, RevOrbVideo } from "./RevOrb";
 
 function mockReducedMotion(matches: boolean) {
   vi.stubGlobal("matchMedia", (query: string) => ({
@@ -63,5 +63,48 @@ describe("RevOrbVideo", () => {
     const { container } = render(<RevOrbVideo size={24} />);
     expect(container.querySelector("video")).toBeNull();
     expect(container.querySelector("img")!.getAttribute("src")).toMatch(/rev-orb\.png/);
+  });
+});
+
+describe("RevOrbLoader", () => {
+  it("announces a status and plays the circular-clipped orb loop", () => {
+    mockReducedMotion(false);
+    const { container } = render(<RevOrbLoader accessibleLabel="Rev is preparing a response" />);
+    const status = screen.getByRole("status", { name: "Rev is preparing a response" });
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(status.textContent).toContain("Rev is thinking");
+    const video = container.querySelector("video")!;
+    expect(video.autoplay).toBe(true);
+    expect(video.loop).toBe(true);
+    expect(video.muted).toBe(true);
+    expect(video.hasAttribute("muted")).toBe(true);
+    expect(video.hasAttribute("playsinline")).toBe(true);
+    expect(video.getAttribute("poster")).toMatch(/rev-orb-loader\.png/);
+    expect(container.querySelector("source")!.getAttribute("src")).toMatch(/rev-orb-loader\.mp4/);
+    expect(video.style.clipPath).toContain("circle(");
+    expect(video.closest("[aria-hidden='true']")).toBeTruthy();
+  });
+
+  it("can hide the visible caption while keeping the accessible status", () => {
+    mockReducedMotion(false);
+    render(<RevOrbLoader label="" accessibleLabel="Rev is preparing a response" />);
+    const status = screen.getByRole("status", { name: "Rev is preparing a response" });
+    expect(status.textContent).toBe("");
+  });
+
+  it("keeps the poster when the browser refuses autoplay", async () => {
+    mockReducedMotion(false);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.reject(new Error("NotAllowedError")));
+    const { container } = render(<RevOrbLoader />);
+    await Promise.resolve();
+    expect(container.querySelector("video")!.getAttribute("poster")).toMatch(/rev-orb-loader\.png/);
+  });
+
+  it("shows the still orb when the user prefers reduced motion", () => {
+    mockReducedMotion(true);
+    const { container } = render(<RevOrbLoader />);
+    expect(container.querySelector("video")).toBeNull();
+    expect(container.querySelector("img")!.getAttribute("src")).toMatch(/rev-orb-loader\.png/);
+    expect(screen.getByRole("status")).toBeTruthy();
   });
 });

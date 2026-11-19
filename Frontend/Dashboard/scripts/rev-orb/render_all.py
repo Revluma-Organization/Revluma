@@ -38,6 +38,14 @@ elif job == "sidebar":
     small = list(frames(288, 24, 0.84, 96))
     encode([24, "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
             "-an", "out/rev-orb.mp4"], on_black(iter(small)), 96)
+elif job == "loader":
+    # The sphere fills the frame so a circular CSS clip removes the black
+    # background: the loader then works on light and dark surfaces alike.
+    small = list(frames(336, 24, 0.97, 112))
+    encode([24, "-c:v", "libx264", "-preset", "slow", "-crf", "24", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            "-an", "out/rev-orb-loader.mp4"], on_black(iter(small)), 112)
+    still = Image.fromarray(orb.to_rgba8(orb.render(672, 0.0, R=0.97)), "RGBA").resize((112, 112), Image.LANCZOS)
+    still.save("out/rev-orb-loader.png", optimize=True)
 elif job == "images":
     imgs = [Image.fromarray(f, "RGBA") for f in frames(384, 12, 0.80, 128)]
     imgs[0].save("out/rev-orb.webp", save_all=True, append_images=imgs[1:], duration=83, loop=0,

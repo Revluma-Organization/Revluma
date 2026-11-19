@@ -14,6 +14,7 @@ python3 -m venv /tmp/orb && /tmp/orb/bin/pip install numpy pillow imageio-ffmpeg
 cd Frontend/Dashboard/scripts/rev-orb && mkdir -p out
 /tmp/orb/bin/python render_all.py images     # rev-orb.webp (animated, alpha) + rev-orb.png (still)
 /tmp/orb/bin/python render_all.py sidebar    # rev-orb.mp4 (H.264 on black, screen-blended in the sidebar)
+/tmp/orb/bin/python render_all.py loader     # rev-orb-loader.mp4 + .png (sphere fills frame; circle-clipped chat loader)
 /tmp/orb/bin/python render_all.py showcase   # rev-intell-orb-1080.mp4 (1080x1080, 12 s, on black)
 ```
 
@@ -23,6 +24,7 @@ Copy the `out/` files to these locations:
 |---|---|---|
 | `rev-orb.webp`, `rev-orb.png` | `src/assets/rev-orb/` | `<RevOrb>`: topbar, Rev hero, message avatars, history header |
 | `rev-orb.mp4` | `src/assets/rev-orb/` | `<RevOrbVideo>`: sidebar nav item |
+| `rev-orb-loader.mp4`, `rev-orb-loader.png` | `src/assets/rev-orb/` | `<RevOrbLoader>`: Rev Intell "thinking" indicator while a reply streams |
 | `rev-intell-orb-1080.mp4` | `Frontend/assets/videos/` | showcase / marketing |
 
 `out/` is scratch output; do not commit it.
