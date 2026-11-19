@@ -32,7 +32,7 @@ import {
 import { commandCenterReturnRoute, revConversationRoute } from "@/lib/workspaceNavigation";
 import { explainWorkspaceError, isKnownWorkspaceCode, merchantMessage } from "@/lib/workspaceCommunication";
 import { workspaceDesign } from "@/lib/workspaceDesign";
-import { RevOrb } from "@/components/rev/RevOrb";
+import { RevOrb, RevOrbLoader } from "@/components/rev/RevOrb";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
 import api, { ApiError } from "@/lib/api";
@@ -319,28 +319,6 @@ function OrbAvatar() {
   );
 }
 
-// ── Loading shimmer ───────────────────────────────────────────────────────────
-
-function LoadingBar({ isDark }: { isDark: boolean }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4, paddingBottom: 4 }}>
-      {[0.85, 0.65, 0.45].map((w, i) => (
-        <motion.div key={i}
-          style={{ height: 10, borderRadius: 999,
-            background: isDark ? "#1f2937" : "#e5e7eb",
-            width: `${w * 100}%`, overflow: "hidden", position: "relative" }}>
-          <motion.div
-            style={{ position: "absolute", inset: 0, borderRadius: 999,
-              background: `linear-gradient(90deg, transparent 0%, ${isDark ? "rgba(31,6,172,0.5)" : "rgba(31,6,172,0.3)"} 50%, transparent 100%)` }}
-            animate={{ x: ["-100%", "200%"] }}
-            transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut", delay: i * 0.18 }} />
-        </motion.div>
-      ))}
-    </div>
-  );
-}
-
-
 // ── Retry with an honest rate-limit countdown ─────────────────────────────────
 // A 429 / 5xx carries a real Retry-After: the control is disabled and counts
 // down rather than firing an immediate retry loop or fabricating progress. A
@@ -432,7 +410,7 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
           </span>
         </div>
 
-        {msg.isStreaming && <div role="status" aria-label="Rev is preparing a response"><LoadingBar isDark={isDark} /></div>}
+        {msg.isStreaming && <RevOrbLoader color={t2} accessibleLabel="Rev is preparing a response" />}
 
         {msg.isStreaming && !msg.payload && msg.steps && msg.steps.length > 0 && (
           <div style={{ marginTop: 10 }}>
