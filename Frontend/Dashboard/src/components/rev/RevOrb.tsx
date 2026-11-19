@@ -9,6 +9,7 @@
 //   <RevOrbLoader> Loading indicator while Rev prepares an answer: a looping
 //                  video whose sphere fills the frame, clipped to a circle so
 //                  it works on light and dark themes, with a soft CSS glow.
+//                  No visible caption by default; the status is announced.
 //   <RevOrbVideo>  Looping muted H.264 video for the always-dark sidebar.
 //                  It is rendered on black and blended with `screen`, so the
 //                  black is invisible on the dark surface (including hover and
@@ -101,9 +102,9 @@ function useMutedAutoplay(reduced: boolean) {
 const LOADER_CLIP = "circle(47.5% at 50% 50%)";
 
 /** Loading indicator shown while Rev prepares an answer. */
-export function RevOrbLoader({ size = 48, label = "Rev is thinking…", color, accessibleLabel }: {
+export function RevOrbLoader({ size = 48, label = "", color, accessibleLabel }: {
   size?: number;
-  /** Visible caption next to the orb. Pass an empty string to hide it. */
+  /** Optional visible caption next to the orb (none by default). */
   label?: string;
   color?: string;
   /** Screen-reader status text. Defaults to the visible label. */
@@ -117,7 +118,7 @@ export function RevOrbLoader({ size = 48, label = "Rev is thinking…", color, a
     objectFit: "cover", clipPath: LOADER_CLIP, WebkitClipPath: LOADER_CLIP, pointerEvents: "none",
   };
   return (
-    <div role="status" aria-live="polite" aria-label={accessibleLabel || label || "Rev is thinking"}
+    <div role="status" aria-live="polite" aria-label={accessibleLabel || label || "Rev is preparing a response"}
       data-rev-orb-loader="" style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 2, paddingBottom: 2 }}>
       <span aria-hidden="true" style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
         <span style={{ position: "absolute", inset, borderRadius: "50%",

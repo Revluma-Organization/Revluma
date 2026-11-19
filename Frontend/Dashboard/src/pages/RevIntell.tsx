@@ -311,14 +311,6 @@ function OrbHero({ size = 90 }: { size?: number }) {
   );
 }
 
-function OrbAvatar() {
-  return (
-    <div style={{ position: "relative", width: 32, height: 32, flexShrink: 0, marginTop: 2 }}>
-      <RevOrb size={34} alt="Rev" style={{ margin: -1 }} />
-    </div>
-  );
-}
-
 // ── Retry with an honest rate-limit countdown ─────────────────────────────────
 // A 429 / 5xx carries a real Retry-After: the control is disabled and counts
 // down rather than firing an immediate retry loop or fabricating progress. A
@@ -401,16 +393,8 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
       className="flex gap-3 mb-7 group">
-      <OrbAvatar />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-[0.73rem] font-bold" style={{ color: t1 }}>Rev Intelligence</span>
-            <span className="text-[0.65rem]" style={{ color: t2 }}>
-            {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-          </span>
-        </div>
-
-        {msg.isStreaming && <RevOrbLoader color={t2} accessibleLabel="Rev is preparing a response" />}
+        {msg.isStreaming && <RevOrbLoader accessibleLabel="Rev is preparing a response" />}
 
         {msg.isStreaming && !msg.payload && msg.steps && msg.steps.length > 0 && (
           <div style={{ marginTop: 10 }}>

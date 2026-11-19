@@ -72,7 +72,7 @@ describe("RevOrbLoader", () => {
     const { container } = render(<RevOrbLoader accessibleLabel="Rev is preparing a response" />);
     const status = screen.getByRole("status", { name: "Rev is preparing a response" });
     expect(status.getAttribute("aria-live")).toBe("polite");
-    expect(status.textContent).toContain("Rev is thinking");
+    expect(status.textContent).toBe("");
     const video = container.querySelector("video")!;
     expect(video.autoplay).toBe(true);
     expect(video.loop).toBe(true);
@@ -85,11 +85,12 @@ describe("RevOrbLoader", () => {
     expect(video.closest("[aria-hidden='true']")).toBeTruthy();
   });
 
-  it("can hide the visible caption while keeping the accessible status", () => {
+  it("shows no visible caption by default but still announces a status", () => {
     mockReducedMotion(false);
-    render(<RevOrbLoader label="" accessibleLabel="Rev is preparing a response" />);
+    render(<RevOrbLoader />);
     const status = screen.getByRole("status", { name: "Rev is preparing a response" });
     expect(status.textContent).toBe("");
+    expect(screen.queryByText(/Rev is thinking/)).toBeNull();
   });
 
   it("keeps the poster when the browser refuses autoplay", async () => {
