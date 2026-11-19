@@ -143,3 +143,25 @@ describe("classifyRevFailure — recoverable vs permanent", () => {
     for (const kind of polite) expect(isAssertiveRevFailure(kind), kind).toBe(false);
   });
 });
+
+// Live 2026-11-19: a PROVIDER_FAILURE stream frame was shown as "Check your
+// connection" because the code was unmapped. Server outcomes are never a
+// browser connectivity failure, and the server's retry decision is honoured.
+describe("classifyRevFailure — server outcomes on an accepted stream", () => {
+  const streamFailure = (code: string, retryable?: boolean) =>
+    Object.assign(new Error("server message"), { code, status: 0, ...(retryable === undefined ? {} : { retryable }) });
+
+  it.each(["PROVIDER_FAILURE", "INVESTIGATION_FAILED", "STREAM_FAILED", "MALFORMED_RESPONSE",
+    "REV_TURN_IN_PROGRESS", "SUBMISSION_NOT_ACCEPTED", "RETRY_NOT_ELIGIBLE"])("never classifies %s as network", (code) => {
+    expect(classifyRevFailure(streamFailure(code), code).kind).not.toBe("network");
+  });
+
+  it("honours a permanent provider rejection (retryable=false from the server)", () => {
+    const result = classifyRevFailure(streamFailure("PROVIDER_FAILURE", false), "PROVIDER_FAILURE");
+    expect(result).toEqual({ kind: "service_unavailable", retryable: false, retryAfterSeconds: null });
+  });
+
+  it("honours a transient provider failure (retryable=true from the server)", () => {
+    expect(classifyRevFailure(streamFailure("PROVIDER_FAILURE", true), "PROVIDER_FAILURE").retryable).toBe(true);
+  });
+});

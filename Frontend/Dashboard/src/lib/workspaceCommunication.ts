@@ -43,6 +43,11 @@ const CODE_KIND: Record<string, MerchantMessageKind> = {
   READ_ONLY: "read_only", VALIDATION_ERROR: "validation", NOT_FOUND: "not_found", FINDING_NOT_FOUND: "not_found",
 };
 
+/** True when the shared classifier has closed wording for this backend code. */
+export function isKnownWorkspaceCode(code: string): boolean {
+  return Object.prototype.hasOwnProperty.call(CODE_KIND, code);
+}
+
 function errorCode(reason: unknown): string | undefined {
   if (reason instanceof ApiError) {
     const body = reason.body as { code?: unknown; error?: string | { code?: unknown }; reason_code?: unknown } | null;

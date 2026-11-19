@@ -207,3 +207,41 @@ See `REV-KNOWLEDGE-EFFICIENCY-TELEMETRY-ACCEPTANCE-2026-11-18.md`. That follow-u
 - 47 scripted-provider acceptance and contract tests through `/rev/stream`.
 
 It is local and CI evidence only. The production gates in §10–§12 are still unmet, so the disposition above is unchanged.
+
+## 16. Live production run 1 (2026-11-19) and production-hardening fixes
+
+### 16.1 What the live run showed (read-only Supabase verification)
+
+Render was confirmed live on `63f1853` (Python `/health`; Node `/health` and `/ready` with DB, Python and Redis ready). The run used one conversation on the test store.
+
+| Seq | Turn | Outcome |
+|---|---|---|
+| 2, 4, 6, 8 | social turns | answered (fast model `gemini-3.5-flash-lite`), but `model_provider`, `model_name` and token columns were **NULL** |
+| 10 | Test A "What is a good cart abandonment rate for ecommerce?" | **PROVIDER_FAILURE** (`invalid_request`, provider 4xx) after 32,458 ms; row `metadata` NULL; no provider/model recorded |
+| — | "Ask again" | UI showed "Check your connection…"; **no rows persisted** |
+
+**Test A: FAIL. Tests B–F: not run.** The production gates in §10–§12 are still unmet.
+
+### 16.2 Root causes and fixes (this branch)
+
+1. **Gemini 3.x request incompatibility** (the knowledge/agent path, deep role). The deployed default deep model was the deprecated `gemini-2.5-flash`, and requests used 2.5-era configuration. Google's Gemini 3.x guidance requires `thinkingLevel` (not `thinkingBudget`). Thinking tokens count against `maxOutputTokens`. A request ending with a model turn is rejected. `functionResponse` must echo the call `id`. Fixes:
+   - `gemini_generation_config`: `thinkingLevel` per role (`GEMINI_FAST_THINKING_LEVEL` default `minimal`, `GEMINI_DEEP_THINKING_LEVEL` default `low`; `minimal` is raised to `low` where unsupported) plus `GEMINI_THINKING_HEADROOM_TOKENS` (default 2048, cap 16384). 2.5 Flash keeps `thinkingBudget:0`; 2.5 Pro sends no thinking config.
+   - `functionResponse.id` comes from the provider call id (never invented). Requests always end with a user turn. Thought parts are never treated as answer text.
+   - Defaults: `GEMINI_MODEL=gemini-3.6-flash` and `GEMINI_FAST_MODEL=gemini-3.5-flash-lite`. The unset or empty `GEMINI_FALLBACK_MODEL` defaults to the other role's Gemini model.
+   - **Unchanged:** 4xx, including 404 unknown model, stays permanent and is never retried or substituted (existing tests `test_model_gateway.py` and matrix P03 were kept as they are).
+2. **Missing provider, model and tokens on composer-only rows.** `_attribute_answer_model` attributes a composed answer to its successful `answer_composition` (then `narrative`, then `agent_turn`) call. It records `model_attribution` and falls back to request token totals with an honest scope. Routing-only calls are never attributed.
+3. **Error rows had no failure detail.** Python emits content-free `rev-provider-failure-diagnostics-v1` diagnostics: provider, model, category, `http_status`, provider error-type enum, attempts, fallback, `attempt_log` (≤4) and the failed call purpose. It also emits sanitized telemetry. Model-call telemetry stores `http_status` and `provider_error_type` on failures only. Node `_failedTurnContent` persists these on the error row and fills `model_provider` and `model_name`; metadata `execution_mode` is `failed` and `model_attribution` is `failed_attempt`. Provider messages and merchant text never persist.
+4. **Retry not persisted, with a misleading connection error.** `PROVIDER_FAILURE`, `STREAM_FAILED`, `MALFORMED_RESPONSE`, `INVESTIGATION_FAILED`, `REV_TURN_IN_PROGRESS` and related codes were unmapped, so a server outcome was shown as a connectivity problem. They now have closed merchant wording and recovery classification, and the server's `retryable` decision is honoured. An unmapped server code is shown as a failed request, never as a connection problem. A failure frame carrying `conversation_id` spends the draft's idempotency key, so a resend is a new submission rather than a replay of the recorded failure.
+5. **Long silent model turns.** The Node SSE writer sends a `: keepalive` comment every 15 s (`REV_SSE_HEARTBEAT_MS`, minimum 5 s). The heartbeat stops on end or disconnect.
+
+### 16.3 Local evidence (scripted providers; not production evidence)
+
+- Python: **2539 passed, 11 skipped**. This includes 23 new tests in `tests/test_rev_gemini3_compat.py`, which is added to the focused CI step.
+- Node: `revPersistence.contract.test.js` passes, with new failed-turn, attribution and heartbeat contracts. Full `npm test` gives 105/115; the 10 failures need the Prisma client and are identical to baseline.
+- Dashboard vitest: **58 files, 1416 tests passed**, including new provider-failure, unmapped-code and fresh-request-id tests.
+
+### 16.4 Operator action required before re-running A–F
+
+On Render Python, set `GEMINI_MODEL` to a current model (recommended `gemini-3.6-flash`). Leave `GEMINI_FALLBACK_MODEL` empty or set it to a current model (for example `gemini-3.8-flash`). Never use the deprecated `gemini-2.5-flash`. Then re-run A–F and verify the rows read-only in Supabase.
+
+Disposition is unchanged: **NOT VERIFIED IN PRODUCTION** until §11 has passing evidence.

@@ -30,7 +30,7 @@ import {
   ThumbsUp, ThumbsDown, Volume2,
 } from "lucide-react";
 import { commandCenterReturnRoute, revConversationRoute } from "@/lib/workspaceNavigation";
-import { explainWorkspaceError, merchantMessage } from "@/lib/workspaceCommunication";
+import { explainWorkspaceError, isKnownWorkspaceCode, merchantMessage } from "@/lib/workspaceCommunication";
 import { workspaceDesign } from "@/lib/workspaceDesign";
 import revIntellLogo from "@/assets/images/rev-intell-logo.png";
 import { useAuth } from "@/context/AuthContext";
@@ -267,8 +267,23 @@ function cleanError(code?: string | { status?: number } | (ApiError & { status?:
     STREAM_START_FAILED: "Rev couldn’t start this answer. Your question is preserved; try again.",
     STREAM_UNSUPPORTED: "This browser can’t receive Rev’s live answer. Use a current browser and try again.",
     VALIDATION_ERROR: merchantMessage("validation").body,
+    // Server-side outcomes reported on an accepted stream. These must never be
+    // presented as a connection problem on the merchant's side.
+    PROVIDER_FAILURE: "Rev’s AI service couldn’t complete this answer. Your question is saved; nothing in your store was changed.",
+    INVESTIGATION_FAILED: "Rev couldn’t complete this answer. Your question is saved; try again.",
+    STREAM_FAILED: "Rev couldn’t complete this answer. Your question is saved; try again.",
+    MALFORMED_RESPONSE: "Rev returned an incomplete answer. Your question is saved; try again.",
+    REV_TURN_IN_PROGRESS: "Rev is still working on this question. Wait a moment, then refresh the conversation.",
+    SUBMISSION_NOT_ACCEPTED: "Rev couldn’t accept this question. Try sending it again.",
+    RETRY_NOT_ELIGIBLE: "This answer can’t be retried as-is. Rephrase the question or try again later.",
   };
-  return revSpecific[typeof code === "string" ? code : ""] || common.body;
+  if (typeof code === "string" && revSpecific[code]) return revSpecific[code];
+  // A structured code the server sent is a server outcome: an unmapped one is a
+  // failed request, not a browser connectivity problem.
+  if (typeof code === "string" && !/^\d+$/.test(code.trim()) && !isKnownWorkspaceCode(code)) {
+    return merchantMessage("failed").body;
+  }
+  return common.body;
 }
 
 // Centralizes the failed-turn message across both catches (the api.post reject and
@@ -1512,6 +1527,14 @@ export default function RevIntell() {
       } else {
         const code = responseErrorCode(err) ?? "";
         findingRejected(code);
+        if (err instanceof RevStreamError && err.conversationId && isCurrent()) {
+          // The server accepted and recorded this turn (or replayed a recorded
+          // failure). The draft's idempotency key is spent: a resend must be a
+          // new submission, not a replay of this failure.
+          acceptDraft();
+          adoptConversation(err.conversationId);
+          patch(message => ({ ...message, persistence: "persisted" }));
+        }
         const failure = classifyRevFailure(err, code);
         const msg = revTurnMessage(code, err);
         patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code,

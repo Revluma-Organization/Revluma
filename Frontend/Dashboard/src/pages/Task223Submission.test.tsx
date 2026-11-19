@@ -147,6 +147,37 @@ describe('Task 223 acceptance-safe submission', () => {
     expect(screen.getByRole('button', { name: 'Ask again' })).toBeEnabled();
   });
 
+  it('shows an accepted provider failure as a service failure, never a connection problem', async () => {
+    renderPage(); typeQuestion('What is a good cart abandonment rate for ecommerce?'); clickSend(); await accept();
+    const failure = Object.assign(new RevStreamError('PROVIDER_FAILURE', 'Provider rejected the request.'),
+      { conversationId: 'accepted-conversation', retryable: true });
+    await act(async () => streams[0].result.reject(failure));
+    expect(screen.getByText(/Rev’s AI service couldn’t complete this answer/)).toBeInTheDocument();
+    expect(screen.queryByText(/Check your connection/)).not.toBeInTheDocument();
+  });
+
+  it('starts a new submission after a recorded failure even when the meta frame was lost', async () => {
+    // Live 2026-11-19: the retry reused the failed turn's request id, so the
+    // server replayed the recorded failure and stored nothing new.
+    renderPage(); typeQuestion('Lost meta question'); clickSend();
+    const replayed = Object.assign(new RevStreamError('PROVIDER_FAILURE', 'Recorded failure.'),
+      { conversationId: 'accepted-conversation', idempotentReplay: true, retryable: true });
+    await act(async () => streams[0].result.reject(replayed));
+    expect(screen.getByRole('textbox', { name: 'Message Rev' })).toHaveValue('');
+    typeQuestion('Lost meta question'); clickSend();
+    expect(streams).toHaveLength(2);
+    expect(streams[1].request.requestId).not.toBe(streams[0].request.requestId);
+    expect(streams[1].request.conversationId).toBe('accepted-conversation');
+    await finish(1);
+  });
+
+  it('shows an unmapped server code as a failed request, not a connection problem', async () => {
+    renderPage(); typeQuestion('Unknown server code'); clickSend(); await accept();
+    await act(async () => streams[0].result.reject(new RevStreamError('SOME_NEW_SERVER_CODE', 'Failed')));
+    expect(screen.queryByText(/Check your connection/)).not.toBeInTheDocument();
+    expect(screen.getByText(/No success is assumed/)).toBeInTheDocument();
+  });
+
   it('does not submit whitespace or expose a false loading state', () => {
     renderPage(); typeQuestion(' \n\t ');
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();

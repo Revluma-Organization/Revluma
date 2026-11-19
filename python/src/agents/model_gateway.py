@@ -30,10 +30,86 @@ def last_generation_metadata() -> dict | None:
     return dict(value) if isinstance(value, dict) else None
 
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-GEMINI_FAST_MODEL = os.environ.get("GEMINI_FAST_MODEL", "gemini-2.5-flash-lite")
+# Defaults track models that new Gemini API projects can actually call.
+# ``gemini-2.5-flash`` is deprecated, restricted to existing users and is
+# re-routed on 2026-12-01, so it is no longer a safe default. Deployments
+# override these with GEMINI_MODEL / GEMINI_FAST_MODEL; the model that served
+# each call is always recorded in telemetry and traces.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "").strip() or "gemini-3.6-flash"
+GEMINI_FAST_MODEL = os.environ.get("GEMINI_FAST_MODEL", "").strip() or "gemini-3.5-flash-lite"
 RETRYABLE_CATEGORIES = frozenset({"timeout", "rate_limited", "provider_unavailable", "connection_failed"})
 MODEL_NAME = re.compile(r"[A-Za-z0-9._:-]{1,120}\Z")
+THINKING_LEVELS = ("minimal", "low", "medium", "high")
+_GEMINI_VERSION = re.compile(r"gemini-(\d+)(?:\.(\d+))?")
+_PROVIDER_ERROR_TYPE = re.compile(r"[A-Za-z_]{1,60}\Z")
+
+
+def _gemini_version(model: str) -> tuple[int, int]:
+    match = _GEMINI_VERSION.match(model or "")
+    if not match:
+        return 0, 0
+    return int(match.group(1)), int(match.group(2) or 0)
+
+
+def _supports_minimal_thinking(model: str) -> bool:
+    major, minor = _gemini_version(model)
+    # Gemini 4 models, 3.8 Flash and the Pro models reject ``minimal``.
+    return major == 3 and minor <= 6 and "pro" not in model
+
+
+def gemini_thinking_level(model: str, role: str) -> str | None:
+    """Thinking level for Gemini 3+ models (``None`` for older families).
+
+    Gemini 3 and later replace ``thinkingBudget`` with ``thinkingLevel`` and
+    cannot disable thinking. Interactive roles default to the lowest level the
+    model accepts; operators can raise it per role without a code change.
+    """
+    major, _minor = _gemini_version(model)
+    if major < 3:
+        return None
+    env_name = "GEMINI_FAST_THINKING_LEVEL" if role == "fast" else "GEMINI_DEEP_THINKING_LEVEL"
+    level = os.getenv(env_name, "minimal" if role == "fast" else "low").strip().lower()
+    if level not in THINKING_LEVELS:
+        level = "low"
+    if level == "minimal" and not _supports_minimal_thinking(model):
+        level = "low"
+    return level
+
+
+def gemini_generation_config(model: str, max_tokens: int, *, role: str) -> dict:
+    """Model-family-aware ``generationConfig`` for the Gemini REST API.
+
+    * Gemini 2.5 Flash/Flash-Lite: thinking disabled with ``thinkingBudget: 0``
+      (2.5 Pro cannot disable thinking, so it is left at its default).
+    * Gemini 3+/4: ``thinkingLevel``. Thinking tokens count against
+      ``maxOutputTokens``, so a bounded headroom is added; otherwise a
+      reasoning model can exhaust the limit before producing any answer.
+    * No sampling parameters (temperature/top_p/top_k are deprecated on 3+).
+    """
+    config: dict[str, Any] = {"maxOutputTokens": int(max_tokens)}
+    if model.startswith("gemini-2.5-flash"):
+        config["thinkingConfig"] = {"thinkingBudget": 0}
+        return config
+    level = gemini_thinking_level(model, role)
+    if level is not None:
+        config["thinkingConfig"] = {"thinkingLevel": level}
+        try:
+            headroom = int(os.getenv("GEMINI_THINKING_HEADROOM_TOKENS", "2048"))
+        except ValueError:
+            headroom = 2048
+        config["maxOutputTokens"] = int(max_tokens) + max(0, min(headroom, 16_384))
+    return config
+
+
+def provider_error_type(response: Any) -> str | None:
+    """Bounded provider error *type* (e.g. INVALID_ARGUMENT); never message text."""
+    try:
+        body = response.json()
+        error = body.get("error") or {}
+        kind = str(error.get("status") or error.get("type") or "")
+    except Exception:
+        return None
+    return kind[:60] if _PROVIDER_ERROR_TYPE.fullmatch(kind) else None
 
 
 class ModelProviderError(RuntimeError):
@@ -46,6 +122,7 @@ class ModelProviderError(RuntimeError):
         self.status = status
         self.attempts = max(1, min(int(attempts), 2))
         self.fallback_used = bool(fallback_used)
+        self.provider_error_type: str | None = None
         if category is None:
             category = ("rate_limited" if status == 429 else
                         "authorization_failed" if status in {401, 403} else
@@ -102,12 +179,25 @@ def _attempts(primary: str, role: str, *, web_search: bool) -> list[tuple[str, s
     elif candidates:
         # Same-provider model failover preserves the data-processing boundary.
         env_name = "GEMINI_FALLBACK_MODEL" if primary == "gemini" else "ANTHROPIC_FALLBACK_MODEL"
-        fallback_model = os.getenv(env_name, "gemini-2.5-flash" if primary == "gemini" else "").strip()
+        # An empty value (common in hosted env editors) means "use the default".
+        fallback_model = (os.getenv(env_name) or "").strip() or _default_fallback_model(primary, role)
         if fallback_model and MODEL_NAME.fullmatch(fallback_model) and fallback_model != candidates[0][1]:
             candidates.append((primary, fallback_model))
     # A request gets at most two attempts, including the primary. Do not make
     # credentials/configuration discovery itself an unbounded retry mechanism.
     return candidates[:2]
+
+
+def _default_fallback_model(primary: str, role: str) -> str:
+    """Same-provider fallback when none is configured: the *other* role's model.
+
+    Both are operator-configured Gemini models, so the data-processing
+    boundary is unchanged; using the deprecated 2.5 Flash here would make the
+    fallback fail for every new API project.
+    """
+    if primary != "gemini":
+        return ""
+    return (GEMINI_FAST_MODEL if role != "fast" else GEMINI_MODEL).strip()
 
 
 def _model_for(provider: str, role: str) -> str:
@@ -127,9 +217,7 @@ def _gemini_request(model: str, prompt: str, *, role: str, max_tokens: int,
     if image_base64 and image_media_type:
         parts.append({"inline_data": {"mime_type": image_media_type, "data": image_base64}})
     payload: dict[str, Any] = {"contents": [{"role": "user", "parts": parts}],
-                               "generationConfig": {"maxOutputTokens": max_tokens}}
-    if model.startswith("gemini-2.5-"):
-        payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
+                               "generationConfig": gemini_generation_config(model, max_tokens, role=role)}
     if web_search:
         payload["tools"] = [{"google_search": {}}]
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -141,7 +229,9 @@ def _gemini_request(model: str, prompt: str, *, role: str, max_tokens: int,
     except httpx.HTTPError as exc:
         raise ModelProviderError("gemini", "network", model=model) from exc
     if response.status_code >= 400:
-        raise ModelProviderError("gemini", response.status_code, model=model)
+        error = ModelProviderError("gemini", response.status_code, model=model)
+        error.provider_error_type = provider_error_type(response)
+        raise error
     try:
         data = response.json()
         usage = data.get("usageMetadata") or {}
@@ -155,7 +245,8 @@ def _gemini_request(model: str, prompt: str, *, role: str, max_tokens: int,
         candidates = data.get("candidates") or []
         candidate = candidates[0] if candidates else {}
         output = "".join(part.get("text", "") for part in
-                         (candidate.get("content", {}).get("parts", [])))
+                         (candidate.get("content", {}).get("parts", []))
+                         if isinstance(part, dict) and not part.get("thought"))
     except (ValueError, TypeError, AttributeError, KeyError) as exc:
         raise ModelProviderError("gemini", "invalid_response", model=model) from exc
     if not output.strip():
@@ -216,14 +307,17 @@ def _anthropic_request(model: str, prompt: str, *, max_tokens: int, timeout: flo
 
 
 def _telemetry_model_call(provider: str, model: str | None, elapsed_ms: float, usage: dict | None, *,
-                          category: str | None, outcome: str, attempt: int, fallback_used: bool) -> None:
+                          category: str | None, outcome: str, attempt: int, fallback_used: bool,
+                          error: "ModelProviderError | None" = None) -> None:
     """Report one model attempt to the request-scoped execution recorder."""
     try:
         from ..intelligence.execution_telemetry import record_model_call
         record_model_call(provider=provider, model=model, duration_ms=elapsed_ms,
                           input_tokens=(usage or {}).get("input_tokens"),
                           output_tokens=(usage or {}).get("output_tokens"),
-                          attempt=attempt, fallback_used=fallback_used, outcome=outcome, category=category)
+                          attempt=attempt, fallback_used=fallback_used, outcome=outcome, category=category,
+                          http_status=getattr(error, "status", None),
+                          provider_error_type=getattr(error, "provider_error_type", None))
     except Exception:
         pass
 
@@ -264,6 +358,7 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
     deadline = time.monotonic() + budget
     last_error: ModelProviderError | None = None
     attempts_made = 0
+    attempt_log: list[dict] = []
     for attempt, (provider, model) in enumerate(attempts):
         attempts_made += 1
         if attempt > 0 or provider != primary:
@@ -317,7 +412,12 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
             except Exception:
                 pass
             _telemetry_model_call(provider, model, elapsed_ms, None, category=exc.category, outcome="failure",
-                                  attempt=attempt + 1, fallback_used=attempt > 0 or provider != primary)
+                                  attempt=attempt + 1, fallback_used=attempt > 0 or provider != primary,
+                                  error=exc)
+            attempt_log.append({"provider": provider, "model": model, "outcome": "failure",
+                                "category": exc.category, "duration_ms": elapsed_ms,
+                                "http_status": exc.status if isinstance(exc.status, int) else None,
+                                "provider_error_type": exc.provider_error_type})
             if exc.category not in RETRYABLE_CATEGORIES or attempt + 1 >= len(attempts):
                 break
             next_provider, next_model = attempts[attempt + 1]
@@ -364,4 +464,5 @@ def generate(prompt: str, *, role: str = "fast", max_tokens: int = 500,
             pass
     last_error.attempts = min(2, max(1, attempts_made))
     last_error.fallback_used = attempts_made > 1 or last_error.provider != primary
+    last_error.attempt_log = attempt_log
     raise last_error

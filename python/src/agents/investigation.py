@@ -3183,6 +3183,78 @@ def _trace_token_usage(objective_trace: dict, web_trace: dict) -> dict:
             "note": "Excludes routing/understanding and fallback narrative calls, whose providers do not report usage here."}
 
 
+_ANSWER_PURPOSES = ("answer_composition", "narrative", "agent_turn")
+
+
+def _attribute_answer_model(trace: dict, telemetry: dict) -> None:
+    """Record which model actually produced the merchant answer.
+
+    When no agent runtime ran (e.g. a conversational reply composed by the
+    model), the agent trace has no provider. The answer's provider/model then
+    come from the last *successful answer-producing* call in telemetry, never
+    from routing/understanding calls, so a deterministic answer still records
+    no model. Token usage falls back to the request's provider-reported total.
+    """
+    calls = [call for call in (telemetry.get("model_calls") or [])
+             if isinstance(call, dict) and call.get("outcome") == "success"]
+    if not trace.get("provider"):
+        for purpose in _ANSWER_PURPOSES:
+            chosen = [call for call in calls if call.get("purpose") == purpose and call.get("provider")]
+            if chosen:
+                trace["provider"] = chosen[-1].get("provider")
+                trace["model"] = chosen[-1].get("model")
+                trace["model_attribution"] = purpose
+                break
+    elif trace.get("provider"):
+        trace.setdefault("model_attribution", "agent_runtime")
+    usage = trace.get("token_usage") if isinstance(trace.get("token_usage"), dict) else {}
+    totals = telemetry.get("token_usage") if isinstance(telemetry.get("token_usage"), dict) else {}
+    if usage.get("input") is None and totals.get("scope") in {"all_model_calls", "partial_provider_reported"}:
+        trace["token_usage"] = {
+            "input": totals.get("input"), "output": totals.get("output"), "total": totals.get("total"),
+            "scope": totals.get("scope"),
+            "note": "Provider-reported usage across every model call in this request.",
+        }
+
+
+def provider_failure_diagnostics(exc: Any, telemetry: dict | None) -> dict:
+    """Bounded, content-free diagnostics for a failed provider call.
+
+    Carries only provider/model identifiers, the failure category, HTTP status,
+    the provider's error *type* enum and per-attempt timings — never prompts,
+    merchant text or provider error messages.
+    """
+    def token(value: Any) -> str | None:
+        return value if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._:-]{1,120}", value) else None
+
+    attempts = []
+    for entry in (getattr(exc, "attempt_log", None) or [])[:4]:
+        if not isinstance(entry, dict):
+            continue
+        attempts.append({
+            "provider": token(entry.get("provider")), "model": token(entry.get("model")),
+            "outcome": token(entry.get("outcome")), "category": token(entry.get("category")),
+            "http_status": entry.get("http_status") if isinstance(entry.get("http_status"), int) else None,
+            "provider_error_type": token(entry.get("provider_error_type")),
+            "duration_ms": entry.get("duration_ms") if isinstance(entry.get("duration_ms"), (int, float)) else None,
+        })
+    status = getattr(exc, "status", None)
+    failed_calls = [call for call in ((telemetry or {}).get("model_calls") or [])
+                    if isinstance(call, dict) and call.get("outcome") != "success"]
+    return {
+        "contract_version": "rev-provider-failure-diagnostics-v1",
+        "provider": token(getattr(exc, "provider", None)),
+        "model": token(getattr(exc, "model", None)),
+        "category": token(getattr(exc, "category", None)),
+        "http_status": status if isinstance(status, int) else None,
+        "provider_error_type": token(getattr(exc, "provider_error_type", None)),
+        "attempts": max(1, min(int(getattr(exc, "attempts", 1) or 1), 4)),
+        "fallback_used": bool(getattr(exc, "fallback_used", False)),
+        "attempt_log": attempts,
+        "failed_call_purpose": token(failed_calls[-1].get("purpose")) if failed_calls else None,
+    }
+
+
 def _agent_web_permitted(message: str) -> bool:
     """Public web research inside a store investigation is opt-in by objective
     and can be disabled operationally (REV_AGENT_WEB=off)."""
@@ -5948,6 +6020,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         telemetry_outcome = outcome
         telemetry = recorder.summary(final_status=telemetry_status, outcome=telemetry_outcome)
         result["execution_trace"]["telemetry"] = telemetry
+        _attribute_answer_model(result["execution_trace"], telemetry)
         result["execution_trace"]["investigation_id"] = execution_id
         return result
     except Exception as exc:
@@ -5980,6 +6053,12 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             record_failure(failure, correlation_id=correlation_id,
                            investigation_id=execution_id)
             recorder.note_failure(exc.category)
+            try:
+                exc.telemetry = recorder.summary(final_status="failed", outcome="failure")
+                exc.diagnostics = provider_failure_diagnostics(exc, exc.telemetry)
+                telemetry_status, telemetry_outcome = "failed", "failure"
+            except Exception:
+                exc.telemetry, exc.diagnostics = None, None
         elif not isinstance(exc, InvestigationCancelled):
             recorder.note_failure("validation_failed" if isinstance(exc, ValueError) else "internal_error")
         raise
@@ -6199,6 +6278,10 @@ def stream_investigation(organization_id: str, user_id: str, message: str, *,
                             "Rev could not complete this response because the configured AI provider rejected the request. Please contact support."),
                 "retryable": retryable,
                 "failure": getattr(exc, "failure", None),
+                # Content-free provider diagnostics and execution telemetry so a
+                # failed turn is observable once persisted (no prompts/messages).
+                "diagnostics": getattr(exc, "diagnostics", None),
+                "telemetry": getattr(exc, "telemetry", None),
                 "correlation_id": correlation_id,
                 "execution_id": execution_id,
             }})
