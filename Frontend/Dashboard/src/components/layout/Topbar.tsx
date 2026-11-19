@@ -1,6 +1,6 @@
 import { Bell, HelpCircle, Search, Menu, Compass } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import revIntellLogo from '@/assets/images/rev-intell-logo.png';
+import { RevOrb } from '@/components/rev/RevOrb';
 import { useUI } from '@/store/ui';
 import { api } from '@/lib/api';
 import { useState, useEffect } from 'react';
@@ -63,7 +63,7 @@ export function Topbar({ section = 'Overview', lightWorkspace = false }: { secti
           style={{ background: 'rgba(88,101,242,0.1)', borderColor: 'rgba(88,101,242,0.25)', color: '#5865f2' }}
           title="Rev Intelligence"
         >
-          <img src={revIntellLogo} alt="Rev" style={{ width: 16, height: 16, objectFit: 'contain', filter: 'drop-shadow(0 0 4px rgba(100,160,255,0.7))' }} />
+          <RevOrb size={18} alt="Rev" />
           <span className="hidden lg:inline">Rev Intell</span>
         </Link>
 

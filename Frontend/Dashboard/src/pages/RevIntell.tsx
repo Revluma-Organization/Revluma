@@ -32,7 +32,7 @@ import {
 import { commandCenterReturnRoute, revConversationRoute } from "@/lib/workspaceNavigation";
 import { explainWorkspaceError, isKnownWorkspaceCode, merchantMessage } from "@/lib/workspaceCommunication";
 import { workspaceDesign } from "@/lib/workspaceDesign";
-import revIntellLogo from "@/assets/images/rev-intell-logo.png";
+import { RevOrb } from "@/components/rev/RevOrb";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
 import api, { ApiError } from "@/lib/api";
@@ -300,40 +300,21 @@ function revTurnMessage(code: string | undefined | null, err: unknown): string {
 
 // ── Orb components ────────────────────────────────────────────────────────────
 
+// The plasma orb animates itself; the hero adds only a slow float.
 function OrbHero({ size = 90 }: { size?: number }) {
+  const orb = Math.round(size * 1.35);
   return (
-    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
-      <motion.img src={revIntellLogo} alt="Rev"
-        style={{ width: "100%", height: "100%", objectFit: "contain", position: "relative", zIndex: 2,
-          filter: "drop-shadow(0 0 10px rgba(100,160,255,0.9)) drop-shadow(0 0 20px rgba(31,6,172,0.6))" }}
-        animate={{ scale: [1, 1.06, 1] }}
-        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} />
-      <motion.div style={{ position: "absolute", inset: -size * 0.3, borderRadius: "50%",
-        border: "1.5px solid rgba(100,160,255,0.5)", zIndex: 1 }}
-        animate={{ rotate: 360 }} transition={{ duration: 3, repeat: Infinity, ease: "linear" }}>
-        <div style={{ position: "absolute", top: "50%", right: -3, width: 6, height: 6, borderRadius: "50%",
-          background: "#7eb8ff", transform: "translateY(-50%)", boxShadow: "0 0 8px rgba(100,160,255,0.9)" }} />
-      </motion.div>
-    </div>
+    <motion.div style={{ position: "relative", width: orb, height: orb, flexShrink: 0 }}
+      animate={{ y: [0, -4, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}>
+      <RevOrb size={orb} alt="Rev" />
+    </motion.div>
   );
 }
 
 function OrbAvatar() {
   return (
     <div style={{ position: "relative", width: 32, height: 32, flexShrink: 0, marginTop: 2 }}>
-      <div style={{ position: "absolute", inset: -4, borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(31,6,172,0.15) 0%, transparent 70%)" }} />
-      <motion.div style={{ position: "absolute", inset: -6, borderRadius: "50%",
-        border: "1px solid rgba(100,160,255,0.35)" }}
-        animate={{ rotate: 360 }} transition={{ duration: 4, repeat: Infinity, ease: "linear" }}>
-        <div style={{ position: "absolute", top: "50%", right: -2.5, width: 4, height: 4, borderRadius: "50%",
-          background: "#7eb8ff", transform: "translateY(-50%)", boxShadow: "0 0 5px rgba(100,160,255,0.9)" }} />
-      </motion.div>
-      <motion.img src={revIntellLogo} alt="Rev"
-        style={{ width: 32, height: 32, objectFit: "contain", position: "relative", zIndex: 2,
-          filter: "drop-shadow(0 0 6px rgba(100,160,255,0.8))" }}
-        animate={{ scale: [1, 1.06, 1] }}
-        transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }} />
+      <RevOrb size={34} alt="Rev" style={{ margin: -1 }} />
     </div>
   );
 }
@@ -717,7 +698,7 @@ function ConversationHistoryList({
       <div className="flex items-center justify-between px-5 pt-5 pb-4"
         style={{ borderBottom: `1px solid ${border}` }}>
         <div className="flex items-center gap-2.5">
-          <img src={revIntellLogo} alt="" className="w-6 h-6 object-contain" />
+          <RevOrb size={26} />
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: "0.82rem", fontWeight: 750, color: t1 }}>Rev Intelligence</p>
             <p style={{ margin: 0, fontSize: "0.62rem", color: t2 }}>Read-only workspace</p>

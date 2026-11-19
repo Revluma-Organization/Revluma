@@ -10,7 +10,7 @@ import { MVP_NAV } from "@/data/nav";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import revlumaIcon from "@/assets/brand/revluma-icon.png";
-import revIntellLogo from "@/assets/images/rev-intell-logo.png";
+import { RevOrbVideo } from "@/components/rev/RevOrb";
 import { shell } from "@/components/command-center/tokens";
 
 function initials(name: string | null | undefined) {
@@ -143,7 +143,7 @@ export function Sidebar() {
               )}
             >{({ isActive }) => <>
               {item.useCustomIcon
-                ? <img src={revIntellLogo} alt="" className="h-6 w-6 shrink-0 object-contain" />
+                ? <RevOrbVideo size={24} className="shrink-0" />
                 : <Icon aria-hidden="true" className={cn("h-[18px] w-[18px] shrink-0", isActive ? "text-white" : "text-[#aeb5c2] group-hover:text-white")} strokeWidth={1.8} />}
               {!sidebarCollapsed && <><span className="min-w-0 flex-1 truncate">{item.label}</span>{item.badge && <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide", isActive ? "bg-white/15 text-white" : "bg-white/[0.08] text-[#c6ccd8]")}>{item.badge.text}</span>}</>}
             </>}</NavLink></li>;
