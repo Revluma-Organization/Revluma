@@ -13,7 +13,7 @@
 //                  not track WebM files (.gitignore).
 //
 // Reduced motion: both forms fall back to the still PNG.
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import orbAnimated from "@/assets/rev-orb/rev-orb.webp";
 import orbStill from "@/assets/rev-orb/rev-orb.png";
 import orbMp4 from "@/assets/rev-orb/rev-orb.mp4";
@@ -71,6 +71,23 @@ export function RevOrb({ size, alt = "", className, style }: OrbProps) {
 /** Looping orb video for dark surfaces (the sidebar). */
 export function RevOrbVideo({ size, className, style }: Omit<OrbProps, "alt">) {
   const reduced = usePrefersReducedMotion();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    // React sets `muted` as a property only; mobile Safari decides autoplay
+    // eligibility from the muted state, so make it explicit before playing.
+    video.muted = true;
+    video.defaultMuted = true;
+    video.setAttribute("muted", "");
+    try {
+      const playing = video.play();
+      // Autoplay can be refused (e.g. low-power mode); the poster still shows the orb.
+      if (playing && typeof playing.catch === "function") playing.catch(() => undefined);
+    } catch {
+      /* media playback unavailable: the poster remains */
+    }
+  }, [reduced]);
   if (reduced) {
     return (
       <img src={orbStill} alt="" aria-hidden="true" width={size} height={size} draggable={false}
@@ -79,6 +96,7 @@ export function RevOrbVideo({ size, className, style }: Omit<OrbProps, "alt">) {
   }
   return (
     <video
+      ref={videoRef}
       autoPlay
       muted
       loop

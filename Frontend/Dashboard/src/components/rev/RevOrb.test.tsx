@@ -9,7 +9,7 @@ function mockReducedMotion(matches: boolean) {
   }));
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("RevOrb", () => {
   it("renders the animated transparent orb with a still source for reduced motion", () => {
@@ -44,8 +44,18 @@ describe("RevOrbVideo", () => {
     expect(video.getAttribute("aria-hidden")).toBe("true");
     expect(video.style.mixBlendMode).toBe("screen");
     const sources = [...container.querySelectorAll("source")].map(source => source.getAttribute("src"));
+    expect(video.hasAttribute("muted")).toBe(true);
+    expect(video.getAttribute("poster")).toMatch(/rev-orb\.png/);
     expect(sources).toHaveLength(1);
     expect(sources[0]).toMatch(/rev-orb\.mp4/);
+  });
+
+  it("keeps the poster when the browser refuses autoplay", async () => {
+    mockReducedMotion(false);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.reject(new Error("NotAllowedError")));
+    const { container } = render(<RevOrbVideo size={24} />);
+    await Promise.resolve();
+    expect(container.querySelector("video")!.getAttribute("poster")).toMatch(/rev-orb\.png/);
   });
 
   it("shows the still orb instead of video when the user prefers reduced motion", () => {

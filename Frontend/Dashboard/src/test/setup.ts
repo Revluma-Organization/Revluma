@@ -13,3 +13,11 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => {},
   }),
 });
+
+// jsdom has no media pipeline; resolve play() like a browser that allows muted
+// autoplay so components with <video> (the Rev orb) render without noise.
+Object.defineProperty(HTMLMediaElement.prototype, "play", {
+  configurable: true,
+  writable: true,
+  value: () => Promise.resolve(),
+});
