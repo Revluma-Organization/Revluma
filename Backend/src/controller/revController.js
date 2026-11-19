@@ -1232,6 +1232,7 @@ function _sanitizeExecutionTrace(trace) {
   return {
     provider: _safeToken(trace.provider, PROVIDER_NAME),
     model: _safeToken(trace.model, MODEL_NAME),
+    model_attribution: _safeToken(trace.model_attribution),
     duration_ms: typeof trace.duration_ms === 'number' ? Math.round(trace.duration_ms) : null,
     provider_duration_ms: typeof trace.provider_duration_ms === 'number' ? Math.round(trace.provider_duration_ms) : null,
     token_usage: {
@@ -1340,7 +1341,8 @@ function _sanitizeTelemetry(value, pick) {
     },
     stages: pick(value.stages, ['stage', 'duration_ms', 'outcome'], 40),
     model_calls: pick(value.model_calls, ['purpose', 'provider', 'model', 'duration_ms', 'input_tokens',
-      'output_tokens', 'attempt', 'fallback_used', 'outcome', 'failure_category'], 24),
+      'output_tokens', 'attempt', 'fallback_used', 'outcome', 'failure_category', 'http_status',
+      'provider_error_type'], 24),
     token_usage: {
       input: _boundedInt(usage.input), output: _boundedInt(usage.output), total: _boundedInt(usage.total),
       scope: _safeToken(usage.scope), calls_with_usage: _boundedInt(usage.calls_with_usage, 100),
@@ -1370,6 +1372,7 @@ function _executionPersistenceFields(content) {
   const trace = content?.execution_trace || null;
   const provider = trace?.provider || null;
   const model = trace?.model || null;
+  const failed = content?.error === true;
   return {
     modelProvider: provider,
     modelName: model,
@@ -1377,15 +1380,74 @@ function _executionPersistenceFields(content) {
     outputTokens: trace?.token_usage?.output ?? null,
     metadata: trace ? JSON.stringify({
       execution_trace_version: 'rev-execution-trace-v1',
-      execution_mode: trace.agent?.model_directed ? 'model_agent' : (provider ? 'model_assisted' : 'deterministic'),
+      execution_mode: failed ? 'failed'
+        : (trace.agent?.model_directed ? 'model_agent' : (provider ? 'model_assisted' : 'deterministic')),
+      // Which call the provider/model columns describe: the agent runtime, the
+      // answer-composition call, or (failed turns) the attempt that failed.
+      model_attribution: failed && provider ? 'failed_attempt' : (trace.model_attribution || null),
       estimated_cost_usd: trace.estimated_cost_usd,
       token_scope: trace.token_usage?.scope || null,
       stop_reason: trace.agent?.stop_reason || null,
       fallback_used: trace.fallback_used,
       retries: trace.retries,
+      failure_category: trace.failure_category || null,
+      failure_diagnostics: content?.failure_diagnostics || null,
     }) : null,
   };
 }
+
+/** Content-free provider failure diagnostics (rev-provider-failure-diagnostics-v1). */
+function _sanitizeFailureDiagnostics(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const httpStatus = (status) => (Number.isInteger(status) && status >= 100 && status <= 599 ? status : null);
+  return {
+    contract_version: _safeToken(value.contract_version),
+    provider: _safeToken(value.provider, PROVIDER_NAME),
+    model: _safeToken(value.model, MODEL_NAME),
+    category: _safeToken(value.category),
+    http_status: httpStatus(value.http_status),
+    provider_error_type: _safeToken(value.provider_error_type),
+    attempts: _boundedInt(value.attempts, 10),
+    fallback_used: value.fallback_used === true,
+    failed_call_purpose: _safeToken(value.failed_call_purpose),
+    attempt_log: (Array.isArray(value.attempt_log) ? value.attempt_log : []).slice(0, 4).map((entry) => ({
+      provider: _safeToken(entry?.provider, PROVIDER_NAME),
+      model: _safeToken(entry?.model, MODEL_NAME),
+      outcome: _safeToken(entry?.outcome),
+      category: _safeToken(entry?.category),
+      http_status: httpStatus(entry?.http_status),
+      provider_error_type: _safeToken(entry?.provider_error_type),
+      duration_ms: typeof entry?.duration_ms === 'number' && Number.isFinite(entry.duration_ms)
+        ? Math.round(entry.duration_ms) : null,
+    })),
+  };
+}
+
+/**
+ * Persisted content for a failed turn. No prose and no provider messages:
+ * only bounded diagnostics and the sanitized execution telemetry, so the
+ * failure category, provider, model and per-call timings stay observable.
+ */
+function _failedTurnContent(error) {
+  const content = { response_type: 'error', error: true, read_only: true };
+  const diagnostics = _sanitizeFailureDiagnostics(error?.diagnostics);
+  const telemetry = error?.telemetry && typeof error.telemetry === 'object' && !Array.isArray(error.telemetry)
+    ? error.telemetry : null;
+  if (!diagnostics && !telemetry) return content;
+  content.failure_diagnostics = diagnostics;
+  content.execution_trace = _sanitizeExecutionTrace({
+    provider: diagnostics?.provider || null,
+    model: diagnostics?.model || null,
+    failure_category: diagnostics?.category || error?.failure?.category || null,
+    final_status: 'failed',
+    fallback_used: diagnostics?.fallback_used === true,
+    retries: diagnostics?.attempts ? Math.max(0, diagnostics.attempts - 1) : 0,
+    token_usage: telemetry?.token_usage || null,
+    telemetry,
+  });
+  return content;
+}
+exports._failedTurnContent = _failedTurnContent;
 
 /** Bounded, guardrail-filtered agent answer metadata (no prose duplication). */
 function _sanitizeAgentAnswer(answer) {
@@ -1534,8 +1596,26 @@ async function _loadConversationContext(conversationId, organizationId, trace = 
   }
 }
 
-function _sseWriter(res) {
+// A model turn can run tens of seconds without producing a frame. A comment
+// frame keeps proxies and the browser's inactivity timer from treating a live
+// stream as dead; SSE parsers ignore comment lines by specification.
+const SSE_HEARTBEAT_MS = Math.max(5_000, Number(process.env.REV_SSE_HEARTBEAT_MS) || 15_000);
+
+function _sseWriter(res, { heartbeatMs = SSE_HEARTBEAT_MS } = {}) {
   let closed = false;
+  let heartbeat = null;
+  const stopHeartbeat = () => {
+    if (heartbeat) clearInterval(heartbeat);
+    heartbeat = null;
+  };
+  if (heartbeatMs > 0) {
+    heartbeat = setInterval(() => {
+      if (closed || res.writableEnded) { stopHeartbeat(); return; }
+      try { res.write(': keepalive\n\n'); } catch { closed = true; stopHeartbeat(); }
+    }, heartbeatMs);
+    if (typeof heartbeat.unref === 'function') heartbeat.unref();
+    if (typeof res.on === 'function') res.on('close', stopHeartbeat);
+  }
   return {
     send(event, data) {
       if (closed || res.writableEnded) return false;
@@ -1544,10 +1624,12 @@ function _sseWriter(res) {
         return true;
       } catch {
         closed = true;
+        stopHeartbeat();
         return false;
       }
     },
     end() {
+      stopHeartbeat();
       if (closed) return;
       closed = true;
       try { res.end(); } catch { /* noop */ }
@@ -1555,6 +1637,7 @@ function _sseWriter(res) {
     get closed() { return closed; },
   };
 }
+exports._sseWriter = _sseWriter;
 
 function _validateChatPayload(body) {
   try { return validateSubmission(body); }
@@ -1797,7 +1880,7 @@ exports.chatStream = async (req, res, next) => {
     await _insertRevMessage({
       organizationId: org.id, userId: req.user.id, conversationId: activeConvId,
       sequenceNumber: revSequence, correlationId,
-      content: { response_type: 'error', error: true, read_only: true },
+      content: _failedTurnContent(error),
       hasError: true, errorCode: error.code, errorMessage: error.message,
       latencyMs: Date.now() - startedAt,
     });

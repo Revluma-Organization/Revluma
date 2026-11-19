@@ -247,3 +247,104 @@ for (const secret of ['must never persist', 'owner@example.com', 'free text', '<
 // Absent telemetry degrades to null rather than an invented record.
 assert.equal(bounded({ text: 'x', execution_trace: { provider: null } }).execution_trace.telemetry, null);
 console.log('revPersistence telemetry contract test passed');
+
+// FAILED-TURN-PERSIST-001 (live 2026-11-19): a PROVIDER_FAILURE row persisted
+// no provider, model or failure detail. Failed turns now persist bounded,
+// content-free diagnostics and telemetry; provider messages never persist.
+const failedTurnContent = vm.runInContext('_failedTurnContent;', context);
+const failed = plain(failedTurnContent({
+  code: 'PROVIDER_FAILURE',
+  message: 'Rev could not complete this response because the configured AI provider rejected the request.',
+  failure: { category: 'invalid_request' },
+  diagnostics: {
+    contract_version: 'rev-provider-failure-diagnostics-v1', provider: 'gemini', model: 'gemini-3.6-flash',
+    category: 'invalid_request', http_status: 400, provider_error_type: 'INVALID_ARGUMENT', attempts: 1,
+    fallback_used: false, failed_call_purpose: 'answer_composition',
+    provider_message: 'Function call is missing a thought_signature (merchant secret)',
+    attempt_log: [{ provider: 'gemini', model: 'gemini-3.6-flash', outcome: 'failure', category: 'invalid_request',
+      http_status: 400, provider_error_type: 'INVALID_ARGUMENT', duration_ms: 812.4, raw: 'drop me' }],
+  },
+  telemetry: {
+    telemetry_version: 'rev-execution-telemetry-v1', final_status: 'failed', failure_category: 'invalid_request',
+    model_calls: [
+      { purpose: 'understanding', provider: 'gemini', model: 'gemini-3.5-flash-lite', outcome: 'success',
+        input_tokens: 400, output_tokens: 50, attempt: 1 },
+      { purpose: 'agent_turn', provider: 'gemini', model: 'gemini-3.6-flash', outcome: 'failure',
+        failure_category: 'invalid_request', http_status: 400, provider_error_type: 'INVALID_ARGUMENT',
+        attempt: 1, error_message: 'merchant secret' }],
+    token_usage: { input: 400, output: 50, total: 450, scope: 'all_model_calls', calls_with_usage: 1, successful_calls: 1 },
+  },
+}));
+assert.equal(failed.response_type, 'error');
+assert.equal(failed.error, true);
+assert.equal(failed.failure_diagnostics.provider, 'gemini');
+assert.equal(failed.failure_diagnostics.model, 'gemini-3.6-flash');
+assert.equal(failed.failure_diagnostics.http_status, 400);
+assert.equal(failed.failure_diagnostics.provider_error_type, 'INVALID_ARGUMENT');
+assert.equal(failed.failure_diagnostics.attempt_log[0].duration_ms, 812);
+assert.equal(failed.execution_trace.final_status, 'failed');
+assert.equal(failed.execution_trace.failure_category, 'invalid_request');
+assert.equal(failed.execution_trace.telemetry.model_calls[1].http_status, 400);
+assert.equal(failed.execution_trace.telemetry.model_calls[1].provider_error_type, 'INVALID_ARGUMENT');
+for (const secret of ['merchant secret', 'thought_signature', 'drop me', 'rejected the request']) {
+  assert.equal(JSON.stringify(failed).includes(secret), false, `${secret} must not persist`);
+}
+const failedColumns = executionFields(failed);
+assert.equal(failedColumns.modelProvider, 'gemini');
+assert.equal(failedColumns.modelName, 'gemini-3.6-flash');
+assert.equal(failedColumns.inputTokens, 400);
+const failedMeta = JSON.parse(failedColumns.metadata);
+assert.equal(failedMeta.execution_mode, 'failed');
+assert.equal(failedMeta.model_attribution, 'failed_attempt');
+assert.equal(failedMeta.failure_category, 'invalid_request');
+assert.equal(failedMeta.failure_diagnostics.http_status, 400);
+// Without diagnostics (e.g. an older Python build) the legacy shape is kept.
+assert.deepEqual(plain(failedTurnContent({ code: 'INTELLIGENCE_UNAVAILABLE' })),
+  { response_type: 'error', error: true, read_only: true });
+assert.match(source, /persistenceStage = 'failed_turn_write';\s*await _insertRevMessage\(\{[\s\S]{0,200}content: _failedTurnContent\(error\)/,
+  'streamed provider failures must persist diagnostics');
+
+// MODEL-ATTRIBUTION-001: a conversational answer composed by a model records
+// that model (Python attributes it from telemetry), labelled by attribution.
+const composed = bounded({ text: 'Hey!', execution_trace: { provider: 'gemini', model: 'gemini-3.5-flash-lite',
+  model_attribution: 'answer_composition',
+  token_usage: { input: 2376, output: 122, total: 2498, scope: 'all_model_calls' } } });
+const composedColumns = executionFields(composed);
+assert.equal(composedColumns.modelProvider, 'gemini');
+assert.equal(composedColumns.modelName, 'gemini-3.5-flash-lite');
+assert.equal(composedColumns.inputTokens, 2376);
+const composedMeta = JSON.parse(composedColumns.metadata);
+assert.equal(composedMeta.execution_mode, 'model_assisted');
+assert.equal(composedMeta.model_attribution, 'answer_composition');
+assert.equal(composedMeta.token_scope, 'all_model_calls');
+console.log('revPersistence failed-turn and attribution contract test passed');
+
+// SSE-HEARTBEAT-001: a long silent model turn keeps the stream alive with
+// comment frames, and the heartbeat stops when the stream ends.
+test('stream writer emits keepalive comments until the stream ends', async () => {
+  const writerStart = source.indexOf('const SSE_HEARTBEAT_MS');
+  const writerEnd = source.indexOf('function _validateChatPayload', writerStart);
+  assert.ok(writerStart > 0 && writerEnd > writerStart, 'SSE writer must exist');
+  const writes = [];
+  const listeners = {};
+  const res = {
+    writableEnded: false,
+    write: (chunk) => { writes.push(chunk); return true; },
+    end: () => { res.writableEnded = true; },
+    on: (name, fn) => { listeners[name] = fn; },
+  };
+  const writerContext = { process: { env: {} }, setInterval, clearInterval, exports: {},
+    formatSseFrame: (event, data) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n` };
+  vm.createContext(writerContext);
+  const makeWriter = vm.runInContext(`${source.slice(writerStart, writerEnd)}; _sseWriter;`, writerContext);
+  const writer = makeWriter(res, { heartbeatMs: 20 });
+  writer.send('meta', { ok: true });
+  await new Promise((resolve) => setTimeout(resolve, 75));
+  const beats = writes.filter((chunk) => chunk === ': keepalive\n\n').length;
+  assert.ok(beats >= 2, `expected keepalive comments, saw ${beats}`);
+  writer.end();
+  const afterEnd = writes.length;
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(writes.length, afterEnd, 'no heartbeat after the stream ends');
+  assert.equal(typeof listeners.close, 'function', 'heartbeat stops when the client disconnects');
+});

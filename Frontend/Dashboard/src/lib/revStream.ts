@@ -274,6 +274,10 @@ export class RevStreamError extends Error {
   correlationId?: string;
   executionId?: string;
   failure?: Record<string, unknown>;
+  /** Set when the server accepted and persisted the turn before failing it. */
+  conversationId?: string;
+  /** The server replayed an already-recorded outcome for this request id. */
+  idempotentReplay?: boolean;
 
   constructor(code: string, message: string, status = 0, details: Record<string, unknown> = {}) {
     super(message);
@@ -284,6 +288,8 @@ export class RevStreamError extends Error {
     this.correlationId = typeof details.correlation_id === "string" ? details.correlation_id : undefined;
     this.executionId = typeof details.execution_id === "string" ? details.execution_id : undefined;
     this.failure = isRecord(details.failure) ? details.failure : undefined;
+    this.conversationId = typeof details.conversation_id === "string" ? details.conversation_id : undefined;
+    this.idempotentReplay = details.idempotent_replay === true;
   }
 }
 

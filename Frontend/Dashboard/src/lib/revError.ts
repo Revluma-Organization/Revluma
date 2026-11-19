@@ -54,6 +54,16 @@ const CODE_CLASSIFICATION: Record<string, { kind: RevFailureKind; retryable: boo
   INTELLIGENCE_AUTH_FAILED:      { kind: "server_error",        retryable: true },
   STREAM_START_FAILED:           { kind: "server_error",        retryable: true },
   RATE_LIMITED:                  { kind: "rate_limited",        retryable: true },
+  // Codes the Rev stream reports after the request was accepted. They are
+  // server outcomes, never a browser connectivity problem. A provider failure
+  // carries the server's own retryable decision, which classifyRevFailure honours.
+  PROVIDER_FAILURE:              { kind: "service_unavailable", retryable: true },
+  INVESTIGATION_FAILED:          { kind: "server_error",        retryable: true },
+  STREAM_FAILED:                 { kind: "server_error",        retryable: true },
+  MALFORMED_RESPONSE:            { kind: "invalid_contract",    retryable: true },
+  REV_TURN_IN_PROGRESS:          { kind: "service_unavailable", retryable: true },
+  SUBMISSION_NOT_ACCEPTED:       { kind: "server_error",        retryable: true },
+  RETRY_NOT_ELIGIBLE:            { kind: "server_error",        retryable: false },
   // Permanent / not-actionable-by-retry failures: re-sending the identical request
   // is futile, so the "Try again" control is withheld.
   INTELLIGENCE_NOT_CONFIGURED:   { kind: "server_error",        retryable: false },
@@ -105,11 +115,19 @@ export function classifyRevFailure(
   // api.ts always copies the server's Retry-After onto the ApiError itself.
   const raw = classifyCommandCenterFailure(reason);
 
+  // A stream error frame carries the server's explicit retry decision (for
+  // example a provider that rejected the request is permanent until fixed).
+  const serverRetryable =
+    reason && typeof reason === "object" && "retryable" in reason &&
+    typeof (reason as { retryable: unknown }).retryable === "boolean"
+      ? (reason as { retryable: boolean }).retryable
+      : null;
+
   if (backendCode && CODE_CLASSIFICATION[backendCode]) {
     const c = CODE_CLASSIFICATION[backendCode];
     return {
       kind: c.kind,
-      retryable: c.retryable,
+      retryable: serverRetryable ?? c.retryable,
       // Rate-limit guidance is only meaningful for the rate_limited kind.
       retryAfterSeconds: c.kind === "rate_limited" ? raw.retryAfterSeconds : null,
     };

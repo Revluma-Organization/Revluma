@@ -147,7 +147,8 @@ class ExecutionRecorder:
     def record_model_call(self, *, provider: Any, model: Any, duration_ms: Any = None,
                           input_tokens: Any = None, output_tokens: Any = None, attempt: Any = 1,
                           fallback_used: Any = False, outcome: str = "success",
-                          category: Any = None, purpose: str | None = None) -> None:
+                          category: Any = None, purpose: str | None = None,
+                          http_status: Any = None, provider_error_type: Any = None) -> None:
         purpose = purpose or _purpose.get()
         entry = {
             "purpose": purpose if purpose in MODEL_CALL_PURPOSES else "auxiliary",
@@ -161,6 +162,13 @@ class ExecutionRecorder:
             "outcome": _token(outcome) or "unknown",
             "failure_category": _token(category),
         }
+        if outcome != "success":
+            # Bounded failure diagnostics: an HTTP status code and the provider's
+            # error *type* enum (e.g. INVALID_ARGUMENT) — never message text.
+            if isinstance(http_status, int) and 100 <= http_status <= 599:
+                entry["http_status"] = http_status
+            if isinstance(provider_error_type, str) and re.fullmatch(r"[A-Za-z_]{1,60}", provider_error_type):
+                entry["provider_error_type"] = provider_error_type
         with self._lock:
             if len(self.model_calls) >= MAX_MODEL_CALLS:
                 self.dropped["model_calls"] += 1
