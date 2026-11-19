@@ -32,7 +32,7 @@ describe("RevOrb", () => {
 });
 
 describe("RevOrbVideo", () => {
-  it("plays a muted inline loop with an alpha WebM first and a screen-blended MP4 fallback", () => {
+  it("plays a muted inline H.264 loop, screen-blended so its black background disappears", () => {
     mockReducedMotion(false);
     const { container } = render(<RevOrbVideo size={24} />);
     const video = container.querySelector("video")!;
@@ -44,8 +44,8 @@ describe("RevOrbVideo", () => {
     expect(video.getAttribute("aria-hidden")).toBe("true");
     expect(video.style.mixBlendMode).toBe("screen");
     const sources = [...container.querySelectorAll("source")].map(source => source.getAttribute("src"));
-    expect(sources[0]).toMatch(/rev-orb\.webm/);
-    expect(sources[1]).toMatch(/rev-orb\.mp4/);
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toMatch(/rev-orb\.mp4/);
   });
 
   it("shows the still orb instead of video when the user prefers reduced motion", () => {

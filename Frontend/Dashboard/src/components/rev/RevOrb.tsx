@@ -6,16 +6,16 @@
 //   <RevOrb>       Animated WebP with real transparency. Works on light and
 //                  dark surfaces, costs one decoded image no matter how many
 //                  times it is shown (e.g. one per Rev message).
-//   <RevOrbVideo>  Looping muted video for the always-dark sidebar. WebM
-//                  (VP9 + alpha) first; the H.264 MP4 fallback is rendered on
-//                  black and blended with `screen`, so black is invisible on
-//                  the dark surface whichever source the browser plays.
+//   <RevOrbVideo>  Looping muted H.264 video for the always-dark sidebar.
+//                  It is rendered on black and blended with `screen`, so the
+//                  black is invisible on the dark surface (including hover and
+//                  active rows). H.264 plays in every browser; the repo does
+//                  not track WebM files (.gitignore).
 //
 // Reduced motion: both forms fall back to the still PNG.
 import { useEffect, useState, type CSSProperties } from "react";
 import orbAnimated from "@/assets/rev-orb/rev-orb.webp";
 import orbStill from "@/assets/rev-orb/rev-orb.png";
-import orbWebm from "@/assets/rev-orb/rev-orb.webm";
 import orbMp4 from "@/assets/rev-orb/rev-orb.mp4";
 
 export const REV_ORB_STILL = orbStill;
@@ -94,7 +94,6 @@ export function RevOrbVideo({ size, className, style }: Omit<OrbProps, "alt">) {
       className={className}
       style={{ width: size, height: size, objectFit: "contain", mixBlendMode: "screen", pointerEvents: "none", ...style }}
     >
-      <source src={orbWebm} type='video/webm; codecs="vp9"' />
       <source src={orbMp4} type="video/mp4" />
     </video>
   );

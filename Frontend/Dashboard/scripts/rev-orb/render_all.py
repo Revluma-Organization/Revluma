@@ -38,8 +38,6 @@ elif job == "sidebar":
     small = list(frames(288, 24, 0.84, 96))
     encode([24, "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
             "-an", "out/rev-orb.mp4"], on_black(iter(small)), 96)
-    encode([24, "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "34", "-row-mt", "1", "-an",
-            "out/rev-orb.webm"], iter(small), 96)
 elif job == "images":
     imgs = [Image.fromarray(f, "RGBA") for f in frames(384, 12, 0.80, 128)]
     imgs[0].save("out/rev-orb.webp", save_all=True, append_images=imgs[1:], duration=83, loop=0,
