@@ -1,5 +1,7 @@
 # Rev Intelligence — Master Engineering Plan
 
+> **20 Nov 2026 — current MVP AI/LLM engineering handoff:** [architecture audit](AI-ENGINEERING-HANDOFF-2026-11-20.md), [merchant and development lifecycles plus module guide](AI-ENGINEERING-MODULES-2026-11-20.md), and [30-scenario evaluation/release matrix](AI-EVALUATION-MATRIX-2026-11-20.md). These supplement (not replace) this historical master plan. The immediate MVP remains **read-only**; future memory/action phases are not release requirements or authorization for merchant mutation. These documents contain planning and a source inspection, not fresh test or production certification.
+
 Status: ACTIVE — Phase 01. Owner: Revluma engineering.
 Principle: No phase passes solely because code was committed or deployed. Every gate needs recorded evidence.
 
