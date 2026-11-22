@@ -11,8 +11,19 @@ module.exports = (err, req, res, next) => {
     method: req.method,
     path: req.route?.path ? `${req.baseUrl}${req.route.path}` : req.path,
     userId: req.user?.id || null,
+    // Correlates this log line with the X-Request-ID the client received.
+    request_id: req.requestId || null,
     ...(!isProd && exposeErrorDetails ? { message: err.message, stack: err.stack } : {}),
   });
+
+  // A disallowed browser origin is a client-side policy refusal, not a server
+  // fault: answer 403 instead of reporting an "unexpected server error".
+  if (err.code === 'CORS_ORIGIN_NOT_ALLOWED') {
+    return res.status(403).json({
+      success: false,
+      error: 'This origin is not allowed to call the Revluma API.',
+    });
+  }
 
   // JWT Errors
   if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
@@ -61,6 +72,9 @@ module.exports = (err, req, res, next) => {
     error: exposeErrorDetails || statusCode !== 500
       ? err.message
       : 'An unexpected server error occurred',
+    // Support reference only (a random correlation id, never a secret), so a
+    // reported failure can be matched to the server log line above.
+    ...(req.requestId ? { request_id: req.requestId } : {}),
     ...(exposeErrorDetails ? { stack: err.stack } : {}),
   });
 };

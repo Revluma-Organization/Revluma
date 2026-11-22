@@ -88,7 +88,10 @@ app.use(cors({
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    return callback(new Error('CORS: origin not allowed'));
+    const error = new Error('CORS: origin not allowed');
+    error.code = 'CORS_ORIGIN_NOT_ALLOWED';
+    error.statusCode = 403;
+    return callback(error);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
