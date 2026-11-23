@@ -30,6 +30,6 @@ export const shell = {
   sidebarMuted: "text-[#aeb5c2]",
   sidebarHover: "hover:bg-white/[0.07] hover:text-white",
   sidebarActive: "bg-[#1F06AC] text-white",
-  workspace: "bg-[#f5f6f8] text-[#172033]",
+  workspace: "bg-white text-[#172033]",
   focus: "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8f86ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#111318]",
 } as const;
