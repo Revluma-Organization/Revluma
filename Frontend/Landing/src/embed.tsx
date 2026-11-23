@@ -25,7 +25,7 @@ export const EMBED_CONFIG: LandingConfig = {
   ],
   signInHref: "/login",
   joinHref: "#join",
-  exploreHref: "#features",
+  signUpHref: "/auth/signup",
   // The homepage's Alpine waitlist modal listens for `open-waitlist` on window.
   onJoin: (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
