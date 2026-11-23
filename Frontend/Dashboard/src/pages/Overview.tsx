@@ -66,9 +66,7 @@ export default function Overview() {
     failure,
     lastSuccessfulAt,
     announcement,
-    selectedPeriod,
     selectStore,
-    selectPeriod,
     refetch,
   } = useCommandCenter();
   const [searchParams] = useSearchParams();
@@ -88,12 +86,12 @@ export default function Overview() {
     <div aria-live="polite" className="sr-only">{announcement}</div>
     <CommandCenterHeader
       data={data}
+      loading={loading}
       refreshing={refreshing}
+      failure={failure}
       lastSuccessfulAt={lastSuccessfulAt}
-      selectedPeriod={selectedPeriod}
       onRefresh={() => void refetch(true)}
       onSelectStore={selectStore}
-      onSelectPeriod={selectPeriod}
     />
     {failure && data && <BriefingFailureBanner failure={failure} onRetry={() => void refetch(true)} />}
     {loading && !data ? <div aria-label="Loading operational briefing" role="status" className="space-y-6">
