@@ -46,7 +46,7 @@ export function Navbar() {
         <div className="mx-auto flex h-20 max-w-page items-center justify-center lg:h-[clamp(4rem,9svh,5rem)]">
           <nav
             aria-label="Primary"
-            className={`pointer-events-auto flex h-14 w-full items-center justify-between gap-2 rounded-full p-[5px] lg:h-[clamp(3.1rem,6.4svh,3.5rem)] lg:w-auto lg:justify-start ${PILL}`}
+            className={`m-drop pointer-events-auto flex h-14 w-full items-center justify-between gap-2 rounded-full p-[5px] lg:h-[clamp(3.1rem,6.4svh,3.5rem)] lg:w-auto lg:justify-start ${PILL}`}
           >
             <a
               href="/"
@@ -56,12 +56,12 @@ export function Navbar() {
               <img src={icon} alt="" width={24} height={24} className="h-[52%] w-[52%] object-contain" />
             </a>
 
-            <ul className="hidden items-center gap-[1.6rem] px-[1.9rem] lg:flex">
+            <ul className="isolate hidden items-center gap-[1.6rem] px-[1.9rem] lg:flex">
               {textLinks.map((link) => (
                 <li key={link.href}>
                   <a
                     href={link.href}
-                    className={`whitespace-nowrap rounded-md text-[0.95rem] text-white/90 transition-colors hover:text-white ${ON_DARK_FOCUS}`}
+                    className={`relative whitespace-nowrap rounded-md text-[0.95rem] text-white/90 transition-colors duration-200 before:absolute before:-inset-x-3 before:-inset-y-1.5 before:-z-10 before:scale-90 before:rounded-full before:bg-white/10 before:opacity-0 before:transition before:duration-200 before:ease-out before:content-[''] hover:text-white hover:before:scale-100 hover:before:opacity-100 ${ON_DARK_FOCUS}`}
                   >
                     {link.label}
                   </a>
@@ -92,7 +92,7 @@ export function Navbar() {
         </div>
 
         {open && (
-          <div id="mobile-menu" className={`pointer-events-auto absolute inset-x-4 top-[calc(100%_-_0.25rem)] max-h-[calc(100svh_-_6rem)] overflow-y-auto rounded-[1.75rem] p-2 sm:inset-x-8 lg:hidden ${PILL}`}>
+          <div id="mobile-menu" className={`m-menu pointer-events-auto absolute inset-x-4 top-[calc(100%_-_0.25rem)] max-h-[calc(100svh_-_6rem)] overflow-y-auto rounded-[1.75rem] p-2 sm:inset-x-8 lg:hidden ${PILL}`}>
             <ul className="flex flex-col">
               {textLinks.map((link) => (
                 <li key={link.href}>
