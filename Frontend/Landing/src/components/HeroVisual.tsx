@@ -1,7 +1,7 @@
 import { useRef, type CSSProperties } from "react";
 import { Check, ShieldCheck, Scale } from "lucide-react";
 import plant from "@/assets/plant.webp";
-import { useStartWhenVisible } from "@/useHeroMotion";
+import { useScrollProgress, useStartWhenVisible } from "@/useHeroMotion";
 import { RevScreen } from "./RevScreen";
 
 /** Parallax depth for a scene layer: how far it follows the pointer (in cqw). */
@@ -20,6 +20,7 @@ const depth = (value: number) => ({ "--depth": value }) as CSSProperties;
 export function HeroVisual() {
   const ref = useRef<HTMLDivElement>(null);
   useStartWhenVisible(ref);
+  useScrollProgress(ref);
   return (
     <div
       ref={ref}
@@ -28,21 +29,21 @@ export function HeroVisual() {
       aria-label="Illustration: Rev Intelligence on a laptop, showing a sample investigation that separates verified facts, hypotheses and unknowns."
     >
       <div className="hero-visual__scene" aria-hidden="true">
-        <div className="hv-layer" style={depth(-0.8)}>
+        <div className="hv-layer hv-layer--circle" style={depth(-0.8)}>
           <div className="hv-circle" />
         </div>
-        <div className="hv-layer" style={depth(1.4)}>
+        <div className="hv-layer hv-layer--plant" style={depth(1.4)}>
           <img className="hv-plant" src={plant} alt="" width={467} height={996} loading="eager" decoding="async" />
         </div>
 
-        <div className="hv-layer" style={depth(0.3)}>
+        <div className="hv-layer hv-layer--plinth" style={depth(0.3)}>
           <div className="hv-plinth">
             <div className="hv-plinth__back" />
             <div className="hv-plinth__front" />
           </div>
         </div>
 
-        <div className="hv-layer" style={depth(0.8)}>
+        <div className="hv-layer hv-layer--laptop" style={depth(0.8)}>
           <div className="hv-laptop">
             <div className="hv-laptop__lid">
               <span className="hv-laptop__camera" />
@@ -54,7 +55,7 @@ export function HeroVisual() {
           </div>
         </div>
 
-        <div className="hv-layer" style={depth(2.2)}>
+        <div className="hv-layer hv-layer--evidence" style={depth(2.2)}>
           <div className="hv-card hv-card--evidence">
             <span className="hv-card__icon">
               <ShieldCheck />
@@ -69,7 +70,7 @@ export function HeroVisual() {
           </div>
         </div>
 
-        <div className="hv-layer" style={depth(1.8)}>
+        <div className="hv-layer hv-layer--facts" style={depth(1.8)}>
           <div className="hv-card hv-card--facts">
             <span className="hv-card__head">
               <span className="hv-card__icon hv-card__icon--small">
@@ -85,7 +86,7 @@ export function HeroVisual() {
           </div>
         </div>
 
-        <div className="hv-layer" style={depth(1.6)}>
+        <div className="hv-layer hv-layer--arrow" style={depth(1.6)}>
           <svg className="hv-arrow" viewBox="0 0 120 170" fill="none">
             <path
               className="hv-arrow__line"

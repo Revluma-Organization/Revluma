@@ -2,13 +2,19 @@ import { useRef, type CSSProperties } from "react";
 import { ArrowUpRight, UserPlus } from "lucide-react";
 import { CTA, HERO } from "@/content";
 import { useLandingConfig } from "@/config";
-import { usePointerParallax } from "@/useHeroMotion";
+import { usePointerParallax, useScrollProgress } from "@/useHeroMotion";
 import { HeroVisual } from "./HeroVisual";
 
-/** Entrance delay for one element (see motion.css). */
-const at = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
+/**
+ * Entrance pace. The delays below are the original (PR #436) timings; TEMPO
+ * stretches them to match the slower durations in motion.css.
+ */
+const TEMPO = 1.6;
 
-// Headline words enter one after another, 60ms apart.
+/** Entrance delay for one element (see motion.css). */
+const at = (ms: number) => ({ "--d": `${Math.round(ms * TEMPO)}ms` }) as CSSProperties;
+
+// Headline words enter one after another, 60ms apart (before TEMPO).
 const WORD_START = 150;
 const WORD_STEP = 60;
 const HEADLINE = [
@@ -19,13 +25,15 @@ const HEADLINE = [
 export function Hero() {
   const { joinHref, signUpHref, onJoin } = useLandingConfig();
   const sectionRef = useRef<HTMLElement>(null);
+  const copyRef = useRef<HTMLDivElement>(null);
   usePointerParallax(sectionRef);
+  useScrollProgress(copyRef);
   let wordIndex = 0;
 
   return (
     <section ref={sectionRef} aria-labelledby="hero-title" className="relative overflow-x-clip lg:flex lg:h-[calc(100svh_-_clamp(4rem,9svh,5rem))] lg:min-h-[32rem] lg:items-center">
       <div className="mx-auto grid max-w-page items-center gap-12 px-5 pb-16 pt-8 sm:px-8 sm:pb-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:w-full lg:py-[clamp(0.75rem,3svh,2.5rem)]">
-        <div className="max-w-[38rem]">
+        <div ref={copyRef} className="m-scroll-copy max-w-[38rem]">
           <h1
             id="hero-title"
             className="text-[clamp(2.4rem,9.6vw,4.6rem)] sm:text-[clamp(2.6rem,7.4vw,4.6rem)] lg:text-[clamp(2.5rem,min(5.1vw,8.4svh),4.6rem)] font-semibold leading-[1.02] tracking-display text-ink"

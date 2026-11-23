@@ -1,7 +1,8 @@
 /* Hero motion.
  *
- * One choreographed entrance (about 3s end to end), a few slow ambient loops
- * afterwards, pointer parallax on the scene, and hover micro-interactions.
+ * One unhurried, choreographed entrance (about 6s end to end), slow ambient
+ * loops afterwards, pointer parallax on the scene, scroll-linked depth as the
+ * hero leaves the screen, and hover micro-interactions.
  * Patterns follow the HorizonX references: headline words rise out of a blur
  * (Rootline), the product lifts into place and the laptop opens, floating tags
  * drift (Lumora), the mini product "comes alive" (Bloom), and short ease-out
@@ -10,7 +11,10 @@
  * Everything sits inside `prefers-reduced-motion: no-preference`; with reduced
  * motion the hero renders in its final state with no movement at all.
  *
- * Timing is set per element with the --d custom property (delay in ms).
+ * Timing is set per element with the --d custom property (delay in ms). The
+ * left column's delays come from Hero.tsx (scaled by TEMPO there); the scene's
+ * are below. Entrances run at 1.6x and ambient loops at 1.25x the original
+ * (PR #436) speeds.
  */
 
 :host,
@@ -39,7 +43,7 @@
   /* Headline: word by word, up from a blur. */
   .m-word {
     display: inline-block;
-    animation: m-word 1s var(--ease-out-expo) both;
+    animation: m-word 1.6s var(--ease-out-expo) both;
     animation-delay: var(--d, 0ms);
   }
   @keyframes m-word {
@@ -58,9 +62,9 @@
       -webkit-background-clip: text;
       background-clip: text;
       animation:
-        m-word 1s var(--ease-out-expo) both,
-        m-sheen 10s var(--ease-in-out) infinite;
-      animation-delay: var(--d, 0ms), calc(var(--d, 0ms) + 1100ms);
+        m-word 1.6s var(--ease-out-expo) both,
+        m-sheen 12.5s var(--ease-in-out) infinite;
+      animation-delay: var(--d, 0ms), calc(var(--d, 0ms) + 1760ms);
     }
     @keyframes m-sheen {
       0% { background-position: 100% 0; }
@@ -70,7 +74,7 @@
 
   /* Supporting copy and facts: a softer blur-up. */
   .m-fade {
-    animation: m-fade 0.9s var(--ease-out-expo) both;
+    animation: m-fade 1.44s var(--ease-out-expo) both;
     animation-delay: var(--d, 0ms);
   }
   @keyframes m-fade {
@@ -80,7 +84,7 @@
 
   /* CTAs pop in with a little spring. */
   .m-pop {
-    animation: m-pop 0.8s var(--ease-spring) both;
+    animation: m-pop 1.28s var(--ease-spring) both;
     animation-delay: var(--d, 0ms);
   }
   @keyframes m-pop {
@@ -91,7 +95,7 @@
   /* The divider above the facts draws from left to right. */
   .m-rule {
     transform-origin: 0 50%;
-    animation: m-rule 1.1s var(--ease-out-expo) both;
+    animation: m-rule 1.76s var(--ease-out-expo) both;
     animation-delay: var(--d, 0ms);
   }
   @keyframes m-rule {
@@ -107,8 +111,8 @@
     border-radius: inherit;
     background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.28) 48%, transparent 66%);
     transform: translateX(-120%);
-    animation: m-shine 7s var(--ease-in-out) infinite;
-    animation-delay: 1.9s;
+    animation: m-shine 8.75s var(--ease-in-out) infinite;
+    animation-delay: 3.04s;
     pointer-events: none;
   }
   @keyframes m-shine {
@@ -119,7 +123,7 @@
   /* ---------- Navigation ------------------------------------------------- */
 
   .m-drop {
-    animation: m-drop 0.9s var(--ease-out-expo) both;
+    animation: m-drop 1.44s var(--ease-out-expo) both;
   }
   @keyframes m-drop {
     from { opacity: 0; transform: translateY(-18px) scale(0.96); filter: blur(4px); }
@@ -146,14 +150,14 @@
   /* Pointer parallax: each layer moves by its depth (set from Hero.tsx). */
   .hv-layer {
     transform: translate3d(calc(var(--px, 0) * var(--depth, 1) * 1cqw), calc(var(--py, 0) * var(--depth, 1) * 1cqw), 0);
-    transition: transform 0.9s var(--ease-out-quart);
+    transition: transform 1.2s var(--ease-out-quart);
   }
 
   .hv-circle {
     animation:
-      hv-circle-in 1.2s var(--ease-spring) both,
-      hv-breathe 9s ease-in-out infinite alternate;
-    animation-delay: 150ms, 1.4s;
+      hv-circle-in 1.92s var(--ease-spring) both,
+      hv-breathe 11.25s ease-in-out infinite alternate;
+    animation-delay: 240ms, 2.24s;
   }
   @keyframes hv-circle-in {
     from { opacity: 0; transform: scale(0.55); filter: blur(1.4cqw); }
@@ -165,8 +169,8 @@
   }
 
   .hv-plinth {
-    animation: hv-plinth-in 1s var(--ease-out-expo) both;
-    animation-delay: 260ms;
+    animation: hv-plinth-in 1.6s var(--ease-out-expo) both;
+    animation-delay: 420ms;
   }
   @keyframes hv-plinth-in {
     from { opacity: 0; transform: translateY(5cqw); }
@@ -176,9 +180,9 @@
   /* The plant unfurls into place, then sways gently. */
   .hv-plant {
     animation:
-      hv-plant-in 1.4s var(--ease-spring) both,
-      hv-sway 7s ease-in-out infinite alternate;
-    animation-delay: 520ms, 1.9s;
+      hv-plant-in 2.24s var(--ease-spring) both,
+      hv-sway 8.75s ease-in-out infinite alternate;
+    animation-delay: 830ms, 3.04s;
   }
   @keyframes hv-plant-in {
     from { opacity: 0; transform: rotate(16deg) scale(0.86); }
@@ -191,8 +195,8 @@
 
   /* The laptop lifts onto the plinth and its lid opens. */
   .hv-laptop {
-    animation: hv-laptop-in 1.1s var(--ease-out-expo) both;
-    animation-delay: 380ms;
+    animation: hv-laptop-in 1.76s var(--ease-out-expo) both;
+    animation-delay: 610ms;
   }
   @keyframes hv-laptop-in {
     from { opacity: 0; transform: perspective(180cqw) rotateY(-7deg) translateY(9cqw); }
@@ -201,8 +205,8 @@
   }
   .hv-laptop__lid {
     transform-origin: 50% 100%;
-    animation: hv-lid 1.2s var(--ease-out-expo) both;
-    animation-delay: 620ms;
+    animation: hv-lid 1.92s var(--ease-out-expo) both;
+    animation-delay: 990ms;
   }
   @keyframes hv-lid {
     from { transform: perspective(120cqw) rotateX(-82deg); filter: brightness(0.7); }
@@ -219,16 +223,16 @@
     inset: 0;
     background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%);
     transform: translateX(-110%);
-    animation: hv-glare 1.4s var(--ease-in-out) both;
-    animation-delay: 1.25s;
+    animation: hv-glare 2.24s var(--ease-in-out) both;
+    animation-delay: 2s;
     pointer-events: none;
   }
   @keyframes hv-glare {
     to { transform: translateX(110%); }
   }
   .rev-screen {
-    animation: hv-power 0.6s ease-out both;
-    animation-delay: 1.05s;
+    animation: hv-power 0.96s ease-out both;
+    animation-delay: 1.68s;
   }
   @keyframes hv-power {
     from { opacity: 0; }
@@ -236,11 +240,11 @@
   }
 
   /* Rev answers: question, thinking dots, then the evidence line by line. */
-  .rev-screen__bar { animation: m-fade 0.7s var(--ease-out-expo) both; animation-delay: 1.25s; }
+  .rev-screen__bar { animation: m-fade 1.12s var(--ease-out-expo) both; animation-delay: 2s; }
   .rev-screen__question {
     transform-origin: 100% 100%;
-    animation: hv-bubble 0.7s var(--ease-spring) both;
-    animation-delay: 1.5s;
+    animation: hv-bubble 1.12s var(--ease-spring) both;
+    animation-delay: 2.4s;
   }
   @keyframes hv-bubble {
     from { opacity: 0; transform: translateY(1.5cqw) scale(0.7); }
@@ -248,8 +252,8 @@
   }
   .rev-screen__answer {
     position: relative;
-    animation: hv-card-frame 0.6s var(--ease-out-expo) both;
-    animation-delay: 1.8s;
+    animation: hv-card-frame 0.96s var(--ease-out-expo) both;
+    animation-delay: 2.88s;
   }
   @keyframes hv-card-frame {
     from { opacity: 0; transform: translateY(2cqw); }
@@ -266,8 +270,8 @@
     color: #6e6c7a;
     font-size: 1.9cqw;
     font-weight: 600;
-    animation: hv-think-life 0.8s linear both;
-    animation-delay: 1.9s;
+    animation: hv-think-life 1.28s linear both;
+    animation-delay: 3.04s;
   }
   .rev-screen__thinking em {
     font-style: normal;
@@ -278,10 +282,10 @@
     height: 1.5cqw;
     border-radius: 50%;
     background: #7460ff;
-    animation: hv-dot 0.6s ease-in-out infinite alternate;
+    animation: hv-dot 0.75s ease-in-out infinite alternate;
   }
-  .rev-screen__thinking i:nth-child(2) { animation-delay: 0.15s; }
-  .rev-screen__thinking i:nth-child(3) { animation-delay: 0.3s; }
+  .rev-screen__thinking i:nth-child(2) { animation-delay: 0.24s; }
+  .rev-screen__thinking i:nth-child(3) { animation-delay: 0.48s; }
   @keyframes hv-think-life {
     0% { opacity: 0; }
     15%, 80% { opacity: 1; }
@@ -295,21 +299,21 @@
   .rev-screen__row,
   .rev-screen__next,
   .rev-screen__composer {
-    animation: hv-line 0.7s var(--ease-out-expo) both;
+    animation: hv-line 1.12s var(--ease-out-expo) both;
   }
-  .rev-screen__sources { animation-delay: 2.6s; }
-  .rev-screen__row--fact { animation-delay: 2.78s; }
-  .rev-screen__row--hypothesis { animation-delay: 2.96s; }
-  .rev-screen__row--unknown { animation-delay: 3.14s; }
-  .rev-screen__next { animation-delay: 3.36s; }
-  .rev-screen__composer { animation-delay: 3.5s; }
+  .rev-screen__sources { animation-delay: 4.16s; }
+  .rev-screen__row--fact { animation-delay: 4.45s; }
+  .rev-screen__row--hypothesis { animation-delay: 4.74s; }
+  .rev-screen__row--unknown { animation-delay: 5.02s; }
+  .rev-screen__next { animation-delay: 5.38s; }
+  .rev-screen__composer { animation-delay: 5.6s; }
   @keyframes hv-line {
     from { opacity: 0; transform: translateX(-2cqw); filter: blur(0.6cqw); }
     to { opacity: 1; transform: none; filter: blur(0); }
   }
   .rev-screen__composer i {
-    animation: hv-pulse 2.8s ease-out infinite;
-    animation-delay: 4.2s;
+    animation: hv-pulse 3.5s ease-out infinite;
+    animation-delay: 6.72s;
   }
   @keyframes hv-pulse {
     0% { box-shadow: 0 0 0 0 rgba(31, 6, 172, 0.45); }
@@ -319,15 +323,15 @@
   /* Floating cards slide in from their sides, then drift. */
   .hv-card--facts {
     animation:
-      hv-card-left 1s var(--ease-spring) both,
-      hv-float-a 6.5s ease-in-out infinite alternate;
-    animation-delay: 1.1s, 2.3s;
+      hv-card-left 1.6s var(--ease-spring) both,
+      hv-float-a 8.12s ease-in-out infinite alternate;
+    animation-delay: 1.76s, 3.68s;
   }
   .hv-card--evidence {
     animation:
-      hv-card-right 1s var(--ease-spring) both,
-      hv-float-b 5.5s ease-in-out infinite alternate;
-    animation-delay: 1.3s, 2.4s;
+      hv-card-right 1.6s var(--ease-spring) both,
+      hv-float-b 6.88s ease-in-out infinite alternate;
+    animation-delay: 2.08s, 3.84s;
   }
   @keyframes hv-card-left {
     from { opacity: 0; transform: translate(-6cqw, 2cqw) scale(0.9); filter: blur(0.8cqw); }
@@ -346,16 +350,16 @@
     to { translate: 0 -1.3cqw; }
   }
   .hv-card__legend i {
-    animation: m-pop 0.6s var(--ease-spring) both;
+    animation: m-pop 0.96s var(--ease-spring) both;
   }
-  .hv-card__legend i:nth-child(1) { animation-delay: 1.45s; }
-  .hv-card__legend i:nth-child(2) { animation-delay: 1.55s; }
-  .hv-card__legend i:nth-child(3) { animation-delay: 1.65s; }
+  .hv-card__legend i:nth-child(1) { animation-delay: 2.32s; }
+  .hv-card__legend i:nth-child(2) { animation-delay: 2.48s; }
+  .hv-card__legend i:nth-child(3) { animation-delay: 2.64s; }
 
   /* The check badge pops, then its tick draws itself. */
   .hv-card__check {
-    animation: hv-badge 0.6s var(--ease-spring) both;
-    animation-delay: 1.75s;
+    animation: hv-badge 0.96s var(--ease-spring) both;
+    animation-delay: 2.8s;
   }
   @keyframes hv-badge {
     from { transform: scale(0); }
@@ -364,8 +368,8 @@
   .hv-card__check svg path,
   .hv-card__check svg polyline {
     stroke-dasharray: 30;
-    animation: hv-draw-30 0.5s var(--ease-out-quart) both;
-    animation-delay: 2s;
+    animation: hv-draw-30 0.8s var(--ease-out-quart) both;
+    animation-delay: 3.2s;
   }
   @keyframes hv-draw-30 {
     from { stroke-dashoffset: 30; }
@@ -377,11 +381,39 @@
   .hv-arrow__head {
     stroke-dasharray: 1;
     stroke-dashoffset: 1;
-    animation: hv-draw-1 1s var(--ease-in-out) forwards;
+    animation: hv-draw-1 1.6s var(--ease-in-out) forwards;
   }
-  .hv-arrow__line { animation-delay: 1.6s; }
-  .hv-arrow__head { animation-duration: 0.35s; animation-delay: 2.5s; }
+  .hv-arrow__line { animation-delay: 2.56s; }
+  .hv-arrow__head { animation-duration: 0.56s; animation-delay: 4s; }
   @keyframes hv-draw-1 {
     to { stroke-dashoffset: 0; }
   }
+
+  /* ---------- Scroll ------------------------------------------------------- */
+
+  /* As the hero scrolls away, its parts move at different speeds so the page
+     feels layered instead of sliding past as one flat sheet. --sp is the
+     element's own scroll-out progress (0 = in place, 1 = scrolled off), set by
+     useScrollProgress. The individual translate/scale/rotate properties are
+     used so these never fight the entrance and ambient keyframes, which
+     animate transform on the inner elements. */
+  .m-scroll-copy {
+    translate: 0 calc(var(--sp, 0) * -7rem);
+    opacity: calc(1 - var(--sp, 0) * 1.1);
+  }
+  .m-scroll-copy h1 {
+    translate: 0 calc(var(--sp, 0) * -2.5rem);
+  }
+  .m-scroll-copy dl {
+    translate: 0 calc(var(--sp, 0) * 2rem);
+  }
+  .hero-visual__scene {
+    --spc: min(1, var(--sp, 0));
+  }
+  .hv-layer--circle { translate: 0 calc(var(--spc) * 12cqw); scale: calc(1 + var(--spc) * 0.12); }
+  .hv-layer--plant { translate: calc(var(--spc) * 5cqw) calc(var(--spc) * -4cqw); rotate: calc(var(--spc) * 5deg); }
+  /* The laptop stays seated on its plinth; everything else moves around it. */
+  .hv-layer--evidence { translate: calc(var(--spc) * 6cqw) calc(var(--spc) * -22cqw); }
+  .hv-layer--facts { translate: calc(var(--spc) * -6cqw) calc(var(--spc) * -14cqw); }
+  .hv-layer--arrow { translate: 0 calc(var(--spc) * -10cqw); opacity: calc(1 - var(--spc) * 2); }
 }

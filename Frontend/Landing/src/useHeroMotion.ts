@@ -74,3 +74,47 @@ export function useStartWhenVisible(ref: RefObject<HTMLElement | null>) {
     return () => observer.disconnect();
   }, [ref]);
 }
+
+/**
+ * Scroll-linked depth: writes --sp (0..1) on the element, its own progress
+ * from "in place" (0) to "scrolled off the top" (1). motion.css turns
+ * that into layered translate/scale/opacity so the hero's parts leave at
+ * different speeds. Works per element, so on phones the scene (which sits
+ * below the copy) only starts moving once the visitor has scrolled to it.
+ */
+export function useScrollProgress(ref: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !prefersMotion()) return;
+
+    let frame = 0;
+    let last = -1;
+    const apply = () => {
+      frame = 0;
+      const box = el.getBoundingClientRect();
+      const view = window.innerHeight || 1;
+      // Starts once the element's centre rises above 45% of the screen height,
+      // so nothing moves on load; ends when it has scrolled off the top.
+      const start = view * 0.45;
+      const travelled = start - (box.top + box.height / 2);
+      const progress = Math.max(0, Math.min(1, travelled / (start + box.height / 2)));
+      const rounded = Math.round(progress * 1000) / 1000;
+      if (rounded !== last) {
+        last = rounded;
+        el.style.setProperty("--sp", String(rounded));
+      }
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(apply);
+    };
+
+    apply();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [ref]);
+}
