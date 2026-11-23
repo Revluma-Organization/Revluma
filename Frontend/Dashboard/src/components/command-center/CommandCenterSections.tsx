@@ -11,10 +11,15 @@ import { type ActivityItem, type BusinessIndicator, BUSINESS_STATUS_LABEL, DATA_
 import { resolveReportingContext } from "@/lib/overviewReporting";
 import { cn } from "@/lib/utils";
 import { BusinessOverviewHeader } from "./BusinessOverviewHeader";
+import { CommandCenterWelcomeSection } from "./CommandCenterWelcomeSection";
 import { cc } from "./tokens";
 import type { BusinessMetric, CommandCenterData, EvidenceResource } from "./types";
 
-export { BusinessOverviewHeader, BusinessOverviewHeader as CommandCenterHeader };
+export {
+  BusinessOverviewHeader,
+  CommandCenterWelcomeSection,
+  CommandCenterWelcomeSection as CommandCenterHeader,
+};
 
 function useWorkspaceNavigation() {
   const navigate = useNavigate();
