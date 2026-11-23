@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { ArrowDown, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, UserPlus } from "lucide-react";
 import { CTA, HERO } from "@/content";
 import { useLandingConfig } from "@/config";
 import { HeroVisual } from "./HeroVisual";
@@ -7,7 +7,7 @@ import { HeroVisual } from "./HeroVisual";
 const delay = (ms: number) => ({ "--rise-delay": `${ms}ms` }) as CSSProperties;
 
 export function Hero() {
-  const { joinHref, exploreHref, onJoin } = useLandingConfig();
+  const { joinHref, signUpHref, onJoin } = useLandingConfig();
   return (
     <section aria-labelledby="hero-title" className="relative overflow-x-clip lg:flex lg:h-[calc(100svh_-_clamp(4rem,9svh,5rem))] lg:min-h-[32rem] lg:items-center">
       <div className="mx-auto grid max-w-page items-center gap-12 px-5 pb-16 pt-6 sm:px-8 sm:pb-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:w-full lg:py-[clamp(0.75rem,3svh,2.5rem)]">
@@ -39,20 +39,20 @@ export function Hero() {
             {HERO.body}
           </p>
 
-          <div className="rise mt-9 lg:mt-[clamp(1.1rem,4svh,2.25rem)] flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5" style={delay(260)}>
+          <div className="rise mt-9 lg:mt-[clamp(1.1rem,4svh,2.25rem)] flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3.5" style={delay(260)}>
             <a
               href={joinHref}
               onClick={onJoin}
-              className="group inline-flex min-h-[3.25rem] items-center justify-between gap-4 rounded-full text-left sm:whitespace-nowrap bg-ink py-1.5 pl-6 pr-1.5 text-[0.95rem] font-semibold text-white transition-colors hover:bg-indigo-deep sm:justify-start"
+              className="group inline-flex min-h-[2.275rem] items-center gap-[0.7rem] self-start whitespace-nowrap rounded-full text-left bg-ink py-[0.2625rem] pl-[1.05rem] pr-[0.2625rem] text-[0.665rem] font-semibold text-white transition-colors hover:bg-indigo-deep"
             >
               {CTA.primary.label}
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5">
-                <ArrowUpRight size={18} aria-hidden="true" />
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/15 transition-transform group-hover:-translate-y-px group-hover:translate-x-px">
+                <ArrowUpRight size={13} aria-hidden="true" />
               </span>
             </a>
-            <a href={exploreHref} className="group inline-flex min-h-12 items-center gap-3 self-start whitespace-nowrap text-[0.95rem] font-semibold text-ink sm:self-auto">
-              <span className="grid h-11 w-11 place-items-center rounded-full border border-line bg-white shadow-[0_6px_18px_-8px_rgba(12,10,29,0.25)] transition-transform group-hover:translate-y-0.5">
-                <ArrowDown size={18} aria-hidden="true" />
+            <a href={signUpHref} className="group inline-flex min-h-[2.1rem] items-center gap-[0.525rem] self-start whitespace-nowrap text-[0.665rem] font-semibold text-ink sm:self-auto">
+              <span className="grid h-[1.925rem] w-[1.925rem] place-items-center rounded-full border border-line bg-white shadow-[0_4px_12px_-6px_rgba(12,10,29,0.25)] transition-transform group-hover:scale-105">
+                <UserPlus size={13} aria-hidden="true" />
               </span>
               {CTA.secondary.label}
             </a>

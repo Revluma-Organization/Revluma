@@ -5,6 +5,7 @@
 //  - Revluma reads merchant-authorised data; it does not change the store.
 
 export const SIGN_IN_URL = "/login";
+export const SIGN_UP_URL = "/auth/signup";
 
 export const NAV_LINKS = [
   { label: "Platform", href: "#platform" },
@@ -16,7 +17,7 @@ export const NAV_LINKS = [
 export const CTA = {
   primary: { label: "Join the Founding Merchants Program", href: "#founding-merchants" },
   primaryShort: { label: "Join Founding Merchants", href: "#founding-merchants" },
-  secondary: { label: "Explore the Platform", href: "#platform" },
+  secondary: { label: "Sign Up", href: SIGN_UP_URL },
 } as const;
 
 export const HERO = {

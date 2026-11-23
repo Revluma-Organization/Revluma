@@ -7,11 +7,16 @@ const homepage = readFileSync(resolve(__dirname, "../../../index.html"), "utf8")
 
 describe("Homepage hero embed", () => {
   it("only links to sections that exist on the current homepage", () => {
-    const hrefs = [...EMBED_CONFIG.navLinks.map((link) => link.href), EMBED_CONFIG.exploreHref];
+    const hrefs = EMBED_CONFIG.navLinks.map((link) => link.href);
     for (const href of hrefs) {
       expect(href.startsWith("#")).toBe(true);
       expect(homepage).toContain(`id="${href.slice(1)}"`);
     }
+  });
+
+  it("points Sign Up at the real sign-up page", () => {
+    expect(EMBED_CONFIG.signUpHref).toBe("/auth/signup");
+    expect(readFileSync(resolve(__dirname, "../../../../vercel.json"), "utf8")).toContain('"source": "/auth/signup"');
   });
 
   it("opens the homepage's waitlist modal instead of navigating", () => {

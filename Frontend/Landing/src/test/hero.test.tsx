@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "@/App";
-import { CTA, HERO, NAV_LINKS, SIGN_IN_URL } from "@/content";
+import { CTA, HERO, NAV_LINKS, SIGN_IN_URL, SIGN_UP_URL } from "@/content";
 
 // Claims the approved blueprint rules out for the MVP landing page.
 const BANNED = [
@@ -29,11 +29,11 @@ describe("Landing hero", () => {
     expect(screen.getByText(HERO.body)).toBeInTheDocument();
   });
 
-  it("links both hero CTAs to their sections", () => {
+  it("links the hero CTAs to the waitlist and the sign-up page", () => {
     render(<App />);
     const hero = screen.getByRole("region", { name: /know where/i });
     expect(within(hero).getByRole("link", { name: new RegExp(CTA.primary.label) })).toHaveAttribute("href", "#founding-merchants");
-    expect(within(hero).getByRole("link", { name: CTA.secondary.label })).toHaveAttribute("href", "#platform");
+    expect(within(hero).getByRole("link", { name: CTA.secondary.label })).toHaveAttribute("href", SIGN_UP_URL);
   });
 
   it("renders navigation with Sign In pointing at the real login route", () => {
