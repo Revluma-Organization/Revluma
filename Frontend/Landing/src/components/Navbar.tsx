@@ -24,7 +24,7 @@ export function Navbar() {
 
   return (
     <header className="relative z-40">
-      <nav aria-label="Primary" className="mx-auto flex h-20 max-w-page items-center justify-between px-5 sm:px-8">
+      <nav aria-label="Primary" className="mx-auto flex h-20 lg:h-[clamp(4rem,9svh,5rem)] max-w-page items-center justify-between px-5 sm:px-8">
         <a href="/" aria-label="Revluma home" className="shrink-0">
           <Logo />
         </a>
