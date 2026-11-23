@@ -37,14 +37,41 @@ export type EvidenceResource = {
   reason: string | null; freshness: string; last_success_at: string | null;
   last_attempt_at: string | null; sync_state: string; limitations: string[]; coverage: string;
 };
+export type StoreSummary = {
+  id: string;
+  name: string;
+  display_name?: string | null;
+  shop_domain?: string | null;
+  platform: string;
+  iana_timezone?: string | null;
+  connection_status?: string | null;
+};
+
 export type CommandCenterData = {
   contract_version: "command-center-v1"; read_only: true; retrieved_at: string;
   context: {
     organization_id: string;
-    store: { id: string; name: string; platform: string } | null;
+    store: StoreSummary | null;
+    stores?: StoreSummary[];
     currency: string | null;
-    reporting_period: { kind: string; timezone: string; note: string };
-    comparison_period: { kind: string; comparability: string };
+    reporting_period: {
+      kind: string;
+      label?: string;
+      days?: number;
+      timezone: string;
+      timezone_verified?: boolean;
+      start?: string | null;
+      end?: string | null;
+      note: string;
+    };
+    comparison_period: {
+      kind: string;
+      label?: string;
+      timezone?: string;
+      start?: string | null;
+      end?: string | null;
+      comparability: string;
+    };
   };
   business_state: {
     id: string | null; version: string | null; generated_at: string | null;

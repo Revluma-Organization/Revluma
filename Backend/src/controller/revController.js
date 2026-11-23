@@ -163,7 +163,15 @@ exports.getCommandCenter = async (req, res, next) => {
   try {
     const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     const { getCommandCenter } = require('../services/commandCenterService');
-    const data = await getCommandCenter({ prisma, organizationId: org.id });
+    const rawStoreId = typeof req.query?.storeId === 'string' ? req.query.storeId.trim() : null;
+    const storeId = rawStoreId && /^[0-9a-f-]{36}$/i.test(rawStoreId) ? rawStoreId : null;
+    const rawPeriod = typeof req.query?.period === 'string' ? req.query.period.trim() : null;
+    const data = await getCommandCenter({
+      prisma,
+      organizationId: org.id,
+      storeId,
+      periodDays: rawPeriod || 7,
+    });
     res.set('Cache-Control', 'private, no-store');
     return res.status(200).json({ success: true, data });
   } catch (error) { return next(error); }

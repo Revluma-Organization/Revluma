@@ -9,6 +9,7 @@ import {
   createTimedAbortController,
   type CommandCenterFailure,
 } from "@/lib/commandCenterError";
+import type { ReportingPeriodKey } from "@/lib/overviewReporting";
 
 const REFRESH_MS = 60_000;
 
@@ -22,6 +23,12 @@ export interface CommandCenterState {
   lastSuccessfulAt: string | null;
   /** Polite live-region text for background refresh outcomes (announced once each). */
   announcement: string | null;
+  /** Explicitly selected store within the active workspace (null = primary store). */
+  selectedStoreId: string | null;
+  /** Selected reporting window applied consistently across the overview. */
+  selectedPeriod: ReportingPeriodKey;
+  selectStore: (storeId: string) => void;
+  selectPeriod: (period: ReportingPeriodKey) => void;
   refetch: (background?: boolean) => Promise<void>;
 }
 
@@ -34,8 +41,15 @@ export function useCommandCenter(): CommandCenterState {
   const [failure, setFailure] = useState<CommandCenterFailure | null>(null);
   const [lastSuccessfulAt, setLastSuccessfulAt] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState<string | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState<ReportingPeriodKey>("7d");
   const abortRef = useRef<{ controller: AbortController; clear: () => void } | null>(null);
   const mountedRef = useRef(true);
+  const prevSelectionRef = useRef<{ orgId: string | null; storeId: string | null; period: ReportingPeriodKey }>({
+    orgId: organizationId,
+    storeId: null,
+    period: "7d",
+  });
 
   const refetch = useCallback(async (background = false) => {
     abortRef.current?.clear();
@@ -44,7 +58,10 @@ export function useCommandCenter(): CommandCenterState {
     abortRef.current = { controller, clear };
     if (background) { setRefreshing(true); } else { setLoading(true); setFailure(null); }
     try {
-      const result = await api.get<CommandCenterResponse>("/rev/command-center", { signal: controller.signal });
+      const params: Record<string, unknown> = { signal: controller.signal };
+      if (selectedStoreId) params.storeId = selectedStoreId;
+      if (selectedPeriod !== "7d") params.period = selectedPeriod;
+      const result = await api.get<CommandCenterResponse>("/rev/command-center", params);
       if (controller.signal.aborted || !mountedRef.current) return;
       const next = parseCommandCenterResponse(result.data, organizationId);
       if (!next) {
@@ -86,18 +103,42 @@ export function useCommandCenter(): CommandCenterState {
         setRefreshing(false);
       }
     }
-  }, [organizationId]);
+  }, [organizationId, selectedStoreId, selectedPeriod]);
+
+  const selectStore = useCallback((storeId: string) => {
+    setSelectedStoreId((current) => (current === storeId ? current : storeId));
+  }, []);
+
+  const selectPeriod = useCallback((period: ReportingPeriodKey) => {
+    setSelectedPeriod((current) => (current === period ? current : period));
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
-    // Clear the previous merchant immediately on workspace change; an old
-    // tenant's snapshot can never remain visible under a new store context.
-    setData(null);
-    setFailure(null);
-    setAnnouncement(null);
-    setLastSuccessfulAt(null);
-    setLoading(true);
-    void refetch();
+    const prev = prevSelectionRef.current;
+    const orgChanged = prev.orgId !== organizationId;
+    const storeChanged = prev.storeId !== selectedStoreId;
+    const periodOnlyChanged = !orgChanged && !storeChanged && prev.period !== selectedPeriod;
+    prevSelectionRef.current = { orgId: organizationId, storeId: selectedStoreId, period: selectedPeriod };
+
+    if (orgChanged) {
+      setSelectedStoreId(null);
+      setSelectedPeriod("7d");
+    }
+
+    if (periodOnlyChanged) {
+      void refetch(true);
+    } else {
+      // Clear previous tenant or store immediately so another merchant/store's
+      // figures never remain visible under a newly selected store context.
+      setData(null);
+      setFailure(null);
+      setAnnouncement(null);
+      setLastSuccessfulAt(null);
+      setLoading(true);
+      void refetch(false);
+    }
+
     const timer = window.setInterval(() => void refetch(true), REFRESH_MS);
     const onFocus = () => void refetch(true);
     window.addEventListener("focus", onFocus);
@@ -108,11 +149,23 @@ export function useCommandCenter(): CommandCenterState {
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
-    // lastSuccessfulAt intentionally not a dependency: workspace identity is
-    // the only input that should restart the lifecycle.
+    // lastSuccessfulAt intentionally not a dependency: workspace, store, and
+    // reporting period are the only inputs that should restart the lifecycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refetch, organizationId]);
+  }, [refetch, organizationId, selectedStoreId, selectedPeriod]);
 
   const scopedData = organizationId && data?.context.organization_id !== organizationId ? null : data;
-  return { data: scopedData, loading, refreshing, failure, lastSuccessfulAt, announcement, refetch };
+  return {
+    data: scopedData,
+    loading,
+    refreshing,
+    failure,
+    lastSuccessfulAt,
+    announcement,
+    selectedStoreId,
+    selectedPeriod,
+    selectStore,
+    selectPeriod,
+    refetch,
+  };
 }

@@ -57,8 +57,10 @@ describe("Task 216 Command Center", () => {
     const briefing = screen.getByRole("heading", { name: "Your latest synchronized business picture" });
     const business = screen.getByRole("heading", { name: "Business health" });
     expect(briefing.compareDocumentPosition(business) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Your business at a glance.", level: 1 })).toBeInTheDocument();
     expect(screen.getByText("revluma-test-store-v1.myshopify.com")).toBeInTheDocument();
-    expect(screen.getByText("Today & yesterday · UTC")).toBeInTheDocument();
+    expect(screen.getByText("Today & yesterday")).toBeInTheDocument();
+    expect(screen.getByText("UTC")).toBeInTheDocument();
   });
 
   it("healthy sufficient evidence stays calm and has no promotional cards", async () => {
@@ -298,7 +300,7 @@ describe("Task 218 contracts consolidated by Task 219", () => {
     await renderPage(fixture({ context: { ...fixture().context, store: null } }));
     expect(screen.getByRole("heading", { name: "Business health" })).toBeInTheDocument();
     expect(document.querySelectorAll("[data-health-domain]")).toHaveLength(5);
-    expect(screen.getByText("No Shopify store selected")).toBeInTheDocument();
+    expect(screen.getByText("No store connected")).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledTimes(1);
   });
 
