@@ -72,7 +72,7 @@ function computeReportingPeriod(profile, now, periodDays = DEFAULT_PERIOD_DAYS) 
     display_label: `Last ${days} days`,
     timezone: verifiedTimezone || 'UTC',
     timezone_verified: Boolean(verifiedTimezone),
-    period_basis: `rolling_${days}d_store_tz`,
+    period_basis: verifiedTimezone ? `rolling_${days}d_store_tz` : `rolling_${days}d_utc`,
     note: verifiedTimezone
       ? `Rolling ${days}-day period displayed in the store's verified Shopify timezone (${verifiedTimezone}).`
       : `Rolling ${days}-day period (UTC; Shopify store timezone not yet verified).`,
