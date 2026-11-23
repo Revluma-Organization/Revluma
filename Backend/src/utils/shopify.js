@@ -142,13 +142,31 @@ const generateState = (userId) => {
   return `${randomPart}.${encodeState(userId)}`;
 };
 
-/**Build Shopify OAuth URL*/
-const buildInstallUrl = ({ shop, state }) => {
+/**
+ * Build Shopify OAuth URL.
+ *
+ * `scopePlan` (optional) comes from permissionRegistry.reauthorizationScopes
+ * for a capability reauthorization: `preserved` are the scopes the
+ * installation already holds (kept verbatim so the grant is never reduced and
+ * the merchant is shown only the delta) and `added` are the missing scopes
+ * being requested. Only read scopes may ever be added here; anything else is
+ * a programming error and is refused rather than sent to Shopify.
+ */
+const buildInstallUrl = ({ shop, state, scopePlan = null }) => {
   const { apiKey, redirectUri } = getShopifyOAuthConfig();
   const configuredScopes = String(process.env.SHOPIFY_SCOPES || '')
     .split(',')
     .map((scope) => scope.trim())
     .filter(Boolean);
+  const preserved = Array.isArray(scopePlan?.preserved) ? scopePlan.preserved.map(String) : [];
+  const added = Array.isArray(scopePlan?.added) ? scopePlan.added.map(String) : [];
+  const invalid = added.filter((scope) => !/^read_[a-z_]+$/.test(scope));
+  if (invalid.length) {
+    const error = new Error('Reauthorization may only add read scopes.');
+    error.code = 'SHOPIFY_REAUTH_SCOPE_REFUSED';
+    error.refusedScopes = invalid;
+    throw error;
+  }
   // write_discounts was previously forced here although Revluma ships an
   // observation-first product that must not request mutation access it
   // cannot honestly use. It is now opt-in via SHOPIFY_SCOPES only.
@@ -156,7 +174,9 @@ const buildInstallUrl = ({ shop, state }) => {
   // write-scoped is ever forced. Optional commerce scopes remain configurable;
   // legal policies and navigation are requested because their readers are live.
   const scope = [...new Set([
+    ...preserved,
     ...configuredScopes,
+    ...added,
     'read_orders',
     'read_customers',
     'read_products',

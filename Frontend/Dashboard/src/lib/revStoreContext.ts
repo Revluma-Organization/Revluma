@@ -14,6 +14,22 @@ import {
   TrendingUp, ShoppingCart, Users, BarChart2, Zap, RefreshCw, FileText,
 } from "lucide-react";
 
+/**
+ * Server-evaluated data health (rev-data-health-v1, Backend dataHealth.js) —
+ * the same source of truth Integrations and Rev's answers use. Only the
+ * fields the UI needs are typed here.
+ */
+export interface DataHealthSummary {
+  overall: "healthy" | "healthy_with_limitations" | "syncing" | "recovering" | "degraded" | "action_required" | "disconnected" | string;
+  core_state?: string | null;
+  syncing?: boolean;
+  last_store_sync?: string | null;
+  newest_resource_success?: string | null;
+  merchant_action?: { kind: "reconnect" | "grant_permission" | string; reason?: string; capabilities?: string[] } | null;
+  optional_permissions?: string[];
+  limitations?: string[];
+}
+
 export interface StoreContext {
   loaded: boolean;
   loadError: boolean;
@@ -26,6 +42,8 @@ export interface StoreContext {
   lastSyncedAt: string | null;
   webhooksRegistered: number | null;
   webhooksRequired: number | null;
+  storeId?: string | null;
+  dataHealth?: DataHealthSummary | null;
 }
 
 /** Shape returned by GET /stores (access_token is stripped server-side). */
@@ -42,6 +60,7 @@ export interface StoreSummary {
   updated_at?: string | null;
   webhooks_registered?: number | null;
   webhooks_required?: number | null;
+  data_health?: DataHealthSummary | null;
 }
 
 export interface StoreListEnvelope {
@@ -78,7 +97,7 @@ export function storeContextFromResponse(response: StoreListResponse): StoreCont
 
   const rank = (store: StoreSummary) =>
     (store?.connection_status === "connected" ? 4 : 0) +
-    (store?.sync_status === "complete" ? 2 : 0) +
+    (store?.sync_status === "complete" || store?.sync_status === "complete_with_limitations" ? 2 : 0) +
     (store?.status === "active" ? 1 : 0);
   const chosen = [...shopifyStores].sort((a, b) => {
     const delta = rank(b) - rank(a);
@@ -98,6 +117,8 @@ export function storeContextFromResponse(response: StoreListResponse): StoreCont
     lastSyncedAt: chosen?.last_synced_at ?? null,
     webhooksRegistered: chosen?.webhooks_registered ?? null,
     webhooksRequired: chosen?.webhooks_required ?? null,
+    storeId: chosen?.id ?? null,
+    dataHealth: chosen?.data_health ?? null,
   };
 }
 
@@ -123,9 +144,55 @@ export function isSyncNotStarted(ctx: StoreContext): boolean {
   return ctx.connected && ctx.syncStatus === "not_started";
 }
 
-/** True when the latest recorded synchronization failed or was partial. */
+/**
+ * True when the latest recorded synchronization failed or was partial.
+ *
+ * When the server supplies data health it is authoritative: Revluma retries
+ * failed resources itself and optional-permission or unsupported gaps are not
+ * sync failures, so this never raises the alarm for routine states. Those are
+ * disclosed in Rev's answers and in `dataStatusNote` instead.
+ */
 export function hasSyncFailure(ctx: StoreContext): boolean {
+  if (ctx.dataHealth) return false;
   return ctx.connected && ["failed", "partial"].includes(ctx.syncStatus || "");
+}
+
+/**
+ * The merchant must act (reconnect the store, or grant a permission a core
+ * capability needs). This is the only state that warrants a prominent prompt.
+ */
+export function merchantActionRequired(ctx: StoreContext): DataHealthSummary["merchant_action"] {
+  if (!ctx.loaded || ctx.loadError) return null;
+  return ctx.dataHealth?.merchant_action ?? null;
+}
+
+/**
+ * A quiet, non-alarming status line for states Revluma is handling itself.
+ * Returns null when there is nothing worth saying.
+ */
+export function dataStatusNote(ctx: StoreContext, now: number = Date.now()): string | null {
+  const health = ctx.dataHealth;
+  if (!ctx.connected || !health || health.merchant_action) return null;
+  const last = health.newest_resource_success || health.last_store_sync || ctx.lastSyncedAt;
+  const when = last && !Number.isNaN(Date.parse(last)) ? relativeTime(Date.parse(last), now) : null;
+  switch (health.overall) {
+    case "syncing":
+      return when ? `Refreshing your store data — last complete refresh ${when}.` : "Importing your store data — answers fill in as it completes.";
+    case "recovering":
+    case "degraded":
+      return when ? `Revluma is refreshing your store data automatically — Rev's answers use data as of ${when} and say so.` : "Revluma is retrieving your store data automatically.";
+    default:
+      return null;
+  }
+}
+
+function relativeTime(then: number, now: number): string {
+  const minutes = Math.max(0, Math.round((now - then) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h ago`;
+  return new Date(then).toLocaleDateString();
 }
 
 /** True when the backend cannot classify synchronization from recorded evidence. */

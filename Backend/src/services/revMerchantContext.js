@@ -64,6 +64,8 @@ function compactEvidence(evidence) {
   }
   return JSON.stringify(result);
 }
+const MERCHANT_CONTEXT_BUDGET_BYTES = 7680;
+
 async function buildMerchantContext(prisma, organizationId) {
   if (!organizationId) throw new TypeError('organizationId is required');
   const stores = await prisma.stores.findMany({
@@ -120,7 +122,21 @@ async function buildMerchantContext(prisma, organizationId) {
       evidenceComplete = false;
     }
   }
+  // Shared data-health evaluation (dataHealth.js): the same source of truth
+  // Integrations renders. Rev uses it to know what exists, is fresh, is
+  // authorized, is syncing or is unsupported — and discloses only what is
+  // material to the question. Failure to evaluate is itself disclosed.
+  let healthEvaluations = null;
+  if (allowedStores.size && prisma.store_sync_domain_states) {
+    try {
+      healthEvaluations = await require('./dataHealth').loadDataHealth({ db: prisma, storeIds: [...allowedStores], organizationId });
+    } catch (error) {
+      healthEvaluations = null;
+    }
+  }
+  const dataHealthAvailable = Array.isArray(healthEvaluations);
   const limitations = [
+    ...(allowedStores.size && !dataHealthAvailable ? ['Data health could not be evaluated for this request; data freshness and completeness are unverified.'] : []),
     'Connection does not prove complete order coverage.',
     'No verified checkout abandonment rate is available in this context.',
     'No findings does not prove the store has no issues.',
@@ -178,7 +194,7 @@ async function buildMerchantContext(prisma, organizationId) {
     }
   }
 
-  return {
+  const context = {
     schema_version: 'rev-merchant-context-v3',
     evidence_schema_version: require('./revEvidenceContract').EVIDENCE_SCHEMA_VERSION,
     organization_id: organizationId,
@@ -207,7 +223,18 @@ async function buildMerchantContext(prisma, organizationId) {
           compactEvidence(f.evidence)].join(' | ').slice(0, 620)),
     authorized_resources: resourceCounts.map(row => [String(row.resource_id).slice(0, 64), `persisted_records=${Number(row._count?._all || 0)}`, `last_synced=${safeTimestamp(row._max?.synced_at)}`].join(' | ')),
     authorized_resource_samples: samples,
+    data_health: [],
     limitations,
   };
+  // The whole Python request is capped at 16 KiB and conversation context may
+  // use up to 8 KiB, so the health summary takes only the room left under a
+  // 7.5 KiB merchant-context budget (always at least the per-store headers).
+  if (dataHealthAvailable) {
+    const { compactForAgent } = require('./dataHealth');
+    const used = Buffer.byteLength(JSON.stringify(context), 'utf8');
+    const budget = Math.max(512, Math.min(3072, MERCHANT_CONTEXT_BUDGET_BYTES - used));
+    context.data_health = compactForAgent(healthEvaluations, { maxBytes: budget });
+  }
+  return context;
 }
 module.exports = { buildMerchantContext, boundedEvidence, certifiedFinding };

@@ -102,6 +102,7 @@ from ..intelligence.response_adaptation import (
 )
 from ..intelligence.investigation_outcomes import (
     OUTCOME_CONTRACT_VERSION,
+    TOOL_DOMAINS,
     base_outcome,
     capability_decision,
     derive_outcome,
@@ -4624,6 +4625,11 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
     from ..intelligence.evidence_schema import validate_context_evidence
     merchant_context = (context_payload or {}).get("merchant_context")
     external_items = validate_context_evidence(merchant_context, organization_id) if merchant_context is not None else []
+    # Shared data health from Node (dataHealth.js): what exists, is fresh, is
+    # authorized, is syncing or is unsupported. Parsed defensively.
+    from ..intelligence.data_health_context import (
+        capabilities_for_domains, objective_summary, parse_data_health, relevant_limitations)
+    data_health = parse_data_health(merchant_context)
     now = ensure_utc(now or utc_now(), field="now")
     investigation_id = (context_payload or {}).get("execution_id") or str(uuid.uuid4())
     execution_policy = (context_payload or {}).get("execution_policy") or {}
@@ -5198,6 +5204,9 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
             "followup": bool(classification.get("followup")),
             "segment": classification.get("segment"),
             "requested_domains": list(question_understanding.get("required_domains") or [])[:8],
+            # Shared data-health view (Node dataHealth.js). The agent must not
+            # treat stale, unauthorized or unavailable data as complete.
+            "data_health": objective_summary(data_health),
             # Tenant/user/conversation scoped by the authenticated context
             # loader; still untrusted model input.
             "recent_conversation": str(routed.get("history_text") or "")[:1800],
@@ -5718,8 +5727,11 @@ def _run_investigation_core(organization_id: str, user_id: str, message: str, *,
             "coverage": coverage,
             "freshness": freshness,
             "limitations": list(dict.fromkeys(
-                limitation for tool_result in tool_results
-                for limitation in tool_result.limitations))[:10],
+                [limitation for tool_result in tool_results
+                 for limitation in tool_result.limitations]
+                + relevant_limitations(data_health, capabilities_for_domains(
+                    domain for name in tool_results_by_name
+                    for domain in TOOL_DOMAINS.get(name, [])))))[:10],
             "comparison_items": comparison_items,
             "validation": {"errors": validation_errors, "valid": not validation_errors},
         },

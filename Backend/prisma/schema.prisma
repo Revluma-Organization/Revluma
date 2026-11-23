@@ -265,6 +265,13 @@ model stores {
   sync_error_code                   String?                             @db.VarChar(120)
   sync_attempt_count                Int                                 @default(0)
   recovery_status                   String                              @default("not_required") @db.VarChar(32)
+  // Self-managing sync supervisor (syncSupervisor.js): durable retry/backoff
+  // state so a failing store is retried on a schedule, never abandoned.
+  sync_consecutive_failures         Int                                 @default(0)
+  sync_next_attempt_at              DateTime?                           @db.Timestamptz(6)
+  sync_last_failure_class           String?                             @db.VarChar(24)
+  authorization_requests            authorization_requests[]
+  operation_dead_letters            operation_dead_letters[]
   integration_lifecycle_events      integration_lifecycle_events[]
   sync_retry_requests               sync_retry_requests[]
   abandoned_carts                   abandoned_carts[]
@@ -1771,6 +1778,72 @@ model model_lifecycle_metrics {
 
 /// Cross-process schedule state for zero-touch automation. Advisory locks
 /// still protect execution; this row records cadence and observable outcomes.
+/// Postgres-authoritative coordination leases (coordination.js). Replaces
+/// Redis as the lock/claim store for every correctness-critical path: store
+/// sync, scheduler jobs, OAuth replay protection and reconnect sessions.
+model coordination_leases {
+  lease_key    String   @id @db.VarChar(200)
+  owner        String   @db.VarChar(64)
+  purpose      String   @db.VarChar(48)
+  acquired_at  DateTime @default(now()) @db.Timestamptz(6)
+  heartbeat_at DateTime @default(now()) @db.Timestamptz(6)
+  expires_at   DateTime @db.Timestamptz(6)
+  metadata     Json     @default("{}")
+
+  @@index([expires_at], map: "idx_coordination_leases_expires")
+}
+
+/// Merchant authorization requests for one capability (authorizationRequests.js).
+/// `pending_key` is set only while pending, so its unique index allows exactly
+/// one pending request per store + capability.
+model authorization_requests {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id          String    @db.Uuid
+  organization_id   String    @db.Uuid
+  capability        String    @db.VarChar(64)
+  missing_scopes    String[]  @default([])
+  status            String    @default("pending") @db.VarChar(24)
+  trigger           String    @db.VarChar(32)
+  explanation       String
+  resume            Json      @default("{}")
+  requested_by      String?   @db.Uuid
+  pending_key       String?   @unique @db.VarChar(160)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at        DateTime  @db.Timestamptz(6)
+  resolved_at       DateTime? @db.Timestamptz(6)
+  resolution_detail String?   @db.VarChar(120)
+  stores            stores    @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([store_id, status, created_at(sort: Desc)], map: "idx_authorization_requests_store_status")
+}
+
+/// Dead-letter records for operations that exhausted their fast retry budget
+/// (syncSupervisor.js). The operation keeps retrying at the capped cadence and
+/// the record is resolved automatically by the next verified success.
+model operation_dead_letters {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind            String    @db.VarChar(48)
+  subject_key     String    @db.VarChar(200)
+  store_id        String?   @db.Uuid
+  status          String    @default("open") @db.VarChar(16)
+  open_key        String?   @unique @db.VarChar(260)
+  failure_class   String    @db.VarChar(24)
+  error_code      String?   @db.VarChar(120)
+  attempts        Int       @default(0)
+  first_failed_at DateTime  @default(now()) @db.Timestamptz(6)
+  last_failed_at  DateTime  @default(now()) @db.Timestamptz(6)
+  next_retry_at   DateTime? @db.Timestamptz(6)
+  detail          Json      @default("{}")
+  resolved_at     DateTime? @db.Timestamptz(6)
+  resolution      String?   @db.VarChar(64)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @default(now()) @db.Timestamptz(6)
+  stores          stores?   @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([status, kind], map: "idx_operation_dead_letters_status_kind")
+  @@index([store_id, status], map: "idx_operation_dead_letters_store_status")
+}
+
 model automation_job_state {
   job_name          String    @id
   status            String    @default("idle")

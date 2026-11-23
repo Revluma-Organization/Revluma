@@ -209,24 +209,113 @@ async function syncAuthorizedResource(storeId, organizationId, resourceId, deps 
   }
 }
 
+// Domain-level retry policy. A failed domain is re-attempted on later passes
+// with exponential backoff (one sync interval doubling to six hours) instead
+// of on every pass, so one broken resource cannot burn the Shopify rate budget
+// of the whole store. It is never abandoned: at the cap it keeps retrying, and
+// after DEAD_LETTER_THRESHOLD consecutive failures it is escalated.
+const DOMAIN_BACKOFF_BASE_MS = 15 * 60 * 1000;
+
+function domainRetryDue(row, now) {
+  if (!row || !['failed', 'degraded'].includes(row.status)) return { due: true, nextAt: null };
+  const retries = Number(row.retry_count) || 0;
+  const since = row.last_checked_at || row.last_attempted_at;
+  if (retries < 1 || !since) return { due: true, nextAt: null };
+  const { backoffMs } = require('./syncSupervisor');
+  // Deterministic (no jitter): a domain's next attempt must be reproducible
+  // by the data-health engine from the persisted row.
+  const nextAt = new Date(new Date(since).getTime() + backoffMs(retries, { random: () => 0.5, baseMs: DOMAIN_BACKOFF_BASE_MS }));
+  return { due: nextAt.getTime() <= now.getTime(), nextAt };
+}
+
+// Keep the store's recorded grant equal to Shopify's live answer, so data
+// health and the permission registry never reason from a stale scope list.
+// authorization_verified_at is backfilled only when missing, and is set to the
+// moment the scope check was issued: a later uninstall therefore always
+// post-dates it and is never rejected as stale by the lifecycle state machine.
+async function recordLiveScopes(db, store, grantedScopes, checkedAt) {
+  try {
+    const { missingRequiredScopes } = require('./shopifyAuthorization');
+    const scopes = [...new Set(grantedScopes)].sort().join(',');
+    await db.stores.updateMany({ where: { id: store.id }, data: { granted_scopes: scopes } });
+    if (missingRequiredScopes(new Set(grantedScopes)).length === 0) {
+      await db.stores.updateMany({
+        where: { id: store.id, authorization_verified_at: null },
+        data: { authorization_verified_at: checkedAt },
+      });
+    }
+  } catch (error) {
+    require('../utils/logger').warn('shopify_live_scopes_unrecorded', { store_id: store.id, error_type: error?.code || error?.name });
+  }
+}
+
 async function syncAuthorizedResources(store, deps = {}) {
   const { authorizedResourceIds } = require('./authorizedResourceCatalog');
+  const { domainAccess } = require('./permissionRegistry');
+  const supervisor = require('./syncSupervisor');
+  const db = deps.db || defaultDb;
+  const syncLedger = deps.ledger || ledger;
+  const now = deps.now ? new Date(deps.now) : new Date();
+  const checkedAt = new Date();
   const grantedScopes = await shopify.liveScopes(store, deps.graphql);
+  if (!deps.skipScopePersistence) await recordLiveScopes(db, store, grantedScopes, checkedAt);
+  if (typeof syncLedger.retireUnsyncedDomains === 'function') await syncLedger.retireUnsyncedDomains(store.id, db);
+  let ledgerRows = [];
+  try {
+    ledgerRows = await db.store_sync_domain_states.findMany({
+      where: { store_id: store.id },
+      select: { domain: true, status: true, retry_count: true, last_checked_at: true, last_attempted_at: true },
+    });
+  } catch { ledgerRows = []; } // unreadable ledger: attempt everything rather than skip
+  const rowByDomain = new Map(ledgerRows.map(row => [row.domain, row]));
   const results = [];
   for (const resourceId of authorizedResourceIds()) {
-    const missing = requiredScopes(resourceId).filter(scope => !scopeSatisfied(grantedScopes, scope));
-    if (missing.length) {
-      results.push({ resource_id: resourceId, status: 'missing_scope', missing_scopes: missing });
+    const access = domainAccess(resourceId, grantedScopes);
+    if (access.state !== 'granted') {
+      // Recorded, never silently skipped: the ledger and data health must say
+      // exactly why this domain has no data. Re-evaluated every pass, so an
+      // approved reauthorization resumes the domain automatically.
+      await syncLedger.recordBlocked(store.id, resourceId, {
+        kind: access.state, missingScopes: access.missing_scopes, reason: access.reason,
+      }, db);
+      results.push({ resource_id: resourceId, status: access.state, missing_scopes: access.missing_scopes, capability: access.capability });
+      continue;
+    }
+    const retry = domainRetryDue(rowByDomain.get(resourceId), now);
+    if (!retry.due) {
+      results.push({ resource_id: resourceId, status: 'backoff', next_attempt_at: retry.nextAt.toISOString() });
       continue;
     }
     try {
       const result = await syncAuthorizedResource(store.id, store.organization_id, resourceId, { ...deps, grantedScopes });
       results.push({ resource_id: resourceId, status: 'ok', discovered: result.discovered, reconciliation: result.reconciliation });
+      try { await supervisor.resolveDeadLetter(db, 'sync_domain', `${store.id}:${resourceId}`, 'recovered'); } catch { /* escalation bookkeeping only */ }
     } catch (error) {
-      results.push({ resource_id: resourceId, status: 'failed', error_code: error.code || error.name || 'resource_sync_failed' });
+      const code = error.code || error.name || 'resource_sync_failed';
+      results.push({ resource_id: resourceId, status: 'failed', error_code: code });
+      const attempts = (Number(rowByDomain.get(resourceId)?.retry_count) || 0) + 1;
+      if (attempts >= supervisor.DEAD_LETTER_THRESHOLD) {
+        try {
+          const { classifyFailure } = require('./syncStateContract');
+          await supervisor.openDeadLetter(db, {
+            kind: 'sync_domain', subjectKey: `${store.id}:${resourceId}`, storeId: store.id,
+            failureClass: classifyFailure(code, error.message), errorCode: String(code).slice(0, 120), attempts,
+            nextRetryAt: domainRetryDue({ status: 'failed', retry_count: attempts, last_checked_at: new Date() }, new Date()).nextAt,
+            detail: { domain: resourceId },
+          });
+        } catch { /* escalation bookkeeping only */ }
+      }
     }
   }
-  return { results, succeeded: results.filter(row => row.status === 'ok').length, failed: results.filter(row => row.status === 'failed').length, missing_scope: results.filter(row => row.status === 'missing_scope').length };
+  const count = status => results.filter(row => row.status === status).length;
+  return {
+    results,
+    succeeded: count('ok'),
+    failed: count('failed'),
+    missing_scope: count('missing_scope'),
+    unsupported: count('unsupported') + count('plan_restricted'),
+    backoff: count('backoff'),
+  };
 }
 
-module.exports = { getAuthorizedResourcePage, syncAuthorizedResource, syncAuthorizedResources, requiredScopes, scopeSatisfied, validateNestedConnections, completeNestedConnections, streamAll, fetchAll, sourceId };
+module.exports = { getAuthorizedResourcePage, syncAuthorizedResource, syncAuthorizedResources, domainRetryDue, DOMAIN_BACKOFF_BASE_MS, requiredScopes, scopeSatisfied, validateNestedConnections, completeNestedConnections, streamAll, fetchAll, sourceId };

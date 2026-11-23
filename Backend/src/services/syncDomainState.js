@@ -60,9 +60,18 @@ function safeMessage(error) {
 // coverage certification. The read path re-derives from the persisted row, so
 // these are a consistent denormalized snapshot for direct inspection, never the
 // sole source of truth.
-function contractColumns(canonical, { code, details, discovered, inserted, updated, paginationComplete, succeededAt, retryCount } = {}) {
+function contractColumns(canonical, { code, details, discovered, inserted, updated, paginationComplete, succeededAt, retryCount, capabilityState, failureClass } = {}) {
   const terminalFailure = canonical === C.RESOURCE_STATUS.FAILED || canonical === C.RESOURCE_STATUS.RESOURCE_PARTIAL;
-  const failure_class = terminalFailure ? C.classifyFailure(code, details) : C.FAILURE_CLASS.NONE;
+  // A blocked row carries an explicit class (auth vs unsupported) decided by
+  // the permission registry, never a guess from the error text.
+  const failure_class = failureClass
+    || (terminalFailure ? C.classifyFailure(code, details) : C.FAILURE_CLASS.NONE);
+  // Capability is known whenever the caller evaluated live scopes: a domain
+  // that just synced is authorized; a blocked domain says why. Otherwise the
+  // honest value remains unknown.
+  const capability_state = C.CAPABILITY_VALUES.includes(capabilityState)
+    ? capabilityState
+    : (canonical === C.RESOURCE_STATUS.RESOURCE_COMPLETED ? C.CAPABILITY.AUTHORIZED : C.CAPABILITY.UNKNOWN);
   const pseudoRow = {
     status: canonical,
     records_discovered: numOr(discovered),
@@ -74,14 +83,14 @@ function contractColumns(canonical, { code, details, discovered, inserted, updat
     failure_class,
     last_succeeded_at: succeededAt || null,
     last_attempted_at: new Date(),
-    capability_state: 'unknown',
+    capability_state,
     retry_count: retryCount == null ? 0 : retryCount,
   };
   return {
     canonical_status: canonical,
     coverage_state: C.deriveCoverageState(pseudoRow),
     failure_class,
-    capability_state: 'unknown',
+    capability_state,
     retry_eligible: C.retryEligible(pseudoRow),
     schema_version: C.CONTRACT_VERSION,
     coverage_limitations: null,
@@ -319,6 +328,100 @@ async function recordFailure(storeId, domain, error, report = {}, db = defaultDb
   }
 }
 
+// A domain that cannot be read for a known, non-transient reason: the
+// installation lacks a scope the merchant can grant (auth), or Shopify does
+// not expose the resource to this app / plan (unsupported). This is an
+// outcome, not a failure: it is never retried on a timer, it does not count
+// against completion, and it is re-evaluated on every pass against live
+// scopes, so an approved reauthorization resumes it automatically.
+const BLOCK_KINDS = Object.freeze({
+  missing_scope: { code: 'REQUIRED_SCOPE_NOT_GRANTED', failureClass: C.FAILURE_CLASS.AUTH, capability: C.CAPABILITY.MISSING_SCOPE },
+  plan_restricted: { code: 'RESOURCE_PLAN_RESTRICTED_NOT_SUPPORTED', failureClass: C.FAILURE_CLASS.UNSUPPORTED, capability: C.CAPABILITY.UNKNOWN },
+  unsupported: { code: 'RESOURCE_NOT_SUPPORTED', failureClass: C.FAILURE_CLASS.UNSUPPORTED, capability: C.CAPABILITY.UNKNOWN },
+});
+
+async function recordBlocked(storeId, domain, { kind, missingScopes = [], reason = null } = {}, db = defaultDb()) {
+  assertDomain(domain);
+  const spec = BLOCK_KINDS[kind];
+  if (!spec) throw new Error(`Unknown block kind: ${kind}`);
+  const now = new Date();
+  const scopes = (Array.isArray(missingScopes) ? missingScopes : []).map(String).slice(0, 12);
+  const details = (kind === 'missing_scope'
+    ? `Missing Shopify access scope(s): ${scopes.join(', ') || 'unknown'}`
+    : (reason || 'Not exposed by Shopify for this app or plan')).slice(0, 500);
+  try {
+    const existing = await db.store_sync_domain_states.findUnique({
+      where: { store_id_domain: { store_id: storeId, domain } },
+      select: { status: true, error_code: true, error_since: true, last_succeeded_at: true },
+    });
+    const unchanged = existing?.status === 'blocked_by_auth_or_unsupported' && existing?.error_code === spec.code;
+    const cc = contractColumns(C.RESOURCE_STATUS.BLOCKED_BY_AUTH_OR_UNSUPPORTED, {
+      code: spec.code, details, succeededAt: existing?.last_succeeded_at,
+      capabilityState: spec.capability, failureClass: spec.failureClass, retryCount: 0,
+    });
+    const data = {
+      status: 'blocked_by_auth_or_unsupported',
+      ...cc,
+      retry_eligible: false,
+      error_code: spec.code,
+      error_details: details,
+      // A block that persists keeps its original start so operators can see
+      // how long a capability has been unavailable.
+      error_since: unchanged ? (existing.error_since || now) : now,
+      retry_count: 0,
+      pagination_complete: false,
+      last_checked_at: now,
+      updated_at: now,
+    };
+    await db.store_sync_domain_states.upsert({
+      where: { store_id_domain: { store_id: storeId, domain } },
+      update: data,
+      create: { store_id: storeId, domain, ...data, last_attempted_at: now },
+    });
+    return true;
+  } catch (error) {
+    loggerWarn(storeId, domain, error, 'record_blocked');
+    return false;
+  }
+}
+
+// Ledger rows for domains this build no longer syncs (e.g. a resource whose
+// Shopify API was removed) are never re-attempted, so their last failure would
+// otherwise be reported forever as if it were current. Re-label them with the
+// registry's honest verdict. Rows for known domains are never touched.
+async function retireUnsyncedDomains(storeId, db = defaultDb()) {
+  const { capabilityForDomain } = require('./permissionRegistry');
+  try {
+    const rows = await db.store_sync_domain_states.findMany({
+      where: { store_id: storeId, domain: { notIn: [...DOMAINS] }, NOT: { status: 'blocked_by_auth_or_unsupported' } },
+      select: { domain: true, last_succeeded_at: true },
+    });
+    let retired = 0;
+    for (const row of rows) {
+      const capability = capabilityForDomain(row.domain);
+      const details = (capability?.unavailableReason || 'This resource is no longer synchronized by Revluma.').slice(0, 500);
+      const now = new Date();
+      const cc = contractColumns(C.RESOURCE_STATUS.BLOCKED_BY_AUTH_OR_UNSUPPORTED, {
+        code: 'RESOURCE_NOT_SUPPORTED', details, succeededAt: row.last_succeeded_at,
+        failureClass: C.FAILURE_CLASS.UNSUPPORTED, capabilityState: C.CAPABILITY.UNKNOWN, retryCount: 0,
+      });
+      const result = await db.store_sync_domain_states.updateMany({
+        where: { store_id: storeId, domain: row.domain, NOT: { status: 'blocked_by_auth_or_unsupported' } },
+        data: {
+          status: 'blocked_by_auth_or_unsupported', ...cc, retry_eligible: false,
+          error_code: 'RESOURCE_NOT_SUPPORTED', error_details: details, retry_count: 0,
+          pagination_complete: false, last_checked_at: now, updated_at: now,
+        },
+      });
+      retired += result.count;
+    }
+    return retired;
+  } catch (error) {
+    loggerWarn(storeId, '*', error, 'retire_unsynced_domains');
+    return 0;
+  }
+}
+
 async function snapshot(storeId, db = defaultDb(), { strict = false } = {}) {
   try {
     const rows = await db.store_sync_domain_states.findMany({
@@ -424,7 +527,11 @@ module.exports = {
   recordDegraded,
   recordFailure,
   recordStaleFailure,
+  recordBlocked,
+  retireUnsyncedDomains,
   snapshot,
   mergeCheckpoint,
   domainForSetupStage,
+  contractColumns,
+  BLOCK_KINDS,
 };

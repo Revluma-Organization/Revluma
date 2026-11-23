@@ -5,7 +5,7 @@ const { shopifyGraphql } = require('./shopifyGraphql');
 const { cancelOrder, upsertOrder, upsertAbandonedCart } = require('./commerceWebhookService');
 const { reconcileShopifyWebhooks } = require('./shopifyWebhookService');
 const logger = require('../utils/logger');
-const { getRedisClient, isRedisReady } = require('../configs/redis');
+const coordination = require('./coordination');
 const { shopifyGraphqlOrderTotals } = require('./shopifyOrderFinancials');
 const { FEATURE_FIELDS, runPredictionChain } = require('./featureWorkerService');
 const { syncProducts } = require('./productSync');
@@ -492,20 +492,42 @@ async function syncAbandonedCheckouts(store, report = {}) {
   return checkouts.length;
 }
 
+// Per-store sync lease. Postgres is the authority (see coordination.js): the
+// previous Redis lock made every sync fail — or skip without a trace — whenever
+// Redis was unavailable or rejecting commands. The lease is renewed while the
+// run is alive, so a long sync never loses it, and a crashed run's lease
+// expires instead of wedging the store. Completion is additionally fenced by
+// current_sync_job_id, so a superseded run can never publish its result.
+const SYNC_LEASE_TTL_SECONDS = 900;
+const SYNC_LEASE_HEARTBEAT_MS = 5 * 60 * 1000;
+
+function syncLeaseKey(storeId) {
+  return `shopify:sync:${storeId}`;
+}
+
 async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
-  if (!isRedisReady()) {
-    const error = new Error('Shopify setup requires distributed lock service');
-    error.code = 'SHOPIFY_SETUP_LOCK_UNAVAILABLE';
+  const syncJobId = crypto.randomUUID();
+  let lease;
+  try {
+    lease = await coordination.acquireLease(syncLeaseKey(store.id), {
+      ttlSeconds: SYNC_LEASE_TTL_SECONDS, purpose: 'store_sync', metadata: { job_id: syncJobId },
+    });
+  } catch (leaseError) {
+    const error = new Error('Shopify sync coordination is unavailable');
+    error.code = 'SHOPIFY_SYNC_COORDINATION_UNAVAILABLE';
+    error.cause = leaseError;
+    logger.error('shopify_sync_lease_unavailable', { store_id: store.id, error_type: leaseError?.code || leaseError?.name });
     throw error;
   }
-  const redis = getRedisClient();
-  const lockKey = `shopify:setup:lock:${store.id}`;
-  const lockOwner = crypto.randomUUID();
-  const syncJobId = crypto.randomUUID();
-  const acquired = await redis.set(lockKey, lockOwner, 'EX', 900, 'NX');
-  if (acquired !== 'OK') {
+  if (!lease) {
     return { success: false, alreadyRunning: true };
   }
+  const stopHeartbeat = coordination.startHeartbeat(lease, {
+    ttlSeconds: SYNC_LEASE_TTL_SECONDS,
+    intervalMs: SYNC_LEASE_HEARTBEAT_MS,
+    onLost: (detail) => logger.warn('shopify_sync_lease_heartbeat_lost', { store_id: store.id, job_id: syncJobId, ...detail }),
+  });
+  const { recordSyncOutcome } = require('./syncSupervisor');
   let setupStage = 'marking_store_syncing';
   let productsError = null;
   let authorizedResources = null;
@@ -673,7 +695,7 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
       try {
         const { syncAuthorizedResources } = require('./authorizedDataService');
         authorizedResources = await syncAuthorizedResources(store);
-        logger.info('shopify_authorized_resource_sync_completed', { store_id: store.id, succeeded: authorizedResources.succeeded, failed: authorizedResources.failed, missing_scope: authorizedResources.missing_scope });
+        logger.info('shopify_authorized_resource_sync_completed', { store_id: store.id, succeeded: authorizedResources.succeeded, failed: authorizedResources.failed, missing_scope: authorizedResources.missing_scope, unsupported: authorizedResources.unsupported, backoff: authorizedResources.backoff });
       } catch (resourceError) {
         logger.warn('shopify_authorized_resource_sync_interrupted', { store_id: store.id, error_type: resourceError.code || resourceError.name || 'resource_sync_error' });
       }
@@ -742,6 +764,7 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
       logger.warn('shopify_stale_sync_completion_ignored', { store_id: store.id, job_id: syncJobId });
       return { success: false, stale: true, jobId: syncJobId };
     }
+    await recordSyncOutcome(store, { ok: true, now: syncCompletedAt });
     // Task 215 — finalize any in-flight manual retry request for this store so
     // the request's status machine is truthful (never left dangling as running).
     // Best-effort: a finalize failure must never break an otherwise successful sync.
@@ -830,6 +853,7 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     } catch (ledgerError) {
       logger.warn('shopify_sync_ledger_write_failed', { store_id: store.id, error_type: ledgerError?.code || ledgerError?.name });
     }
+    await recordSyncOutcome(store, { ok: false, error });
     logger.error('shopify_sync_failed', {
       store_id: store.id,
       stage: error.setupStage || error.sync_stage || setupStage,
@@ -844,10 +868,12 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     });
     throw error;
   } finally {
+    stopHeartbeat();
     try {
-      await redis.eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end", 1, lockKey, lockOwner);
+      await coordination.releaseLease(lease);
     } catch (lockError) {
-      logger.warn('shopify_setup_lock_release_failed', { store_id: store.id, error_type: lockError.code || lockError.name });
+      // The lease expires on its own; log so a release failure is visible.
+      logger.warn('shopify_sync_lease_release_failed', { store_id: store.id, error_type: lockError.code || lockError.name });
     }
   }
 }
@@ -866,4 +892,6 @@ module.exports = {
   syncOrders,
   syncProducts,
   syncShopifyStore,
+  syncLeaseKey,
+  SYNC_LEASE_TTL_SECONDS,
 };

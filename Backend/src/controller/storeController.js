@@ -19,20 +19,33 @@ const { fetchBusinessHealthBundle } = require('../services/businessHealthReposit
 const { buildOperationalActivity, validateOperationalActivity, LIMIT_DEFAULT, LIMIT_MAX } = require('../services/operationalActivity');
 const { fetchOperationalActivityBundle } = require('../services/operationalActivityRepository');
 const { CONTRACT_VERSION: JOURNEY_CONTRACT_VERSION, projectJourneyState, validateJourney } = require('../services/merchantJourney');
+const { evaluateStoreHealth, OVERALL: HEALTH } = require('../services/dataHealth');
+const { DOMAINS: SYNC_DOMAINS } = require('../services/syncDomainState');
+const { publicRequest } = require('../services/authorizationRequests');
 
 async function optionalRows(model, args) {
   if (!model?.findMany) return [];
   return model.findMany(args);
 }
 
-function responseStore(store, registrations, deliveries, syncRows, events) {
+function storeDataHealth(store, syncRows, deadLetters, pendingRequests) {
+  if (store.platform !== 'shopify') return null;
+  try {
+    return evaluateStoreHealth({ store, domainRows: syncRows, deadLetters, pendingRequests, domains: SYNC_DOMAINS });
+  } catch {
+    return null;
+  }
+}
+
+function responseStore(store, registrations, deliveries, syncRows, events, extras = {}) {
   const diagnostics = buildIntegrationDiagnostics({ store, registrations, deliveries, syncRows, recentEvents: events });
+  const dataHealth = storeDataHealth(store, syncRows, extras.deadLetters || [], extras.pendingRequests || []);
   const connected = !['not_connected', 'disconnected', 'authorization_required', 'authorization_expired', 'authorization_revoked', 'invalid', 'missing_permissions', 'reconnecting', 'reconnect_failed'].includes(diagnostics.connection.state);
   const reconnecting = diagnostics.connection.state === 'reconnecting';
   const registered = diagnostics.webhooks.registration.verified;
   const required = diagnostics.webhooks.registration.required;
   const recordedSyncStatus = diagnostics.synchronization.status;
-  const syncStatus = ['running', 'queued', 'starting'].includes(recordedSyncStatus)
+  const recordedSync = ['running', 'queued', 'starting'].includes(recordedSyncStatus)
     ? 'in_progress'
     : ['completed', 'initial_completed'].includes(recordedSyncStatus)
       ? 'complete'
@@ -43,6 +56,19 @@ function responseStore(store, registrations, deliveries, syncRows, events) {
           : ['not_started', 'idle'].includes(recordedSyncStatus)
             ? store.last_synced_at ? 'unknown' : 'not_started'
             : 'unknown';
+  // A sync that finished with limitations is complete when every core
+  // resource (orders, checkouts, products, inventory) is verified complete and
+  // the only gaps are optional permissions, unsupported resources or
+  // resources Revluma does not collect. Those gaps stay disclosed through
+  // data_health; they are not a sync failure and must not raise a failure
+  // banner (unavailable data ≠ failed sync).
+  const coreComplete = dataHealth && dataHealth.core_state === 'complete' && !dataHealth.merchant_action;
+  const syncStatus = recordedSync === 'partial' && coreComplete ? 'complete_with_limitations' : recordedSync;
+  // Revluma retries failed core resources itself. While that recovery is
+  // genuinely scheduled (store backoff or resource retries, no exhausted
+  // dead letter) the setup is "recovering", not "needs your attention".
+  const recovering = dataHealth?.overall === HEALTH.RECOVERING
+    && !(dataHealth.recovery.open_dead_letters || []).some(item => item.kind === 'store_sync');
   const webhooksRunning = diagnostics.webhooks.topics.some(item => item.registration_status === 'registration_pending');
   const webhooksFailed = diagnostics.webhooks.topics.some(item => item.registration_status === 'registration_failed');
   const safeStore = { ...store };
@@ -55,7 +81,10 @@ function responseStore(store, registrations, deliveries, syncRows, events) {
     diagnostic: diagnostics.diagnostic,
     diagnostics,
     sync_status: syncStatus,
-    monitoring_mode: !connected ? 'disconnected' : diagnostics.webhooks.registration.complete && syncStatus === 'complete' ? 'webhook_and_sync' : syncStatus === 'complete' ? 'sync_only_limited' : 'awaiting_verified_sync',
+    sync_limitations: dataHealth ? dataHealth.limitations : [],
+    data_health: dataHealth,
+    authorization_requests: (extras.pendingRequests || []).map(row => (row.capability_label ? row : publicRequest(row))),
+    monitoring_mode: !connected ? 'disconnected' : diagnostics.webhooks.registration.complete && ['complete', 'complete_with_limitations'].includes(syncStatus) ? 'webhook_and_sync' : ['complete', 'complete_with_limitations'].includes(syncStatus) ? 'sync_only_limited' : 'awaiting_verified_sync',
     webhooks_registered: store.platform === 'shopify' ? registered : null,
     webhooks_required: store.platform === 'shopify' ? required : null,
     webhook_details: store.platform === 'shopify' ? diagnostics.webhooks.topics.map(item => ({
@@ -71,8 +100,11 @@ function responseStore(store, registrations, deliveries, syncRows, events) {
     })) : null,
     setup_status: !connected && !reconnecting ? 'disconnected'
       : webhooksRunning || syncStatus === 'in_progress' || reconnecting ? 'in_progress'
-        : webhooksFailed || ['failed', 'partial'].includes(syncStatus) || diagnostics.connection.state === 'needs_attention' ? 'failed'
-          : !diagnostics.webhooks.registration.complete ? 'webhooks_pending' : syncStatus,
+        : dataHealth?.merchant_action ? 'failed'
+          : recovering && ['failed', 'partial'].includes(syncStatus) && !webhooksFailed ? 'recovering'
+            : webhooksFailed || ['failed', 'partial'].includes(syncStatus) || diagnostics.connection.state === 'needs_attention' ? 'failed'
+              : !diagnostics.webhooks.registration.complete ? 'webhooks_pending'
+                : syncStatus === 'complete_with_limitations' ? 'complete' : syncStatus,
   };
 }
 
@@ -88,16 +120,19 @@ exports.getStores = async (req, res, next) => {
         integration_changed_at: true, authorization_verified_at: true,
         initial_sync_status: true, current_sync_job_id: true, sync_started_at: true,
         sync_completed_at: true, sync_error_code: true, sync_attempt_count: true, recovery_status: true,
+        granted_scopes: true, sync_consecutive_failures: true, sync_next_attempt_at: true, sync_last_failure_class: true,
       },
     });
     const ids = stores.filter(store => store.platform === 'shopify').map(store => store.id);
     let responseStores;
     try {
-      const [registrations, deliveries, syncRows, events] = await Promise.all([
+      const [registrations, deliveries, syncRows, events, deadLetters, pendingRequests] = await Promise.all([
         optionalRows(prisma.webhook_registrations, { where: { store_id: { in: ids } } }),
         optionalRows(prisma.webhook_deliveries, { where: { store_id: { in: ids } }, orderBy: { received_at: 'desc' }, take: 2000 }),
         optionalRows(prisma.store_sync_domain_states, { where: { store_id: { in: ids } } }),
         optionalRows(prisma.integration_lifecycle_events, { where: { store_id: { in: ids } }, orderBy: { observed_at: 'desc' }, take: 100 }),
+        optionalRows(prisma.operation_dead_letters, { where: { store_id: { in: ids }, status: 'open' }, take: 200 }).catch(() => []),
+        optionalRows(prisma.authorization_requests, { where: { store_id: { in: ids }, status: 'pending' }, orderBy: { created_at: 'desc' }, take: 100 }).catch(() => []),
       ]);
       responseStores = stores.map(store => responseStore(
         store,
@@ -105,6 +140,10 @@ exports.getStores = async (req, res, next) => {
         deliveries.filter(row => row.store_id === store.id),
         syncRows.filter(row => row.store_id === store.id),
         events.filter(row => row.store_id === store.id),
+        {
+          deadLetters: deadLetters.filter(row => row.store_id === store.id),
+          pendingRequests: pendingRequests.filter(row => row.store_id === store.id),
+        },
       ));
     } catch {
       responseStores = stores.map(store => {

@@ -27,7 +27,7 @@ import {
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
   Zap, RefreshCw, Mic, Phone, Pencil,
   Trash2, ImageIcon, AlertCircle, RefreshCcw, Square, Search,
-  ThumbsUp, ThumbsDown, Volume2,
+  ThumbsUp, ThumbsDown, Volume2, CheckCircle2,
 } from "lucide-react";
 import { commandCenterReturnRoute, revConversationRoute } from "@/lib/workspaceNavigation";
 import { explainWorkspaceError, isKnownWorkspaceCode, merchantMessage } from "@/lib/workspaceCommunication";
@@ -38,9 +38,10 @@ import { useThemeStore } from "@/store";
 import api, { ApiError } from "@/lib/api";
 import {
   UNKNOWN_STORE, buildStarters, hasSyncFailure, hasWebhookGap, isSyncIncomplete, isSyncNotStarted,
-  isSyncStatusUnknown, isSyncStale,
+  isSyncStatusUnknown, isSyncStale, merchantActionRequired, dataStatusNote,
   storeContextFromResponse, storeLabel, type StoreContext, type StoreListResponse,
 } from "@/lib/revStoreContext";
+import { capabilityLabel, startCapabilityAuthorization } from "@/lib/shopifyAuthorization";
 import RevAnswerView from "@/components/rev/RevAnswerView";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import { JumpToLatest } from "@/components/rev/JumpToLatest";
@@ -744,6 +745,8 @@ function ConversationHistoryList({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const REV_AUTH_DRAFT_KEY = "rev:authorization-draft";
+
 export default function RevIntell() {
   const { user } = useAuth();
   const theme = useThemeStore((s) => s.theme);
@@ -804,6 +807,9 @@ export default function RevIntell() {
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [storeContext, setStoreContext] = useState<StoreContext>(UNKNOWN_STORE);
+  const [authorizationStarting, setAuthorizationStarting] = useState(false);
+  const [authorizationError, setAuthorizationError] = useState<string | null>(null);
+  const [authorizationNotice, setAuthorizationNotice] = useState<string | null>(null);
   // One canonical live region for dynamic conversation events (Task 224 §8). It is
   // always mounted (present before it is spoken) and holds a single message, so
   // announcements are never duplicated across components. Errors are already
@@ -931,6 +937,60 @@ export default function RevIntell() {
     void loadStoreContext();
     return () => { storeRequestRef.current += 1; };
   }, [loadStoreContext]);
+
+  // Permission requests go through the backend permission manager, which asks
+  // Shopify only for scopes not already granted and returns here afterwards.
+  // The merchant's unsent draft survives the round trip.
+  const requestCapabilities = useCallback(async (capabilities: string[]) => {
+    if (!storeContext.storeId || !storeContext.shopDomain || capabilities.length === 0) return;
+    setAuthorizationStarting(true);
+    setAuthorizationError(null);
+    try {
+      const result = await startCapabilityAuthorization({
+        storeId: storeContext.storeId,
+        shopDomain: storeContext.shopDomain,
+        capabilities,
+        trigger: "merchant",
+        resume: { surface: "rev", conversationId: urlConvId ?? null },
+      });
+      if (result.kind === "redirect") {
+        try { if (input.trim()) sessionStorage.setItem(REV_AUTH_DRAFT_KEY, input.slice(0, 4000)); } catch { /* storage unavailable */ }
+        window.location.assign(result.url);
+        return;
+      }
+      // Nothing to request: already granted, or Shopify does not offer it.
+      setAuthorizationError(result.refused.length
+        ? result.refused.map(item => item.explanation || `${capabilityLabel(item.capability)} is not available for this store.`).join(" ")
+        : null);
+      void loadStoreContext();
+    } catch (error) {
+      setAuthorizationError(error instanceof ApiError && error.message ? error.message : "Shopify approval could not be started. Please try again.");
+    } finally {
+      setAuthorizationStarting(false);
+    }
+  }, [storeContext.storeId, storeContext.shopDomain, urlConvId, input, loadStoreContext]);
+
+  // Returning from Shopify approval: confirm what was granted, restore the
+  // draft, and refresh the shared data state. Retrieval of the newly
+  // authorized data was already started server-side; Rev discloses progress
+  // in its answers, so nothing is claimed here beyond what the callback said.
+  useEffect(() => {
+    const outcome = searchParams.get("authorization");
+    if (!outcome || !["approved", "partially_granted"].includes(outcome)) return;
+    const granted = (searchParams.get("capabilities") || "").split(",").map(item => item.trim()).filter(Boolean);
+    setAuthorizationNotice(granted.length
+      ? `Access approved for ${granted.map(capabilityLabel).join(", ")}. Revluma is retrieving that data now${outcome === "partially_granted" ? "; some requested access was not granted" : ""}.`
+      : "Shopify approval completed.");
+    try {
+      const draft = sessionStorage.getItem(REV_AUTH_DRAFT_KEY);
+      if (draft) { setInput(draft); sessionStorage.removeItem(REV_AUTH_DRAFT_KEY); }
+    } catch { /* storage unavailable */ }
+    void loadStoreContext();
+    const next = new URLSearchParams(searchParams);
+    for (const key of ["authorization", "capabilities", "authorization_request", "shopify", "shop"]) next.delete(key);
+    navigate({ search: next.toString() ? `?${next.toString()}` : "" }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // ── Load conversations list ───────────────────────────────────────────────
   const loadConversations = useCallback(async (searchText = searchQueryRef.current, append = false) => {
@@ -1882,6 +1942,70 @@ export default function RevIntell() {
               </motion.div>
             )}
 
+            {/* Data status. When the server supplies data health (the shared
+                source of truth with Integrations and Rev's answers), routine
+                sync, retry and optional-permission states are handled by
+                Revluma and disclosed inside the answers they affect; only a
+                genuine merchant action gets a prompt. Legacy responses without
+                data health keep the previous indicators. */}
+            {(() => {
+              const action = merchantActionRequired(storeContext);
+              if (!storeContext.connected && action?.kind !== "reconnect") return null;
+              if (!action) return null;
+              const reconnect = action.kind === "reconnect";
+              const labels = (action.capabilities || []).map(capabilityLabel);
+              return (
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                  className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                  style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.28)" }}>
+                  <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#d97706" }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
+                      {reconnect ? "Shopify needs you to reconnect" : "Shopify needs your approval"}
+                    </p>
+                    <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                      {reconnect
+                        ? `Shopify no longer accepts Revluma's access to ${storeLabel(storeContext)}, so Rev can only answer from data retrieved before that. Reconnecting restores it; everything else resumes automatically.`
+                        : `Rev needs read access to ${labels.join(", ")} to answer questions about it. Revluma asks Shopify only for what is missing and resumes automatically once you approve.`}
+                    </p>
+                    {authorizationError && (
+                      <p className="mt-1 text-[0.72rem]" style={{ color: "#dc2626" }}>{authorizationError}</p>
+                    )}
+                    {reconnect ? (
+                      <Link to="/dashboard/integrations" className="mt-2 inline-block text-xs font-semibold underline underline-offset-2"
+                        style={{ color: isDark ? "#b4a8ff" : "#1F06AC" }}>Reconnect in Integrations</Link>
+                    ) : (
+                      <button type="button" disabled={authorizationStarting}
+                        onClick={() => void requestCapabilities(action.capabilities || [])}
+                        className="mt-2 rounded-md text-xs font-semibold underline underline-offset-2 disabled:opacity-60"
+                        style={{ color: isDark ? "#b4a8ff" : "#1F06AC" }}>
+                        {authorizationStarting ? "Opening Shopify…" : "Review and approve in Shopify"}
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })()}
+
+            {authorizationNotice && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} role="status"
+                className="w-full mb-5 flex items-start gap-3 p-3 rounded-xl"
+                style={{ background: "rgba(5,150,105,0.07)", border: "1px solid rgba(5,150,105,0.25)" }}>
+                <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0" style={{ color: "#059669" }} />
+                <p className="text-[0.75rem] leading-snug flex-1" style={{ color: t2 }}>{authorizationNotice}</p>
+                <button type="button" aria-label="Dismiss" onClick={() => setAuthorizationNotice(null)}
+                  className="text-xs" style={{ color: t2 }}>×</button>
+              </motion.div>
+            )}
+
+            {storeContext.dataHealth && dataStatusNote(storeContext) && (
+              <p className="w-full mb-4 px-1 text-[0.72rem] leading-snug flex items-center gap-1.5" role="status" style={{ color: t2 }}>
+                <RefreshCw size={12} className={storeContext.dataHealth.syncing ? "animate-spin" : ""} />
+                {dataStatusNote(storeContext)}
+              </p>
+            )}
+
+            {!storeContext.dataHealth && (<>
             {storeContext.connected && isSyncIncomplete(storeContext) && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                 className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
@@ -1987,6 +2111,8 @@ export default function RevIntell() {
                 </div>
               </motion.div>
             )}
+
+            </>)}
 
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25 }} className="w-full mb-7">

@@ -48,11 +48,46 @@ function mockModule(relativePath, exports) {
 const syncFailure = new Error('webhook setup failed');
 syncFailure.code = 'SHOPIFY_WEBHOOK_SETUP_FAILED';
 let syncStarted = false;
-const consumedStates = new Set();
-mockModule('../../configs/redis', {
-  isRedisReady: () => true,
-  getRedisClient: () => ({ set: async (key) => consumedStates.has(key) ? null : (consumedStates.add(key), 'OK') }),
-});
+// OAuth replay protection and OAuth sessions live in Postgres
+// (coordination_leases). This in-memory model honours the primary key
+// (P2002 on duplicates) and the expiry predicate used for takeover.
+const leases = new Map();
+let leaseStoreDown = false;
+function leaseStoreGuard() {
+  if (leaseStoreDown) {
+    const error = new Error('database unavailable');
+    error.code = 'P1001';
+    throw error;
+  }
+}
+mockPrisma.coordination_leases = {
+  create: async ({ data }) => {
+    leaseStoreGuard();
+    if (leases.has(data.lease_key)) { const error = new Error('unique'); error.code = 'P2002'; throw error; }
+    leases.set(data.lease_key, { ...data });
+    return data;
+  },
+  updateMany: async ({ where, data }) => {
+    leaseStoreGuard();
+    const row = leases.get(where.lease_key);
+    if (!row) return { count: 0 };
+    if (where.expires_at?.lt && !(row.expires_at < where.expires_at.lt)) return { count: 0 };
+    if (where.owner && row.owner !== where.owner) return { count: 0 };
+    Object.assign(row, data);
+    return { count: 1 };
+  },
+  deleteMany: async ({ where }) => {
+    leaseStoreGuard();
+    const row = leases.get(where.lease_key);
+    if (!row || (where.owner && row.owner !== where.owner)) return { count: 0 };
+    leases.delete(where.lease_key);
+    return { count: 1 };
+  },
+};
+mockPrisma.authorization_requests = {
+  findMany: async () => [],
+  updateMany: async () => ({ count: 0 }),
+};
 let failPersistence = false;
 let tokenExchangeCalls = 0;
 let deliveryStatus = 'failed';
@@ -167,6 +202,39 @@ async function verifyCallbackSurvivesDeferredSetupFailure() {
   assert.strictEqual(tokenExchangeCalls, 1);
 }
 
+async function verifyReplayedCallbackIsRejectedWithoutSecondExchange() {
+  const state = generateState('merchant-123');
+  const query = { code: 'replay-code', shop: 'revluma-test-store.myshopify.com', state, timestamp: '1792240001' };
+  query.hmac = callbackHmac(query);
+  const cookies = { shopify_state: state, shopify_user: 'merchant-123', shopify_shop: 'revluma-test-store.myshopify.com' };
+  const before = tokenExchangeCalls;
+  const first = callbackRequest(query, cookies);
+  await first.invoke();
+  assert.strictEqual(tokenExchangeCalls, before + 1);
+  const replay = callbackRequest(query, cookies);
+  await replay.invoke();
+  assert.strictEqual(replay.response.statusCode, 409, 'a replayed OAuth state must be rejected');
+  assert.strictEqual(tokenExchangeCalls, before + 1, 'a replayed state must never reach token exchange');
+  const digest = crypto.createHash('sha256').update(state).digest('hex');
+  assert.ok(leases.has(`shopify:oauth:consumed:${digest}`), 'state consumption is a durable Postgres claim');
+}
+
+async function verifyReplayStoreOutageFailsClosed() {
+  const state = generateState('merchant-123');
+  const query = { code: 'outage-code', shop: 'revluma-test-store.myshopify.com', state, timestamp: '1792240002' };
+  query.hmac = callbackHmac(query);
+  const before = tokenExchangeCalls;
+  leaseStoreDown = true;
+  const callback = callbackRequest(query, { shopify_state: state, shopify_user: 'merchant-123', shopify_shop: 'revluma-test-store.myshopify.com' });
+  try {
+    await callback.invoke();
+  } finally {
+    leaseStoreDown = false;
+  }
+  assert.strictEqual(callback.response.statusCode, 503, 'an unanswerable replay store must fail closed');
+  assert.strictEqual(tokenExchangeCalls, before, 'no code exchange while replay protection is unavailable');
+}
+
 async function verifyInvalidHmacAndStateAreRejected() {
   const state = generateState('merchant-123');
   const query = {
@@ -222,7 +290,7 @@ async function verifyAuthorizationDenialAndRetrySetup() {
   const denied = callbackRequest({ error: 'access_denied' }, {});
   await denied.invoke();
   assert.strictEqual(new URL(denied.response.redirectUrl).searchParams.get('shopify'), 'cancelled');
-  assert.deepStrictEqual(denied.response.clearedCookies.sort(), ['oauth_user', 'shopify_organization', 'shopify_reconnect_attempt', 'shopify_reconnect_store', 'shopify_shop', 'shopify_state', 'shopify_user']);
+  assert.deepStrictEqual(denied.response.clearedCookies.sort(), ['oauth_user', 'shopify_organization', 'shopify_reauth_store', 'shopify_reconnect_attempt', 'shopify_reconnect_store', 'shopify_shop', 'shopify_state', 'shopify_user']);
 
   let retryResponse;
   const res = {
@@ -347,6 +415,8 @@ async function verifyFailedWebhookDeliveryCanRetryOnce() {
 (async () => {
   await verifyCallbackSurvivesDeferredSetupFailure();
   await verifyInvalidHmacAndStateAreRejected();
+  await verifyReplayedCallbackIsRejectedWithoutSecondExchange();
+  await verifyReplayStoreOutageFailsClosed();
   await verifyPersistenceFailureReportsStageWithoutSecrets();
   await verifyAuthorizationDenialAndRetrySetup();
   await verifyPersistedStoreIsReturnedWithoutCredentials();
