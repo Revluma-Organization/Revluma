@@ -1,6 +1,6 @@
 {
   "installCommand": "cd Frontend/Dashboard && npm install --include=dev",
-  "buildCommand": "cd Frontend/Dashboard && npm run build -- --outDir ../dashboard --emptyOutDir",
+  "buildCommand": "cd Frontend/Dashboard && npm run build -- --outDir ../dashboard --emptyOutDir && cd ../Landing && npm ci --no-audit --no-fund && npm run build:embed",
   "outputDirectory": "Frontend",
   "cleanUrls": true,
   "redirects": [
