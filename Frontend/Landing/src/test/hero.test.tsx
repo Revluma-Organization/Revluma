@@ -29,6 +29,16 @@ describe("Landing hero", () => {
     expect(screen.getByText(HERO.body)).toBeInTheDocument();
   });
 
+  it("tracks scroll progress on the copy and the scene for the scroll depth effect", () => {
+    const { container } = render(<App />);
+    for (const selector of [".m-scroll-copy", ".hero-visual"]) {
+      const value = (container.querySelector(selector) as HTMLElement).style.getPropertyValue("--sp");
+      expect(Number(value)).toBeGreaterThanOrEqual(0);
+      expect(Number(value)).toBeLessThanOrEqual(1);
+      expect(value).not.toBe("");
+    }
+  });
+
   it("keeps the headline readable word by word and starts the scene", () => {
     const { container } = render(<App />);
     const h1 = screen.getByRole("heading", { level: 1 });

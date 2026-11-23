@@ -180,15 +180,37 @@
             display: none !important;
         }
 
-        .reveal {
+        /* Scroll reveals: content rises out of a soft blur as it enters the
+           screen, matching the hero's motion. Siblings get a stagger from the
+           reveal script at the bottom of the page. */
+        .reveal,
+        .reveal[class*="transition"] {
             opacity: 0;
-            transform: translateY(20px);
-            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+            transform: translateY(48px) scale(0.98);
+            filter: blur(8px);
+            transition:
+                opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 1.5s cubic-bezier(0.16, 1, 0.3, 1),
+                filter 1.2s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.3s ease;
         }
 
+        /* translateY(0) rather than none: as before, a revealed block stays the
+           containing block for any absolutely positioned content inside it. */
         .reveal.active {
             opacity: 1;
             transform: translateY(0);
+            filter: none;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .reveal,
+            .reveal[class*="transition"] {
+                opacity: 1;
+                transform: translateY(0);
+                filter: none;
+                transition: none;
+            }
         }
 
         .premium-headline {
@@ -3222,16 +3244,33 @@
         }, { threshold: 0.5 });
         counters.forEach(c => counterObserver.observe(c));
 
-        // Intersection Observer for scroll reveals
+        // Intersection Observer for scroll reveals. Elements reveal once, a little
+        // after they enter the screen; siblings revealed together are staggered.
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
-                    entry.target.classList.add('active');
+                    const el = entry.target;
+                    el.classList.add('active');
+                    observer.unobserve(el);
+                    // Drop the stagger once revealed so hovers are not delayed.
+                    el.addEventListener('transitionend', function clear(event) {
+                        if (event.target === el && event.propertyName === 'transform') {
+                            el.style.transitionDelay = '';
+                            el.removeEventListener('transitionend', clear);
+                        }
+                    });
                 }
             });
-        }, { threshold: 0.1 });
+        }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
 
-        document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
+        document.querySelectorAll('.reveal').forEach((el) => {
+            if (!el.style.transitionDelay) {
+                const siblings = Array.from(el.parentElement.children).filter((child) => child.classList.contains('reveal'));
+                const index = Math.min(siblings.indexOf(el), 4);
+                if (index > 0) el.style.transitionDelay = (index * 0.14) + 's';
+            }
+            observer.observe(el);
+        });
     </script>
     <script>
         // Feature image upload handler
