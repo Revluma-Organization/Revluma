@@ -9,6 +9,8 @@
   html {
     -webkit-text-size-adjust: 100%;
     scroll-behavior: smooth;
+    /* Clears the pinned nav for in-page anchors. */
+    scroll-padding-top: 5rem;
   }
   /* .rl-root is the embed's wrapper inside the shadow root; it resets
      everything the host page would otherwise pass down by inheritance. */
