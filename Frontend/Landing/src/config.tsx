@@ -15,7 +15,7 @@ export type LandingConfig = {
   joinHref: string;
   /** The hero's secondary "Sign Up" CTA (the real account sign-up page). */
   signUpHref: string;
-  /** Optional handler for every "Join Founding Merchants" CTA. */
+  /** Optional handler for every "Join Waitlist" CTA (opens the Founding Merchants waitlist). */
   onJoin?: (event: MouseEvent<HTMLAnchorElement>) => void;
 };
 
