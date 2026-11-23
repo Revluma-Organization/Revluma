@@ -123,6 +123,11 @@ function checkFinancialImpact(claim, errors) {
 function validateClaim(claim, knownEvidence, { organizationId = null, storeIds = null } = {}) {
   const errors = new Set();
   if (!isPlainObject(claim)) return ['claim_not_an_object'];
+  // Invalid upstream envelopes fail closed instead of raising TypeError.
+  if (!isPlainObject(knownEvidence)) {
+    errors.add('invalid_evidence_registry');
+    knownEvidence = Object.create(null);
+  }
   const grade = claim.classification;
   if (claim.contract_version !== CLAIM_CONTRACT_VERSION) {
     errors.add('unknown_claim_contract_version');
@@ -132,7 +137,14 @@ function validateClaim(claim, knownEvidence, { organizationId = null, storeIds =
     return [...errors].sort();
   }
 
-  const evidenceIds = (claim.evidence_ids || []).filter((id) => typeof id === 'string' && id !== '');
+  const inputEvidenceIds = claim.evidence_ids == null ? [] : claim.evidence_ids;
+  if (!Array.isArray(inputEvidenceIds)
+    || inputEvidenceIds.some((id) => typeof id !== 'string' || id.trim() === '')) {
+    errors.add('invalid_claim_evidence_ids');
+  }
+  const evidenceIds = Array.isArray(inputEvidenceIds)
+    ? inputEvidenceIds.filter((id) => typeof id === 'string' && id.trim() !== '')
+    : [];
   const restated = claim.restated === true;
   if (restated) {
     if (typeof claim.source_investigation !== 'string' || claim.source_investigation.trim() === '') {
@@ -143,7 +155,7 @@ function validateClaim(claim, knownEvidence, { organizationId = null, storeIds =
     }
   } else {
     for (const id of evidenceIds) {
-      if (!(id in knownEvidence)) {
+      if (!Object.prototype.hasOwnProperty.call(knownEvidence, id)) {
         errors.add(`${grade}_cites_unknown_evidence`);
         break;
       }
@@ -153,9 +165,15 @@ function validateClaim(claim, knownEvidence, { organizationId = null, storeIds =
   if (organizationId && claim.organization_id !== organizationId) {
     errors.add('cross_tenant_claim');
   }
+  const rawClaimStores = claim.store_ids == null ? [] : claim.store_ids;
+  if (!Array.isArray(rawClaimStores)
+    || rawClaimStores.some((id) => typeof id !== 'string' || id.trim() === '')) {
+    errors.add('invalid_claim_store_ids');
+  }
   if (storeIds !== null) {
-    const allowed = new Set(storeIds);
-    const claimStores = claim.store_ids || [];
+    if (!Array.isArray(storeIds)) errors.add('invalid_allowed_store_scope');
+    const allowed = new Set(Array.isArray(storeIds) ? storeIds : []);
+    const claimStores = Array.isArray(rawClaimStores) ? rawClaimStores : [];
     for (const storeId of claimStores) {
       if (!allowed.has(storeId)) {
         errors.add('cross_store_claim');
@@ -205,7 +223,8 @@ function validateClaim(claim, knownEvidence, { organizationId = null, storeIds =
     }
     if (!restated) {
       for (const id of evidenceIds) {
-        const item = knownEvidence[id];
+        const item = Object.prototype.hasOwnProperty.call(knownEvidence, id)
+          ? knownEvidence[id] : null;
         if (!item) {
           errors.add('verified_fact_cites_unknown_evidence');
         } else if (item.status !== STATUS_AVAILABLE && item.status !== 'verified_zero') {
@@ -245,7 +264,7 @@ function validateClaim(claim, knownEvidence, { organizationId = null, storeIds =
           errors.add('calculation_input_without_evidence');
           continue;
         }
-        if (!restated && !(evidenceId in knownEvidence)) {
+        if (!restated && !Object.prototype.hasOwnProperty.call(knownEvidence, evidenceId)) {
           errors.add('calculation_input_cites_unknown_evidence');
         }
         const entryValue = entry ? entry.value : undefined;
@@ -280,8 +299,14 @@ function validateClaim(claim, knownEvidence, { organizationId = null, storeIds =
       if (hypothesis.verified === true) {
         errors.add('hypothesis_claimed_verified');
       }
-      const missing = (hypothesis.missing_evidence || [])
-        .filter((text) => typeof text === 'string' && text.trim() !== '');
+      const missingInput = hypothesis.missing_evidence == null ? [] : hypothesis.missing_evidence;
+      if (!Array.isArray(missingInput)
+        || missingInput.some((text) => typeof text !== 'string' || text.trim() === '')) {
+        errors.add('invalid_hypothesis_missing_evidence');
+      }
+      const missing = Array.isArray(missingInput)
+        ? missingInput.filter((text) => typeof text === 'string' && text.trim() !== '')
+        : [];
       if (missing.length === 0) {
         errors.add('hypothesis_without_missing_evidence');
       }
@@ -306,12 +331,14 @@ function validateClaim(claim, knownEvidence, { organizationId = null, storeIds =
 
 /** Validate a set of claims against the evidence that exists. */
 function validateClaims(claims, items, options = {}) {
-  const known = {};
-  for (const item of items || []) {
+  const errors = new Set();
+  if (claims != null && !Array.isArray(claims)) errors.add('invalid_claims_collection');
+  if (items != null && !Array.isArray(items)) errors.add('invalid_evidence_collection');
+  const known = Object.create(null);
+  for (const item of Array.isArray(items) ? items : []) {
     if (item && typeof item.id === 'string' && item.id !== '') known[item.id] = item;
   }
-  const errors = new Set();
-  for (const claim of claims || []) {
+  for (const claim of Array.isArray(claims) ? claims : []) {
     if (!isPlainObject(claim)) {
       errors.add('claim_not_an_object');
       continue;
@@ -329,20 +356,21 @@ function validateClaims(claims, items, options = {}) {
 function epistemicRollup(claims) {
   const counts = {};
   for (const grade of CLAIM_GRADES) counts[grade] = 0;
-  const perMetric = {};
-  for (const claim of claims || []) {
+  const perMetric = new Map();
+  for (const claim of Array.isArray(claims) ? claims : []) {
     if (!isPlainObject(claim)) continue;
     const grade = claim.classification;
-    if (grade in counts) counts[grade] += 1;
-    if (claim.metric) {
-      if (!perMetric[claim.metric]) perMetric[claim.metric] = new Set();
-      perMetric[claim.metric].add(grade);
+    if (CLAIM_GRADES.includes(grade)) counts[grade] += 1;
+    if (typeof claim.metric === 'string' && claim.metric !== '') {
+      if (!perMetric.has(claim.metric)) perMetric.set(claim.metric, new Set());
+      perMetric.get(claim.metric).add(grade);
     }
   }
-  const metrics = {};
-  for (const metric of Object.keys(perMetric).sort()) {
-    metrics[metric] = [...perMetric[metric]].sort();
-  }
+  const metrics = Object.fromEntries(
+    [...perMetric.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([metric, grades]) => [metric, [...grades].sort()]),
+  );
   return {
     contract_version: CLAIM_CONTRACT_VERSION,
     counts,
