@@ -21,8 +21,6 @@ export const CTA = {
 } as const;
 
 export const HERO = {
-  eyebrow: "For Shopify merchants",
-  tagline: "Store intelligence, backed by evidence",
   headline: { lead: ["Know where", "your store is"], accent: "losing revenue." },
   subline: "Understand why. Know what deserves attention.",
   body:

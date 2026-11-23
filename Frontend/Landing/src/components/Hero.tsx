@@ -10,21 +10,12 @@ export function Hero() {
   const { joinHref, signUpHref, onJoin } = useLandingConfig();
   return (
     <section aria-labelledby="hero-title" className="relative overflow-x-clip lg:flex lg:h-[calc(100svh_-_clamp(4rem,9svh,5rem))] lg:min-h-[32rem] lg:items-center">
-      <div className="mx-auto grid max-w-page items-center gap-12 px-5 pb-16 pt-6 sm:px-8 sm:pb-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:w-full lg:py-[clamp(0.75rem,3svh,2.5rem)]">
+      <div className="mx-auto grid max-w-page items-center gap-12 px-5 pb-16 pt-8 sm:px-8 sm:pb-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:w-full lg:py-[clamp(0.75rem,3svh,2.5rem)]">
         <div className="max-w-[38rem]">
-          <div className="rise flex flex-wrap items-center gap-x-4 gap-y-2" style={delay(0)}>
-            <span className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3.5 py-1.5 text-[0.8rem] font-medium text-ink-soft">
-              <span className="h-1.5 w-1.5 rounded-full bg-indigo-brand" aria-hidden="true" />
-              {HERO.eyebrow}
-            </span>
-            <span className="hidden h-px w-10 bg-line sm:block lg:hidden xl:block" aria-hidden="true" />
-            <span className="text-[0.8rem] text-ink-faint">{HERO.tagline}</span>
-          </div>
-
           <h1
             id="hero-title"
-            className="rise mt-7 text-[clamp(2.4rem,9.6vw,4.6rem)] sm:text-[clamp(2.6rem,7.4vw,4.6rem)] lg:mt-[clamp(0.9rem,3svh,1.75rem)] lg:text-[clamp(2.5rem,min(5.1vw,8.4svh),4.6rem)] font-semibold leading-[1.02] tracking-display text-ink"
-            style={delay(80)}
+            className="rise text-[clamp(2.4rem,9.6vw,4.6rem)] sm:text-[clamp(2.6rem,7.4vw,4.6rem)] lg:text-[clamp(2.5rem,min(5.1vw,8.4svh),4.6rem)] font-semibold leading-[1.02] tracking-display text-ink"
+            style={delay(0)}
           >
             {HERO.headline.lead.map((line) => (
               <span key={line} className="block">{line}</span>
@@ -50,9 +41,9 @@ export function Hero() {
                 <ArrowUpRight size={13} aria-hidden="true" />
               </span>
             </a>
-            <a href={signUpHref} className="group inline-flex min-h-[2.1rem] items-center gap-[0.525rem] self-start whitespace-nowrap text-[0.665rem] font-semibold text-ink sm:self-auto">
-              <span className="grid h-[1.925rem] w-[1.925rem] place-items-center rounded-full border border-line bg-white shadow-[0_4px_12px_-6px_rgba(12,10,29,0.25)] transition-transform group-hover:scale-105">
-                <UserPlus size={13} aria-hidden="true" />
+            <a href={signUpHref} className="group inline-flex min-h-12 items-center gap-3 self-start whitespace-nowrap text-[0.95rem] font-semibold text-ink sm:self-auto">
+              <span className="grid h-11 w-11 place-items-center rounded-full border border-line bg-white shadow-[0_6px_18px_-8px_rgba(12,10,29,0.25)] transition-transform group-hover:scale-105">
+                <UserPlus size={18} aria-hidden="true" />
               </span>
               {CTA.secondary.label}
             </a>
