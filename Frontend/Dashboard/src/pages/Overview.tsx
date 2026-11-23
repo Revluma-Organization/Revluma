@@ -59,7 +59,18 @@ function BriefingFailureBanner({ failure, onRetry }: {
 
 
 export default function Overview() {
-  const { data, loading, refreshing, failure, lastSuccessfulAt, announcement, refetch } = useCommandCenter();
+  const {
+    data,
+    loading,
+    refreshing,
+    failure,
+    lastSuccessfulAt,
+    announcement,
+    selectedPeriod,
+    selectStore,
+    selectPeriod,
+    refetch,
+  } = useCommandCenter();
   const [searchParams] = useSearchParams();
   const selectedFinding = searchParams.get("finding");
   const selectedSection = searchParams.get("section");
@@ -75,7 +86,15 @@ export default function Overview() {
   }, [selectedFinding, selectedSection, data]);
   return <div data-command-center className={cc.page}>
     <div aria-live="polite" className="sr-only">{announcement}</div>
-    <CommandCenterHeader data={data} refreshing={refreshing} lastSuccessfulAt={lastSuccessfulAt} onRefresh={() => void refetch(true)} />
+    <CommandCenterHeader
+      data={data}
+      refreshing={refreshing}
+      lastSuccessfulAt={lastSuccessfulAt}
+      selectedPeriod={selectedPeriod}
+      onRefresh={() => void refetch(true)}
+      onSelectStore={selectStore}
+      onSelectPeriod={selectPeriod}
+    />
     {failure && data && <BriefingFailureBanner failure={failure} onRetry={() => void refetch(true)} />}
     {loading && !data ? <div aria-label="Loading operational briefing" role="status" className="space-y-6">
       <div className={cn(cc.surface, "h-56 animate-pulse bg-[#edf0f4] motion-reduce:animate-none")} />

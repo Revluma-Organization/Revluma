@@ -10,7 +10,10 @@ const { RESOURCE_BY_ID } = require('./revIntegrationEvidenceService');
 const { listFindings } = require('./intelligenceFindingsRepository');
 const priorityFinding = require('./priorityFindingService');
 const { buildBusinessHealth, validateBusinessHealth } = require('./businessHealth');
-const { fetchBusinessHealthBundle } = require('./businessHealthRepository');
+const { fetchBusinessHealthBundle, normalizePeriodDays: repoNormalizePeriodDays } = require('./businessHealthRepository');
+const normalizePeriodDays = typeof repoNormalizePeriodDays === 'function'
+  ? repoNormalizePeriodDays
+  : (value => ([7, 14, 30].includes(Number(value)) ? Number(value) : 7));
 const { buildOperationalActivity: buildOperationalActivityFeed, validateOperationalActivity } = require('./operationalActivity');
 const { fetchOperationalActivityBundle } = require('./operationalActivityRepository');
 
@@ -88,7 +91,7 @@ function buildMetrics(snapshot, state, status) {
   }));
 }
 
-function composeBriefing({ snapshot, status, state, findings, warnings }) {
+function composeBriefing({ snapshot, status, state, findings, warnings, reportingPeriod = null }) {
   const primary = findings[0] || null;
   const integrationStatus = state?.overall_status || 'unknown';
   const staleResources = (state?.capabilities || []).filter(item => item.freshness === 'stale').map(item => item.name);
@@ -126,7 +129,9 @@ function composeBriefing({ snapshot, status, state, findings, warnings }) {
     tone = 'attention';
   } else if (snapshot && finite(snapshot.revenue_today) !== null) {
     headline = 'Your latest synchronized business picture';
-    summary = 'The current UTC-day snapshot is available. Review the supporting indicators and verified findings for developments that deserve investigation.';
+    summary = reportingPeriod && reportingPeriod.label && reportingPeriod.timezone
+      ? `Verified performance for ${reportingPeriod.label.toLowerCase()} (${reportingPeriod.timezone}) is available. Review the supporting indicators and verified findings for developments that deserve investigation.`
+      : 'The current UTC-day snapshot is available. Review the supporting indicators and verified findings for developments that deserve investigation.';
   } else if (state) {
     headline = 'Your store is connected; business evidence is still limited';
     summary = 'No current business snapshot is available yet. Revluma is not substituting zero activity or a historical estimate.';
@@ -186,7 +191,8 @@ function resourceEvidence(states, domainRows) {
   }));
 }
 
-async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
+async function getCommandCenter({ prisma, organizationId, storeId = null, periodDays = 7, now = new Date() }) {
+  const days = normalizePeriodDays(periodDays);
   const [snapshot, states, rawFindings, stores] = await Promise.all([
     prisma.business_states.findFirst({ where: { organization_id: organizationId, is_current: true } }),
     retrieveIntegrationStates({ prisma, organizationId, now }),
@@ -194,12 +200,25 @@ async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
     prisma.stores.findMany({ where: { organization_id: organizationId }, select: { id: true, shop_domain: true, platform: true, last_synced_at: true, sync_completed_at: true }, orderBy: { last_synced_at: 'desc' } }),
   ]);
   const storeIds = stores.map(store => store.id);
-  const domainRows = storeIds.length ? await prisma.store_sync_domain_states.findMany({ where: { store_id: { in: storeIds } } }) : [];
+  const [domainRows, storeProfiles] = await Promise.all([
+    storeIds.length ? prisma.store_sync_domain_states.findMany({ where: { store_id: { in: storeIds } } }) : [],
+    storeIds.length && prisma.store_profiles && typeof prisma.store_profiles.findMany === 'function'
+      ? prisma.store_profiles.findMany({
+          where: { store_id: { in: storeIds } },
+          select: { store_id: true, shop_name: true, iana_timezone: true, currency_code: true },
+        }).catch(() => [])
+      : [],
+  ]);
+  const profileByStoreId = new Map((storeProfiles || []).map(p => [p.store_id, p]));
   const status = snapshotStatus(snapshot, now);
-  const primaryStore = stores[0] || null;
-  const state = states.find(item => item.store.id === primaryStore?.id) || null;
+  // Tenant-safe store selection: only stores owned by this authenticated organization can be selected.
+  const primaryStore = (typeof storeId === 'string' && storeId ? stores.find(store => store.id === storeId) : null) || stores[0] || null;
   const resourcesByStore = new Map(states.map(item => [item.store.id, item]));
-  const priority = priorityFinding.prioritizedFindings(rawFindings, { now, resourcesByStore });
+  const state = primaryStore ? (resourcesByStore.get(primaryStore.id) || null) : null;
+  const scopedFindings = primaryStore && stores.length > 1
+    ? rawFindings.filter(item => !item.store_id || item.store_id === primaryStore.id)
+    : rawFindings;
+  const priority = priorityFinding.prioritizedFindings(scopedFindings, { now, resourcesByStore });
   const findings = priority.candidates.map(candidate => ({
     ...candidate.finding,
     priority_assessment: candidate.assessment,
@@ -212,24 +231,97 @@ async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
   if (presentedFindings[0] && priority.tie) presentedFindings[0].priority.tie = priority.tie;
   const warnings = Array.isArray(object(snapshot?.metadata).warnings) ? object(snapshot.metadata).warnings.filter(item => typeof item === 'string') : [];
   const [healthBundle, activityBundle] = primaryStore ? await Promise.all([
-    fetchBusinessHealthBundle(prisma, organizationId, primaryStore.id, now, state),
+    fetchBusinessHealthBundle(prisma, organizationId, primaryStore.id, now, state, { periodDays: days }),
     fetchOperationalActivityBundle(prisma, organizationId, primaryStore.id, now),
   ]) : [null, null];
   const businessHealth = healthBundle ? buildBusinessHealth(healthBundle, now) : null;
   const operationalActivity = activityBundle ? buildOperationalActivityFeed(activityBundle, now, 20, null) : null;
   if (businessHealth && !validateBusinessHealth(businessHealth)) throw new Error('Business health contract validation failed.');
   if (operationalActivity && !validateOperationalActivity(operationalActivity)) throw new Error('Operational activity contract validation failed.');
+
+  const primaryProfile = primaryStore ? (profileByStoreId.get(primaryStore.id) || null) : null;
+  const healthPeriod = businessHealth && businessHealth.reporting_period ? businessHealth.reporting_period : null;
+  const verifiedTimezone = (primaryProfile && typeof primaryProfile.iana_timezone === 'string' && primaryProfile.iana_timezone.trim())
+    || (healthPeriod && typeof healthPeriod.timezone === 'string' && healthPeriod.timezone.trim())
+    || null;
+  const timezoneVerified = Boolean(
+    (primaryProfile && typeof primaryProfile.iana_timezone === 'string' && primaryProfile.iana_timezone.trim())
+    || (healthPeriod && healthPeriod.timezone_verified === true),
+  );
+  const resolvedTimezone = verifiedTimezone || 'UTC';
+  const reportingPeriod = healthPeriod ? {
+    kind: healthPeriod.current?.label || `last_${days}_days`,
+    label: healthPeriod.display_label || `Last ${days} days`,
+    days: healthPeriod.days || days,
+    timezone: resolvedTimezone,
+    timezone_verified: timezoneVerified,
+    start: healthPeriod.current?.start || null,
+    end: healthPeriod.current?.end || null,
+    note: healthPeriod.note || `Rolling ${days}-day period displayed in the store's reporting timezone (${resolvedTimezone}).`,
+  } : {
+    kind: 'current_and_previous_utc_day',
+    label: 'Today & yesterday',
+    days: 1,
+    timezone: resolvedTimezone,
+    timezone_verified: timezoneVerified,
+    start: null,
+    end: null,
+    note: timezoneVerified
+      ? `Reporting displayed in the store's verified Shopify timezone (${resolvedTimezone}).`
+      : 'The persisted snapshot uses UTC calendar days until a Shopify store timezone is verified.',
+  };
+  const comparisonPeriod = healthPeriod ? {
+    kind: healthPeriod.comparison?.label || `previous_${days}_days`,
+    label: `Previous ${days} days`,
+    timezone: resolvedTimezone,
+    start: healthPeriod.comparison?.start || null,
+    end: healthPeriod.comparison?.end || null,
+    comparability: 'same_metric_definition',
+  } : {
+    kind: 'previous_utc_day',
+    label: 'Previous day',
+    timezone: resolvedTimezone,
+    comparability: snapshot?.revenue_delta_pct === null ? 'unavailable' : 'same_metric_definition',
+  };
+
+  const contextStores = stores.map(store => {
+    const prof = profileByStoreId.get(store.id);
+    const storeState = resourcesByStore.get(store.id);
+    const displayName = (prof && typeof prof.shop_name === 'string' && prof.shop_name.trim()) ? prof.shop_name.trim() : store.shop_domain;
+    return {
+      id: store.id,
+      name: store.shop_domain,
+      display_name: displayName,
+      shop_domain: store.shop_domain,
+      platform: store.platform,
+      iana_timezone: (prof && typeof prof.iana_timezone === 'string' && prof.iana_timezone.trim()) ? prof.iana_timezone.trim() : null,
+      connection_status: storeState ? storeState.overall_status : null,
+    };
+  });
+  const primaryDisplayName = (primaryProfile && typeof primaryProfile.shop_name === 'string' && primaryProfile.shop_name.trim())
+    ? primaryProfile.shop_name.trim()
+    : primaryStore?.shop_domain || null;
+
   return {
     contract_version: CONTRACT_VERSION,
     read_only: true,
     retrieved_at: now.toISOString(),
     context: {
       organization_id: organizationId,
-      store: primaryStore ? { id: primaryStore.id, name: primaryStore.shop_domain, platform: primaryStore.platform } : null,
+      store: primaryStore ? {
+        id: primaryStore.id,
+        name: primaryStore.shop_domain,
+        display_name: primaryDisplayName,
+        shop_domain: primaryStore.shop_domain,
+        platform: primaryStore.platform,
+        iana_timezone: verifiedTimezone,
+      } : null,
+      stores: contextStores,
       scope: 'organization_business_snapshot',
-      currency: typeof object(snapshot?.metadata).revenue_currency === 'string' ? object(snapshot.metadata).revenue_currency : null,
-      reporting_period: { kind: 'current_and_previous_utc_day', timezone: 'UTC', start: null, end: null, note: 'The persisted snapshot uses UTC calendar days, not a merchant-local monthly reporting period.' },
-      comparison_period: { kind: 'previous_utc_day', timezone: 'UTC', comparability: snapshot?.revenue_delta_pct === null ? 'unavailable' : 'same_metric_definition' },
+      currency: (primaryProfile && typeof primaryProfile.currency_code === 'string' ? primaryProfile.currency_code : null)
+        || (typeof object(snapshot?.metadata).revenue_currency === 'string' ? object(snapshot.metadata).revenue_currency : null),
+      reporting_period: reportingPeriod,
+      comparison_period: comparisonPeriod,
     },
     business_state: snapshot ? {
       id: snapshot.id, version: snapshot.schema_version, generated_at: iso(snapshot.generated_at),
@@ -238,7 +330,7 @@ async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
       stale: status === 'stale', warnings,
     } : { id: null, version: null, generated_at: null, data_freshness_at: null, valid_until: null, computation_status: 'unavailable', presentation_status: 'unavailable', stale: false, warnings: ['No current business snapshot exists.'] },
     integration: state,
-    briefing: composeBriefing({ snapshot, status, state, findings, warnings }),
+    briefing: composeBriefing({ snapshot, status, state, findings, warnings, reportingPeriod: healthPeriod ? reportingPeriod : null }),
     metrics: buildMetrics(snapshot, state, status),
     priority_finding: presentedFindings[0] || null,
     priority_selection: {
@@ -247,13 +339,13 @@ async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
       tie: priority.tie,
       exclusions: priority.excluded.slice(0, 12),
       no_defensible_priority: priority.candidates.length === 0,
-      reason: priority.candidates.length ? null : rawFindings.length ? 'No open finding currently satisfies validity, evidence, freshness and coverage requirements.' : 'No open verified findings are recorded; this does not establish that no business problem exists.',
+      reason: priority.candidates.length ? null : scopedFindings.length ? 'No open finding currently satisfies validity, evidence, freshness and coverage requirements.' : 'No open verified findings are recorded; this does not establish that no business problem exists.',
     },
     findings: presentedFindings,
     business_health: businessHealth,
     operational_activity: operationalActivity,
     activity: [
-      ...stores.filter(store => store.sync_completed_at).map(store => ({ id: `sync-${store.id}-${iso(store.sync_completed_at)}`, kind: 'system', type: 'synchronization_completed', label: 'Shopify synchronization completed', store_id: store.id, occurred_at: iso(store.sync_completed_at), note: 'System activity; not a merchant action or business event.' })),
+      ...stores.filter(store => store.sync_completed_at && (!primaryStore || store.id === primaryStore.id)).map(store => ({ id: `sync-${store.id}-${iso(store.sync_completed_at)}`, kind: 'system', type: 'synchronization_completed', label: 'Shopify synchronization completed', store_id: store.id, occurred_at: iso(store.sync_completed_at), note: 'System activity; not a merchant action or business event.' })),
       ...findings.slice(0, 4).map(finding => ({ id: `finding-${finding.id}`, kind: 'business', type: finding.type, finding_id: finding.id, label: finding.title, store_id: finding.store_id, occurred_at: iso(finding.detected_at), note: 'Verified intelligence finding; not a claimed merchant action.' })),
     ].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime()).slice(0, 8),
     evidence: {
@@ -261,7 +353,7 @@ async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
       snapshot_generated_at: iso(snapshot?.generated_at),
       source_data_at: iso(snapshot?.data_freshness_at),
       last_successful_sync_at: iso(primaryStore?.last_synced_at),
-      resources: resourceEvidence(states, domainRows),
+      resources: resourceEvidence(primaryStore && state ? [state] : states, domainRows),
       limitations: warnings,
       unknown_semantics: 'Null is unavailable or unverified, never zero. Zero is meaningful only when its source and period are available.',
     },

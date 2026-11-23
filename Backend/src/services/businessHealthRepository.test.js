@@ -60,7 +60,8 @@ test('bundle: store + reporting period (timezone from profile, rolling windows)'
   assert.equal(bundle.store.currency_code, 'USD');
   const rp = bundle.reportingPeriod;
   assert.equal(rp.timezone, 'America/New_York');
-  assert.equal(rp.period_basis, 'rolling_7d_utc');
+  assert.equal(rp.timezone_verified, true);
+  assert.equal(rp.period_basis, 'rolling_7d_store_tz');
   assert.ok(new Date(rp.current.end) - new Date(rp.current.start) === 7 * DAY);
   assert.ok(new Date(rp.comparison.end) - new Date(rp.comparison.start) === 7 * DAY);
   assert.equal(new Date(rp.comparison.end).toISOString(), new Date(rp.current.start).toISOString());
@@ -140,4 +141,6 @@ test('requires an organization id', async () => {
 test('computeReportingPeriod: no profile -> UTC', () => {
   const rp = computeReportingPeriod(null, NOW);
   assert.equal(rp.timezone, 'UTC');
+  assert.equal(rp.timezone_verified, false);
+  assert.equal(rp.period_basis, 'rolling_7d_utc');
 });

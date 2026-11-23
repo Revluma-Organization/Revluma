@@ -259,10 +259,12 @@ describe("Task 219 tokens, controls and responsive viewport contracts", () => {
     render(<CommandCenterHeader data={ccFixture()} refreshing={false} onRefresh={() => {}} />);
     expect(screen.getByRole("button", { name: "Refresh briefing" })).toBeInTheDocument();
   });
-  it("header retains store and UTC context", () => {
+  it("header retains store and reporting period context", () => {
     render(<CommandCenterHeader data={ccFixture()} refreshing={false} onRefresh={() => {}} />);
+    expect(screen.getByRole("heading", { name: "Your business at a glance.", level: 1 })).toBeInTheDocument();
     expect(screen.getByText(/revluma-test-store-v1/)).toBeInTheDocument();
-    expect(screen.getByText(/Today & yesterday · UTC/)).toBeInTheDocument();
+    expect(screen.getByText("Today & yesterday")).toBeInTheDocument();
+    expect(screen.getByText("UTC")).toBeInTheDocument();
   });
   it("reduced motion is honored by loading and refresh animations", () => {
     render(<CommandCenterHeader data={ccFixture()} refreshing onRefresh={() => {}} />);

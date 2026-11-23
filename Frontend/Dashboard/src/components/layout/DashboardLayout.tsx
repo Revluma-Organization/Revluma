@@ -99,7 +99,7 @@ export function DashboardLayout() {
     <div className="app-h flex w-full overflow-hidden bg-bg">
       <Sidebar />
       <main tabIndex={-1} className={`cc-scroll flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden ${commandCenter ? shell.workspace : "bg-bg"}`}>
-        <Topbar section={commandCenter ? "Command Center" : SECTION_TITLES[basePath] ?? "Overview"} lightWorkspace={commandCenter} />
+        <Topbar section={SECTION_TITLES[basePath] ?? "Overview"} lightWorkspace={commandCenter} />
         <div className="px-3 py-5 sm:px-6 sm:py-6 lg:px-8">
           <AnimatePresence mode="wait">
             <motion.div

@@ -138,11 +138,11 @@ describe("Command Center runtime states (Task 220)", () => {
     expect(screen.queryByRole("status", { name: /loading operational briefing/i })).not.toBeInTheDocument();
   });
 
-  it("SC-RUN-10: a refresh in flight labels the snapshot, disables the button, and never re-shows the skeleton", () => {
+  it("SC-RUN-10: a refresh in flight labels the update status, disables the button, and never re-shows the skeleton", () => {
     hookState.data = commandCenterFixture();
     hookState.refreshing = true;
     renderPage();
-    expect(screen.getByText("refreshing")).toBeInTheDocument();
+    expect(screen.getByText("Updating…")).toBeInTheDocument();
     const refresh = screen.getByRole("button", { name: /refreshing/i });
     expect(refresh).toBeDisabled();
     expect(screen.getByRole("heading", { name: "Business health" })).toBeInTheDocument();
@@ -173,12 +173,12 @@ describe("Command Center runtime states (Task 220)", () => {
     expect(screen.queryByRole("button", { name: /try again/i })).not.toBeInTheDocument();
   });
 
-  it("SC-RUN-14: the snapshot chip surfaces the last successful refresh time (never stale-as-current)", () => {
+  it("SC-RUN-14: the update chip surfaces the last successful update time (never stale-as-current)", () => {
     hookState.data = commandCenterFixture();
     hookState.lastSuccessfulAt = "2026-11-08T12:00:00Z";
     const { container } = renderPage();
-    const chip = container.querySelector("header span[title*='Last successful refresh']");
+    const chip = container.querySelector("header span[title*='Last successful update']");
     expect(chip).not.toBeNull();
-    expect(chip?.getAttribute("title")).toMatch(/Last successful refresh/);
+    expect(chip?.getAttribute("title")).toMatch(/Last successful update/);
   });
 });

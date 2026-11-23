@@ -1,6 +1,6 @@
 import {
   AlertCircle, ArrowDown, ArrowRight, CheckCircle2, CircleDollarSign, Clock3,
-  PackageCheck, PlugZap, RefreshCw, ShoppingBag, ShoppingCart, Store,
+  PackageCheck, PlugZap, ShoppingBag, ShoppingCart,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { investigationRoute } from "@/lib/workspaceNavigation";
@@ -8,9 +8,13 @@ import { useEffect, useRef, useState } from "react";
 import { INTEGRATION_STATE_LABELS } from "@/lib/integrationState";
 import { api } from "@/lib/api";
 import { type ActivityItem, type BusinessIndicator, BUSINESS_STATUS_LABEL, DATA_QUALITY_LABEL, isValidOperationalActivity } from "@/lib/businessHealth";
+import { resolveReportingContext } from "@/lib/overviewReporting";
 import { cn } from "@/lib/utils";
+import { BusinessOverviewHeader } from "./BusinessOverviewHeader";
 import { cc } from "./tokens";
 import type { BusinessMetric, CommandCenterData, EvidenceResource } from "./types";
+
+export { BusinessOverviewHeader, BusinessOverviewHeader as CommandCenterHeader };
 
 function useWorkspaceNavigation() {
   const navigate = useNavigate();
@@ -53,23 +57,6 @@ function Availability({ value }: { value: string }) {
   const negative = value === "retrieval_failed" || value === "failed" || value === "critical";
   const Icon = positive ? CheckCircle2 : AlertCircle;
   return <span className={cn("inline-flex items-center gap-1.5 text-[11px] font-medium", positive ? cc.positive : negative ? cc.negative : ["stale", "partial", "attention", "deteriorating"].includes(value) ? cc.warning : cc.muted)}><Icon className="h-3.5 w-3.5" aria-hidden="true" />{availabilityLabel[value] || value.replaceAll("_", " ")}</span>;
-}
-
-export function CommandCenterHeader({ data, refreshing, lastSuccessfulAt, onRefresh }: { data: CommandCenterData | null; refreshing: boolean; lastSuccessfulAt?: string | null; onRefresh: () => void }) {
-  return <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-    <div className="min-w-0">
-      <h1 className={cc.title}>Command Center</h1>
-      <p className={cn("mt-1 text-sm", cc.muted)}>Current operating context, verified intelligence, and the next useful investigation.</p>
-      <div className={cn("mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs", cc.muted)}>
-        <span className="inline-flex min-w-0 items-center gap-1.5 font-medium"><Store className="h-3.5 w-3.5 shrink-0" /><span className="break-all">{data?.context.store?.name || "No Shopify store selected"}</span></span>
-        <span>Today & yesterday · UTC</span>
-        {(lastSuccessfulAt || data?.business_state.generated_at) && <span title={`Last successful refresh: ${dateTime(lastSuccessfulAt || data?.business_state.generated_at || null)}`}>{refreshing ? "refreshing" : `Snapshot ${relative(lastSuccessfulAt || data?.business_state.generated_at || null)}`}</span>}
-      </div>
-    </div>
-    <button type="button" onClick={onRefresh} disabled={refreshing} className={cc.secondary}>
-      <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />{refreshing ? "Refreshing…" : "Refresh briefing"}
-    </button>
-  </header>;
 }
 
 export function OperationalBriefing({ data }: { data: CommandCenterData }) {
@@ -184,8 +171,9 @@ function canonicalValue(indicator: BusinessIndicator) {
 }
 function CanonicalHealthIndicators({ data }: { data: CommandCenterData }) {
   const health = data.business_health!;
+  const reporting = resolveReportingContext(data);
   return <section aria-labelledby="business-health-heading" className={cc.surface}>
-    <SectionHeader id="business-health-heading" title="Business health" description={`Five operational domains · ${health.reporting_period.current.label.replaceAll("_", " ")} · ${health.reporting_period.timezone}`} />
+    <SectionHeader id="business-health-heading" title="Business health" description={`Five operational domains · ${reporting.periodLabel} · ${reporting.timezone.label}`} />
     <p className={cn("border-b px-5 py-3", cc.divider, cc.metadata)}>{health.business_status_explanation} Business severity and data quality are independent.</p>
     <dl className={cn("grid divide-y sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5", cc.divider)}>{health.indicators.map(indicator => {
       const Icon = canonicalIcons[indicator.category];

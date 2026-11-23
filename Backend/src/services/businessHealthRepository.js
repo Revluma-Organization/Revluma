@@ -23,7 +23,19 @@
 const { retrieveIntegrationStates } = require('./revIntegrationState');
 
 const DAY_MS = 24 * 3600 * 1000;
-const PERIOD_DAYS = 7;
+const DEFAULT_PERIOD_DAYS = 7;
+const ALLOWED_PERIOD_DAYS = new Set([7, 14, 30]);
+
+function normalizePeriodDays(input) {
+  if (typeof input === 'string') {
+    const trimmed = input.trim().toLowerCase();
+    if (trimmed === '7d' || trimmed === '7') return 7;
+    if (trimmed === '14d' || trimmed === '14') return 14;
+    if (trimmed === '30d' || trimmed === '30') return 30;
+  }
+  const n = Number(input);
+  return ALLOWED_PERIOD_DAYS.has(n) ? n : DEFAULT_PERIOD_DAYS;
+}
 
 const iso = (value) => {
   if (value == null) return null;
@@ -40,21 +52,30 @@ async function safe(promise, fallback) {
   }
 }
 
-function windows(now) {
+function windows(now, periodDays = DEFAULT_PERIOD_DAYS) {
+  const days = normalizePeriodDays(periodDays);
   const curEnd = now;
-  const curStart = new Date(now.getTime() - PERIOD_DAYS * DAY_MS);
-  const cmpStart = new Date(now.getTime() - 2 * PERIOD_DAYS * DAY_MS);
-  return { curStart, curEnd, cmpStart, cmpEnd: curStart };
+  const curStart = new Date(now.getTime() - days * DAY_MS);
+  const cmpStart = new Date(now.getTime() - 2 * days * DAY_MS);
+  return { curStart, curEnd, cmpStart, cmpEnd: curStart, days };
 }
 
-function computeReportingPeriod(profile, now) {
-  const { curStart, curEnd, cmpStart, cmpEnd } = windows(now);
+function computeReportingPeriod(profile, now, periodDays = DEFAULT_PERIOD_DAYS) {
+  const { curStart, curEnd, cmpStart, cmpEnd, days } = windows(now, periodDays);
+  const verifiedTimezone = (profile && typeof profile.iana_timezone === 'string' && profile.iana_timezone.trim())
+    ? profile.iana_timezone.trim()
+    : null;
   return {
-    current: { label: 'last_7_days', start: iso(curStart), end: iso(curEnd) },
-    comparison: { label: 'previous_7_days', start: iso(cmpStart), end: iso(cmpEnd) },
-    timezone: (profile && typeof profile.iana_timezone === 'string' && profile.iana_timezone) ? profile.iana_timezone : 'UTC',
-    period_basis: 'rolling_7d_utc',
-    note: 'Rolling 7-day windows on UTC instants; the store IANA timezone is carried for display context.',
+    current: { label: `last_${days}_days`, start: iso(curStart), end: iso(curEnd) },
+    comparison: { label: `previous_${days}_days`, start: iso(cmpStart), end: iso(cmpEnd) },
+    days,
+    display_label: `Last ${days} days`,
+    timezone: verifiedTimezone || 'UTC',
+    timezone_verified: Boolean(verifiedTimezone),
+    period_basis: verifiedTimezone ? `rolling_${days}d_store_tz` : `rolling_${days}d_utc`,
+    note: verifiedTimezone
+      ? `Rolling ${days}-day period displayed in the store's verified Shopify timezone (${verifiedTimezone}).`
+      : `Rolling ${days}-day period (UTC; Shopify store timezone not yet verified).`,
   };
 }
 
@@ -108,8 +129,8 @@ async function orderAggregate(prisma, storeId, start, end) {
   };
 }
 
-async function fetchOrderData(prisma, storeId, now) {
-  const { curStart, curEnd, cmpStart, cmpEnd } = windows(now);
+async function fetchOrderData(prisma, storeId, now, periodDays = DEFAULT_PERIOD_DAYS) {
+  const { curStart, curEnd, cmpStart, cmpEnd } = windows(now, periodDays);
   const [current, comparison] = await Promise.all([
     orderAggregate(prisma, storeId, curStart, curEnd),
     orderAggregate(prisma, storeId, cmpStart, cmpEnd),
@@ -136,8 +157,8 @@ async function cartAggregate(prisma, storeId, start, end) {
   };
 }
 
-async function fetchCheckoutData(prisma, storeId, now) {
-  const { curStart, curEnd } = windows(now);
+async function fetchCheckoutData(prisma, storeId, now, periodDays = DEFAULT_PERIOD_DAYS) {
+  const { curStart, curEnd } = windows(now, periodDays);
   // The checkout indicator uses the current window only (abandonment is a
   // count + at-risk value; no period-over-period change classification), so no
   // comparison window is fetched.
@@ -178,9 +199,10 @@ async function fetchProductSnapshot(prisma, storeId) {
  * Returns null when the store id does not belong to the organization
  * (cross-tenant / unknown -> 404, no existence leak).
  */
-async function fetchBusinessHealthBundle(prisma, organizationId, storeId, now = new Date(), canonicalIntegration = null) {
+async function fetchBusinessHealthBundle(prisma, organizationId, storeId, now = new Date(), canonicalIntegration = null, options = null) {
   if (!organizationId) throw new Error('Authenticated organization is required');
   const nowD = now instanceof Date ? now : new Date(now);
+  const periodDays = normalizePeriodDays(options && options.periodDays);
 
   const store = await prisma.stores.findFirst({
     where: { id: storeId, organization_id: organizationId },
@@ -193,11 +215,11 @@ async function fetchBusinessHealthBundle(prisma, organizationId, storeId, now = 
   const [profile, integration, orderData, checkoutData, productData] = await Promise.all([
     safe(prisma.store_profiles.findFirst({
       where: { store_id: store.id },
-      select: { iana_timezone: true, currency_code: true },
+      select: { shop_name: true, iana_timezone: true, currency_code: true },
     }), null),
     canonicalIntegration ? canonicalIntegration : safe(retrieveIntegrationStates({ prisma, organizationId, storeId: store.id, now: nowD }), null),
-    safe(fetchOrderData(prisma, store.id, nowD), null),
-    safe(fetchCheckoutData(prisma, store.id, nowD), null),
+    safe(fetchOrderData(prisma, store.id, nowD, periodDays), null),
+    safe(fetchCheckoutData(prisma, store.id, nowD, periodDays), null),
     safe(fetchProductSnapshot(prisma, store.id), null),
   ]);
 
@@ -206,10 +228,11 @@ async function fetchBusinessHealthBundle(prisma, organizationId, storeId, now = 
   return {
     store: {
       ...store,
+      shop_name: profile && typeof profile.shop_name === 'string' ? profile.shop_name : null,
       iana_timezone: profile && typeof profile.iana_timezone === 'string' ? profile.iana_timezone : null,
       currency_code: currencyCode,
     },
-    reportingPeriod: computeReportingPeriod(profile, nowD),
+    reportingPeriod: computeReportingPeriod(profile, nowD, periodDays),
     integration,
     revenue: orderData ? { current: { ...orderData.current, currency: currencyCode }, comparison: orderData.comparison ? { ...orderData.comparison, currency: currencyCode } : null } : null,
     orders: orderData || null,
@@ -218,4 +241,4 @@ async function fetchBusinessHealthBundle(prisma, organizationId, storeId, now = 
   };
 }
 
-module.exports = { fetchBusinessHealthBundle, computeReportingPeriod };
+module.exports = { fetchBusinessHealthBundle, computeReportingPeriod, normalizePeriodDays, ALLOWED_PERIOD_DAYS };
