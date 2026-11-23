@@ -1047,6 +1047,9 @@
         /* Landing hero host (see #revluma-hero). Reserve space until the embed mounts. */
         #revluma-hero { display: block; position: relative; background: #FBFAF8; }
         #revluma-hero[data-pending] { min-height: 100svh; }
+        /* The landing nav is pinned to the top (fixed, inside the hero embed), so in-page
+           links like #features stop just below it instead of underneath it. */
+        html { scroll-padding-top: 5rem; }
     </style>
 </head>
 
