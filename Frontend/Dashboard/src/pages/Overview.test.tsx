@@ -228,7 +228,7 @@ describe("Task 217 priority finding evidence and next step", () => {
     const second = finding({ id: "finding-2", title: "Returning buyers declined", severity: "medium", investigation: { finding_id: "finding-2", route: "/dashboard/rev-intell?finding=finding-2", context_contract: "rev-selected-finding-v1", revalidate_on_open: true } }) as CommandCenterData["findings"][number];
     await renderPage(fixture({ findings: [first, second], priority_finding: first, priority_selection: { method_version: "finding-priority-v1", eligible_count: 2, tie: null, exclusions: [], no_defensible_priority: false, reason: null } }));
     expect(screen.getByText("Other eligible findings")).toBeInTheDocument();
-    expect(screen.getByText("Returning buyers declined")).toBeInTheDocument();
+    expect(screen.getAllByText("Returning buyers declined").length).toBeGreaterThanOrEqual(1);
   });
   it("refund deterioration recommends affected orders, products and reasons", async () => {
     await renderPage(priorityFixture({ title: "Refund value increased 100%", type: "refund_increase",

@@ -1,5 +1,5 @@
 import {
-  AlertCircle, ArrowDown, ArrowRight, CheckCircle2, CircleDollarSign, Clock3,
+  AlertCircle, ArrowRight, CheckCircle2, CircleDollarSign, Clock3,
   PackageCheck, PlugZap, ShoppingBag, ShoppingCart,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -12,6 +12,7 @@ import { resolveReportingContext } from "@/lib/overviewReporting";
 import { cn } from "@/lib/utils";
 import { BusinessOverviewHeader } from "./BusinessOverviewHeader";
 import { CommandCenterWelcomeSection } from "./CommandCenterWelcomeSection";
+import { OperationalBriefingSection } from "./OperationalBriefingSection";
 import { cc } from "./tokens";
 import type { BusinessMetric, CommandCenterData, EvidenceResource } from "./types";
 
@@ -19,6 +20,8 @@ export {
   BusinessOverviewHeader,
   CommandCenterWelcomeSection,
   CommandCenterWelcomeSection as CommandCenterHeader,
+  OperationalBriefingSection,
+  OperationalBriefingSection as OperationalBriefing,
 };
 
 function useWorkspaceNavigation() {
@@ -62,34 +65,6 @@ function Availability({ value }: { value: string }) {
   const negative = value === "retrieval_failed" || value === "failed" || value === "critical";
   const Icon = positive ? CheckCircle2 : AlertCircle;
   return <span className={cn("inline-flex items-center gap-1.5 text-[11px] font-medium", positive ? cc.positive : negative ? cc.negative : ["stale", "partial", "attention", "deteriorating"].includes(value) ? cc.warning : cc.muted)}><Icon className="h-3.5 w-3.5" aria-hidden="true" />{availabilityLabel[value] || value.replaceAll("_", " ")}</span>;
-}
-
-export function OperationalBriefing({ data }: { data: CommandCenterData }) {
-  const openRoute = useWorkspaceNavigation();
-  const { briefing } = data;
-  const hasPriority = Boolean(data.priority_finding);
-  return <section aria-labelledby="operational-briefing-heading" className={cn(cc.surface, "relative overflow-hidden p-5 before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-[#1F06AC] sm:p-7")}>
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-[#1F06AC]">Operational briefing</p>
-      <span className={cc.metadata}>Evidence {data.business_state.presentation_status.replaceAll("_", " ")}</span>
-    </div>
-    <h2 id="operational-briefing-heading" className="mt-3 max-w-4xl text-[clamp(1.3rem,2.2vw,1.8rem)] font-semibold leading-tight tracking-[-0.025em] text-[#111827]">
-      {hasPriority ? "Your current evidence points to a priority for review." : briefing.headline}
-    </h2>
-    <p className={cn("mt-3 max-w-4xl", cc.body)}>{hasPriority ? "Revluma has selected the highest-priority defensible finding from current, verified evidence. Review the observation, its limits, and the recommended investigation below." : briefing.summary}</p>
-    {!hasPriority && briefing.no_findings_note && <p className={cn("mt-3 max-w-4xl", cc.metadata)}>{briefing.no_findings_note}</p>}
-    {briefing.limitations.length > 0 && <div className={cn("mt-5 border-t pt-4", cc.divider)}>
-      <h3 className={cc.cardTitle}>What affects this briefing</h3>
-      <ul className={cn("mt-2 space-y-1.5", cc.metadata)}>{briefing.limitations.slice(0, 3).map(item => <li key={item}>• {item}</li>)}</ul>
-      {briefing.limitations.length > 3 && <p className={cn("mt-2", cc.metadata)}>Additional source limitations are listed under data readiness.</p>}
-    </div>}
-    <div className={cn("mt-5 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between", cc.divider)}>
-      <p className={cn("max-w-2xl", cc.metadata)}>{hasPriority ? `${data.priority_selection.eligible_count} eligible finding${data.priority_selection.eligible_count === 1 ? "" : "s"} · ${data.priority_finding?.confidence.classification.replaceAll("_", " ")} confidence in the leading observation` : briefing.next_investigation.reason}</p>
-      {hasPriority
-        ? <a href="#priority-finding" className={cc.primary}>Review priority <ArrowDown className="h-3.5 w-3.5" /></a>
-        : <button type="button" onClick={() => openRoute(briefing.next_investigation.route)} className={cc.primary}>{briefing.next_investigation.label}<ArrowRight className="h-3.5 w-3.5" /></button>}
-    </div>
-  </section>;
 }
 
 function MetricValue({ metric }: { metric: BusinessMetric }) {
