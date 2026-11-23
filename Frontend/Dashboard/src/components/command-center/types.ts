@@ -47,6 +47,73 @@ export type StoreSummary = {
   connection_status?: string | null;
 };
 
+export type BriefingAssessmentState =
+  | "normal"
+  | "attention_needed"
+  | "important_development"
+  | "investigating"
+  | "insufficient_evidence"
+  | "unavailable";
+
+export type BriefingDataQualityState =
+  | "verified"
+  | "partial"
+  | "stale"
+  | "syncing"
+  | "insufficient"
+  | "unavailable";
+
+export type FeaturedIntelligenceEmptyState =
+  | "no_new_findings"
+  | "insufficient_evidence"
+  | "investigation_running"
+  | "generation_failed"
+  | "no_previous_briefing";
+
+export type FeaturedIntelligenceItem = {
+  id: string;
+  finding_id: string;
+  title: string;
+  explanation: string;
+  why_it_matters: string | null;
+  evidence_summary: string;
+  verification_status: "verified" | "hypothesis";
+  confidence: string;
+  severity: "critical" | "high" | "medium" | "low";
+  category: string;
+  detected_at: string;
+  last_verified_at: string | null;
+  is_new: boolean;
+  action_label: string;
+  action_route: string;
+  references: { id: string; source_type: string; source_record_id: string }[];
+};
+
+export type FeaturedIntelligenceContract = {
+  status: "qualified" | "empty";
+  empty_state: FeaturedIntelligenceEmptyState | null;
+  item: FeaturedIntelligenceItem | null;
+};
+
+export type RecentDevelopmentLifecycle = "new" | "ongoing" | "resolved";
+
+export type RecentDevelopmentItem = {
+  id: string;
+  category: string;
+  lifecycle: RecentDevelopmentLifecycle;
+  title: string;
+  explanation: string;
+  occurred_at: string;
+  finding_id: string | null;
+  route: string | null;
+  action_label: string | null;
+};
+
+export type RecentDevelopmentsContract = {
+  empty_state: "no_changes" | "no_previous_briefing" | null;
+  items: RecentDevelopmentItem[];
+};
+
 export type CommandCenterData = {
   contract_version: "command-center-v1"; read_only: true; retrieved_at: string;
   context: {
@@ -85,6 +152,22 @@ export type CommandCenterData = {
     observation: string | null; implication: string | null; evidence_quality: string;
     no_findings_note: string | null; limitations: string[];
     next_investigation: { kind: string; finding_id: string | null; label: string; reason: string; route: string };
+    generated_at?: string | null;
+    previous_generated_at?: string | null;
+    has_previous_briefing?: boolean;
+    assessment?: {
+      state: BriefingAssessmentState;
+      label: string;
+      data_quality: BriefingDataQualityState;
+      data_quality_label: string;
+    };
+    featured_intelligence?: FeaturedIntelligenceContract;
+    recent_developments?: RecentDevelopmentsContract;
+    generated_from?: {
+      business_state_id: string | null;
+      finding_id: string | null;
+      integration_evaluated_at: string | null;
+    };
   };
   metrics: BusinessMetric[]; findings: Finding[];
   priority_finding: Finding | null;

@@ -91,7 +91,372 @@ function buildMetrics(snapshot, state, status) {
   }));
 }
 
-function composeBriefing({ snapshot, status, state, findings, warnings, reportingPeriod = null }) {
+const DISCONNECTED_INTEGRATION_STATES = new Set([
+  'disconnected',
+  'authorization_required',
+  'authorization_expired',
+  'authorization_revoked',
+]);
+
+const FINDING_EVIDENCE_SUMMARY = {
+  revenue_change: 'Completed order revenue across comparable reporting periods.',
+  order_volume_change: 'Completed order volume across comparable reporting periods.',
+  refund_increase: 'Recorded refund transactions and order adjustment history.',
+  returning_customer_change: 'Verified returning-buyer records across comparable periods.',
+  integration_failure: 'Store authorization and synchronization status records.',
+};
+
+const FINDING_MATTERS_COPY = {
+  revenue_change: 'A verified revenue shift narrows where to look across order volume, pricing, or product mix.',
+  order_volume_change: 'Order volume movement can point to shifts in product demand, storefront availability, or checkout conversion.',
+  refund_increase: 'Rising refund value can indicate product, fulfillment, or expectation issues worth examining early.',
+  returning_customer_change: 'Changes in returning-buyer share affect repeat revenue stability over time.',
+  integration_failure: 'Resolving data access or synchronization issues restores complete business visibility.',
+};
+
+const SYNC_DOMAIN_LABELS = {
+  orders: 'Order records',
+  products: 'Product information',
+  inventory: 'Inventory records',
+  customers: 'Customer records',
+  abandoned_checkouts: 'Checkout records',
+  refunds: 'Refund records',
+  fulfillments: 'Fulfillment records',
+};
+
+function parseTimestampMs(value) {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value.getTime() : Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isNewSincePrevious(occurredAt, previousGeneratedAt, now) {
+  const occurredMs = parseTimestampMs(occurredAt);
+  if (occurredMs === null) return false;
+  const prevMs = parseTimestampMs(previousGeneratedAt);
+  if (prevMs !== null) return occurredMs > prevMs;
+  const nowMs = now instanceof Date ? now.getTime() : Date.now();
+  return nowMs - occurredMs <= 24 * 3600_000;
+}
+
+function describeIntegrationDevelopment(item) {
+  const status = String(item.status || '').toLowerCase();
+  const domainMatch = typeof item.event_id === 'string' && item.event_id.startsWith('sync:')
+    ? item.event_id.split(':')[1]
+    : null;
+  const domainLabel = domainMatch ? (SYNC_DOMAIN_LABELS[domainMatch] || domainMatch.replaceAll('_', ' ')) : null;
+
+  if (item.type === 'sync' && domainLabel) {
+    if (status === 'failed') {
+      return {
+        title: `${domainLabel} could not be refreshed`,
+        explanation: `The latest update for ${domainLabel.toLowerCase()} did not complete, so newer changes may not be reflected yet.`,
+        category: 'evidence_availability',
+        status_tag: 'ongoing',
+        route: '/dashboard/integrations',
+        action_label: 'Review in Integrations',
+      };
+    }
+    if (status === 'degraded' || status === 'partial') {
+      return {
+        title: `${domainLabel} partially updated`,
+        explanation: `Only part of your ${domainLabel.toLowerCase()} was available during the latest update.`,
+        category: 'evidence_availability',
+        status_tag: 'ongoing',
+        route: '/dashboard/integrations',
+        action_label: 'Review in Integrations',
+      };
+    }
+    // Routine successful syncs are only surfaced when they represent a material first-time or notable availability update
+    return null;
+  }
+
+  if (item.category === 'integration') {
+    if (status === 'connected') {
+      return {
+        title: 'Store connection restored',
+        explanation: 'Shopify access is verified again, allowing Revluma to continue reviewing store evidence.',
+        category: 'configuration',
+        status_tag: 'resolved',
+        route: '/dashboard/integrations',
+        action_label: 'Review connection',
+      };
+    }
+    if (DISCONNECTED_INTEGRATION_STATES.has(status)) {
+      return {
+        title: 'Store access requires reconnection',
+        explanation: 'Revluma cannot review new store activity until Shopify authorization is restored.',
+        category: 'configuration',
+        status_tag: 'ongoing',
+        route: '/dashboard/integrations',
+        action_label: 'Reconnect in Integrations',
+      };
+    }
+    if (status === 'limited_access' || status === 'sync_partial' || status === 'needs_attention') {
+      return {
+        title: 'Store evidence access is limited',
+        explanation: 'One or more store permissions or data areas need review for complete briefing coverage.',
+        category: 'evidence_availability',
+        status_tag: 'ongoing',
+        route: '/dashboard/integrations',
+        action_label: 'Review in Integrations',
+      };
+    }
+  }
+
+  if (item.category === 'webhook') {
+    return {
+      title: 'Store update notifications changed',
+      explanation: 'A Shopify store notification setting changed, which may affect how quickly new updates arrive.',
+      category: 'configuration',
+      status_tag: 'ongoing',
+      route: '/dashboard/integrations',
+      action_label: 'Review in Integrations',
+    };
+  }
+
+  return null;
+}
+
+function selectFeaturedIntelligence({
+  presentedFindings = [],
+  priorityFindingId = null,
+  status = 'unavailable',
+  state = null,
+  snapshot = null,
+  hasPreviousBriefing = false,
+  previousGeneratedAt = null,
+  now = new Date(),
+}) {
+  const integrationStatus = state?.overall_status || 'unknown';
+
+  // Fail-closed states take precedence so empty states are never interchangeable.
+  if (status === 'failed') {
+    return { status: 'empty', empty_state: 'generation_failed', item: null };
+  }
+  if (integrationStatus === 'synchronizing') {
+    return { status: 'empty', empty_state: 'investigation_running', item: null };
+  }
+
+  // Exclude the unresolved Top Priority finding so it is never duplicated as a
+  // separate featured discovery in Operational Briefing.
+  const eligible = (presentedFindings || []).filter(item =>
+    item &&
+    item.id !== priorityFindingId &&
+    item.lifecycle?.invalidated !== true &&
+    item.confidence?.classification !== 'insufficient_evidence' &&
+    item.confidence?.classification !== 'unable_to_determine',
+  );
+
+  // Prefer newly detected discoveries since the previous briefing, while
+  // preserving the backend's existing intelligence prioritization order.
+  const newlyDetected = eligible.filter(item =>
+    isNewSincePrevious(item.detected_at, previousGeneratedAt, now),
+  );
+  const selected = newlyDetected[0] || eligible[0] || null;
+
+  if (selected) {
+    const isVerified = selected.evidence?.classification === 'verified_observation' &&
+      ['high', 'moderate'].includes(selected.confidence?.classification);
+    const isNew = isNewSincePrevious(selected.detected_at, previousGeneratedAt, now);
+    const evidenceSummary = FINDING_EVIDENCE_SUMMARY[selected.type]
+      || (selected.evidence?.source ? `Verified ${String(selected.evidence.source).replaceAll('_', ' ')} records.` : 'Verified store evidence records.');
+
+    return {
+      status: 'qualified',
+      empty_state: null,
+      item: {
+        id: `featured:${selected.id}`,
+        finding_id: selected.id,
+        title: selected.title,
+        explanation: selected.description,
+        why_it_matters: selected.recommendation?.rationale || FINDING_MATTERS_COPY[selected.type] || null,
+        evidence_summary: evidenceSummary,
+        verification_status: isVerified ? 'verified' : 'hypothesis',
+        confidence: selected.confidence?.classification || 'moderate',
+        severity: selected.severity,
+        category: selected.category,
+        detected_at: selected.detected_at,
+        last_verified_at: selected.last_verified_at || null,
+        is_new: isNew,
+        action_label: 'Examine supporting evidence',
+        action_route: selected.investigation?.route || `/dashboard/rev-intell?finding=${encodeURIComponent(selected.id)}`,
+        references: Array.isArray(selected.evidence?.references) ? selected.evidence.references : [],
+      },
+    };
+  }
+
+  // Determine the exact, honest non-interchangeable empty state.
+  if (!state || DISCONNECTED_INTEGRATION_STATES.has(integrationStatus)) {
+    return { status: 'empty', empty_state: 'insufficient_evidence', item: null };
+  }
+  if (!snapshot || status === 'unavailable' || status === 'unknown') {
+    return {
+      status: 'empty',
+      empty_state: !hasPreviousBriefing && integrationStatus === 'connected' ? 'no_previous_briefing' : 'insufficient_evidence',
+      item: null,
+    };
+  }
+  if (!hasPreviousBriefing && status === 'partial' && presentedFindings.length === 0) {
+    return { status: 'empty', empty_state: 'no_previous_briefing', item: null };
+  }
+  return { status: 'empty', empty_state: 'no_new_findings', item: null };
+}
+
+function composeRecentDevelopments({
+  presentedFindings = [],
+  resolvedFindings = [],
+  priorityFindingId = null,
+  featuredFindingId = null,
+  operationalActivity = null,
+  hasPreviousBriefing = false,
+  previousGeneratedAt = null,
+  now = new Date(),
+}) {
+  const items = [];
+  const seenIds = new Set();
+
+  // 1. Recently resolved findings (distinct from open Top Priorities).
+  for (const row of resolvedFindings || []) {
+    if (!row || row.status !== 'resolved') continue;
+    const occurredAt = iso(row.resolved_at || row.updated_at);
+    if (!occurredAt) continue;
+    const id = `dev-resolved:${row.id}`;
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
+    items.push({
+      id,
+      category: 'resolved_finding',
+      lifecycle: 'resolved',
+      title: `${row.title} resolved`,
+      explanation: 'A previously identified business finding is no longer active based on updated records.',
+      occurred_at: occurredAt,
+      finding_id: row.id,
+      route: `/dashboard/rev-intell?finding=${encodeURIComponent(row.id)}`,
+      action_label: 'Review finding',
+    });
+  }
+
+  // 2. Other active verified findings (excluding Top Priority & Featured Intelligence to avoid duplication).
+  for (const item of presentedFindings || []) {
+    if (!item || item.id === priorityFindingId || item.id === featuredFindingId) continue;
+    const occurredAt = iso(item.detected_at);
+    if (!occurredAt) continue;
+    const id = `dev-finding:${item.id}`;
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
+    const isNew = isNewSincePrevious(occurredAt, previousGeneratedAt, now);
+    items.push({
+      id,
+      category: 'finding',
+      lifecycle: isNew ? 'new' : 'ongoing',
+      title: item.title,
+      explanation: item.description,
+      occurred_at: occurredAt,
+      finding_id: item.id,
+      route: item.investigation?.route || `/dashboard/rev-intell?finding=${encodeURIComponent(item.id)}`,
+      action_label: 'Examine finding',
+    });
+  }
+
+  // 3. Meaningful operational/evidence availability developments (never routine sync spam).
+  const activityItems = Array.isArray(operationalActivity?.items) ? operationalActivity.items : [];
+  for (const entry of activityItems) {
+    if (!entry || entry.category === 'finding') continue;
+    const mapped = describeIntegrationDevelopment(entry);
+    if (!mapped) continue;
+    const occurredAt = iso(entry.occurred_at);
+    if (!occurredAt) continue;
+    const id = `dev-op:${entry.event_id}`;
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
+    const lifecycle = mapped.status_tag === 'resolved'
+      ? 'resolved'
+      : isNewSincePrevious(occurredAt, previousGeneratedAt, now)
+        ? 'new'
+        : 'ongoing';
+    items.push({
+      id,
+      category: mapped.category,
+      lifecycle,
+      title: mapped.title,
+      explanation: mapped.explanation,
+      occurred_at: occurredAt,
+      finding_id: null,
+      route: mapped.route,
+      action_label: mapped.action_label,
+    });
+  }
+
+  items.sort((a, b) => (parseTimestampMs(b.occurred_at) || 0) - (parseTimestampMs(a.occurred_at) || 0) || a.id.localeCompare(b.id));
+  const bounded = items.slice(0, 6);
+
+  return {
+    empty_state: bounded.length === 0 ? (hasPreviousBriefing ? 'no_changes' : 'no_previous_briefing') : null,
+    items: bounded,
+  };
+}
+
+function assessBriefingSituation({ snapshot, status, state, findings = [], featuredIntelligence = null }) {
+  const integrationStatus = state?.overall_status || 'unknown';
+  const primary = findings[0] || null;
+
+  // Data quality axis (strictly independent from business severity).
+  let dataQuality = 'unavailable';
+  let dataQualityLabel = 'Evidence unavailable';
+  if (integrationStatus === 'synchronizing') {
+    dataQuality = 'syncing';
+    dataQualityLabel = 'Evidence syncing';
+  } else if (status === 'failed') {
+    dataQuality = 'unavailable';
+    dataQualityLabel = 'Evidence unavailable';
+  } else if (!state || DISCONNECTED_INTEGRATION_STATES.has(integrationStatus) || !snapshot || status === 'unavailable' || status === 'unknown') {
+    dataQuality = 'insufficient';
+    dataQualityLabel = 'Insufficient evidence';
+  } else if (status === 'stale') {
+    dataQuality = 'stale';
+    dataQualityLabel = 'Evidence stale';
+  } else if (status === 'partial' || integrationStatus === 'limited_access' || integrationStatus === 'sync_partial') {
+    dataQuality = 'partial';
+    dataQualityLabel = 'Evidence partial';
+  } else {
+    dataQuality = 'verified';
+    dataQualityLabel = 'Evidence verified';
+  }
+
+  // Business assessment axis (never equates missing data with unhealthy business,
+  // and never equates zero findings with proof of good health).
+  if (status === 'failed') {
+    return { state: 'unavailable', label: 'Briefing unavailable', data_quality: dataQuality, data_quality_label: dataQualityLabel };
+  }
+  if (integrationStatus === 'synchronizing') {
+    return { state: 'investigating', label: 'Preparing briefing', data_quality: dataQuality, data_quality_label: dataQualityLabel };
+  }
+  if (!state || DISCONNECTED_INTEGRATION_STATES.has(integrationStatus) || !snapshot || status === 'unavailable' || status === 'unknown') {
+    return { state: 'insufficient_evidence', label: 'Insufficient evidence', data_quality: dataQuality, data_quality_label: dataQualityLabel };
+  }
+  if ((primary && ['critical', 'high'].includes(primary.severity)) || featuredIntelligence?.status === 'qualified') {
+    return { state: 'important_development', label: 'Development detected', data_quality: dataQuality, data_quality_label: dataQualityLabel };
+  }
+  if (primary || status === 'stale' || state?.merchant_action_required || ['sync_failed', 'needs_attention'].includes(integrationStatus)) {
+    return { state: 'attention_needed', label: 'Attention needed', data_quality: dataQuality, data_quality_label: dataQualityLabel };
+  }
+  return { state: 'normal', label: 'No major issue established', data_quality: dataQuality, data_quality_label: dataQualityLabel };
+}
+
+function composeBriefing({
+  snapshot,
+  previousSnapshot = null,
+  status,
+  state,
+  findings,
+  presentedFindings = [],
+  resolvedFindings = [],
+  operationalActivity = null,
+  warnings,
+  reportingPeriod = null,
+  now = new Date(),
+}) {
   const primary = findings[0] || null;
   const integrationStatus = state?.overall_status || 'unknown';
   const staleResources = (state?.capabilities || []).filter(item => item.freshness === 'stale').map(item => item.name);
@@ -108,7 +473,7 @@ function composeBriefing({ snapshot, status, state, findings, warnings, reportin
     headline = primary.title;
     summary = primary.description;
     tone = ['critical', 'high'].includes(primary.severity) ? 'attention' : 'default';
-  } else if (!state || ['disconnected', 'authorization_required', 'authorization_expired', 'authorization_revoked'].includes(integrationStatus)) {
+  } else if (!state || DISCONNECTED_INTEGRATION_STATES.has(integrationStatus)) {
     headline = state ? 'Reconnect Shopify to restore your operational briefing' : 'Connect Shopify to prepare your operational briefing';
     summary = state?.status_explanation || 'No Shopify store is connected. Business metrics and findings cannot be prepared yet.';
     tone = 'attention';
@@ -155,6 +520,37 @@ function composeBriefing({ snapshot, status, state, findings, warnings, reportin
     label: 'Open Integrations', reason: 'Review store connection and synchronization readiness.', route: '/dashboard/integrations',
   };
 
+  const previousGeneratedAt = iso(previousSnapshot?.generated_at);
+  const hasPreviousBriefing = Boolean(previousGeneratedAt);
+  const priorityFindingId = presentedFindings[0]?.id || primary?.id || null;
+  const featuredIntelligence = selectFeaturedIntelligence({
+    presentedFindings,
+    priorityFindingId,
+    status,
+    state,
+    snapshot,
+    hasPreviousBriefing,
+    previousGeneratedAt,
+    now,
+  });
+  const recentDevelopments = composeRecentDevelopments({
+    presentedFindings,
+    resolvedFindings,
+    priorityFindingId,
+    featuredFindingId: featuredIntelligence.item?.finding_id || null,
+    operationalActivity,
+    hasPreviousBriefing,
+    previousGeneratedAt,
+    now,
+  });
+  const assessment = assessBriefingSituation({
+    snapshot,
+    status,
+    state,
+    findings,
+    featuredIntelligence,
+  });
+
   return {
     headline, summary, tone,
     observation: primary ? 'This priority finding was verified by the intelligence pipeline. Its evidence establishes the observation, not an unrecorded cause.' : null,
@@ -163,6 +559,12 @@ function composeBriefing({ snapshot, status, state, findings, warnings, reportin
     no_findings_note: !primary && snapshot ? 'No open verified priority findings are recorded. This is not proof that no issue exists outside the checks and evidence available to Revluma.' : null,
     limitations: [...new Set(limitations.filter(Boolean))].slice(0, 12),
     next_investigation: next,
+    generated_at: iso(snapshot?.generated_at),
+    previous_generated_at: previousGeneratedAt,
+    has_previous_briefing: hasPreviousBriefing,
+    assessment,
+    featured_intelligence: featuredIntelligence,
+    recent_developments: recentDevelopments,
     generated_from: { business_state_id: snapshot?.id || null, finding_id: primary?.id || null, integration_evaluated_at: state?.evaluated_at || null },
   };
 }
@@ -193,12 +595,35 @@ function resourceEvidence(states, domainRows) {
 
 async function getCommandCenter({ prisma, organizationId, storeId = null, periodDays = 7, now = new Date() }) {
   const days = normalizePeriodDays(periodDays);
-  const [snapshot, states, rawFindings, stores] = await Promise.all([
+  const resolvedWindowSince = new Date(now.getTime() - 14 * 24 * 3600_000);
+  const [snapshot, previousSnapshots, states, rawFindings, rawResolvedFindings, stores] = await Promise.all([
     prisma.business_states.findFirst({ where: { organization_id: organizationId, is_current: true } }),
+    prisma.business_states && typeof prisma.business_states.findMany === 'function'
+      ? prisma.business_states.findMany({
+          where: { organization_id: organizationId, is_current: false, computation_status: { not: 'failed' } },
+          orderBy: { generated_at: 'desc' },
+          take: 1,
+          select: { id: true, generated_at: true, computation_status: true },
+        }).catch(() => [])
+      : [],
     retrieveIntegrationStates({ prisma, organizationId, now }),
     listFindings(prisma, organizationId, { status: 'active', limit: 100 }),
+    prisma.intelligence_findings && typeof prisma.intelligence_findings.findMany === 'function'
+      ? prisma.intelligence_findings.findMany({
+          where: { organization_id: organizationId, status: 'resolved', resolved_at: { gte: resolvedWindowSince } },
+          orderBy: { resolved_at: 'desc' },
+          take: 10,
+          select: {
+            id: true, store_id: true, type: true, severity: true, status: true,
+            title: true, description: true, detected_at: true, updated_at: true, resolved_at: true, dedupe_key: true,
+          },
+        }).catch(() => [])
+      : [],
     prisma.stores.findMany({ where: { organization_id: organizationId }, select: { id: true, shop_domain: true, platform: true, last_synced_at: true, sync_completed_at: true }, orderBy: { last_synced_at: 'desc' } }),
   ]);
+  const previousSnapshot = Array.isArray(previousSnapshots)
+    ? previousSnapshots.find(row => row && row.id !== snapshot?.id && row.generated_at) || null
+    : null;
   const storeIds = stores.map(store => store.id);
   const [domainRows, storeProfiles] = await Promise.all([
     storeIds.length ? prisma.store_sync_domain_states.findMany({ where: { store_id: { in: storeIds } } }) : [],
@@ -218,6 +643,8 @@ async function getCommandCenter({ prisma, organizationId, storeId = null, period
   const scopedFindings = primaryStore && stores.length > 1
     ? rawFindings.filter(item => !item.store_id || item.store_id === primaryStore.id)
     : rawFindings;
+  const scopedResolvedFindings = (Array.isArray(rawResolvedFindings) ? rawResolvedFindings : [])
+    .filter(item => item && item.status === 'resolved' && (!primaryStore || stores.length <= 1 || !item.store_id || item.store_id === primaryStore.id));
   const priority = priorityFinding.prioritizedFindings(scopedFindings, { now, resourcesByStore });
   const findings = priority.candidates.map(candidate => ({
     ...candidate.finding,
@@ -330,7 +757,19 @@ async function getCommandCenter({ prisma, organizationId, storeId = null, period
       stale: status === 'stale', warnings,
     } : { id: null, version: null, generated_at: null, data_freshness_at: null, valid_until: null, computation_status: 'unavailable', presentation_status: 'unavailable', stale: false, warnings: ['No current business snapshot exists.'] },
     integration: state,
-    briefing: composeBriefing({ snapshot, status, state, findings, warnings, reportingPeriod: healthPeriod ? reportingPeriod : null }),
+    briefing: composeBriefing({
+      snapshot,
+      previousSnapshot,
+      status,
+      state,
+      findings,
+      presentedFindings,
+      resolvedFindings: scopedResolvedFindings,
+      operationalActivity,
+      warnings,
+      reportingPeriod: healthPeriod ? reportingPeriod : null,
+      now,
+    }),
     metrics: buildMetrics(snapshot, state, status),
     priority_finding: presentedFindings[0] || null,
     priority_selection: {
@@ -360,4 +799,15 @@ async function getCommandCenter({ prisma, organizationId, storeId = null, period
   };
 }
 
-module.exports = { CONTRACT_VERSION, getCommandCenter, prioritizedFindings, snapshotStatus, buildMetrics, composeBriefing, resourceEvidence };
+module.exports = {
+  CONTRACT_VERSION,
+  getCommandCenter,
+  prioritizedFindings,
+  snapshotStatus,
+  buildMetrics,
+  composeBriefing,
+  selectFeaturedIntelligence,
+  composeRecentDevelopments,
+  assessBriefingSituation,
+  resourceEvidence,
+};
