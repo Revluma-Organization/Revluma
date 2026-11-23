@@ -21,6 +21,13 @@ describe("JumpToLatest", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it("is icon-only: no visible text, but keeps its accessible name", () => {
+    render(<JumpToLatest visible onClick={vi.fn()} />);
+    const pill = screen.getByRole("button", { name: "Back to latest message" });
+    expect(pill.textContent).toBe("");
+    expect(pill.querySelector("svg")).toBeTruthy();
+  });
+
   it("is click-through and invisible while hidden (pointer-events guard)", () => {
     const { container } = render(<JumpToLatest visible={false} onClick={vi.fn()} dark />);
     const pill = container.querySelector<HTMLElement>("[data-rev-jump-to-latest]")!;

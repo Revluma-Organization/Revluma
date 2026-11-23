@@ -2,7 +2,7 @@ import { ArrowDown } from "lucide-react";
 import { revTokens } from "@/lib/revTokens";
 
 /**
- * "Back to latest" pill (ChatGPT-UI study §6: auto-scroll pins to the stream
+ * Icon-only "back to latest" button (ChatGPT-UI study §6: auto-scroll pins to the stream
  * unless the merchant scrolls up, then offers a one-tap return — reading an
  * older answer is never hijacked, and rejoining the live stream is one click).
  *
@@ -21,10 +21,11 @@ export function JumpToLatest({ visible, onClick, dark = false }: {
       type="button"
       onClick={onClick}
       aria-label="Back to latest message"
+      title="Back to latest message"
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
       data-rev-jump-to-latest
-      className="absolute bottom-4 left-1/2 inline-flex min-h-11 -translate-x-1/2 items-center gap-1.5 rounded-full px-4 transition-opacity duration-150"
+      className="absolute bottom-4 left-1/2 inline-flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full transition-opacity duration-150"
       style={{
         opacity: visible ? 1 : 0,
         pointerEvents: visible ? "auto" : "none",
@@ -32,14 +33,11 @@ export function JumpToLatest({ visible, onClick, dark = false }: {
         border: `1px solid ${t.border}`,
         boxShadow: t.shadow,
         color: t.strong,
-        fontSize: "0.74rem",
-        fontWeight: 650,
         cursor: "pointer",
         zIndex: 20,
       }}
     >
-      <ArrowDown size={13} aria-hidden="true" />
-      Back to latest
+      <ArrowDown size={18} aria-hidden="true" />
     </button>
   );
 }
