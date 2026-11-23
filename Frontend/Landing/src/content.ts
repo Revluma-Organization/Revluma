@@ -15,8 +15,8 @@ export const NAV_LINKS = [
 ] as const;
 
 export const CTA = {
-  primary: { label: "Join the Founding Merchants Program", href: "#founding-merchants" },
-  primaryShort: { label: "Join Founding Merchants", href: "#founding-merchants" },
+  primary: { label: "Join Waitlist", href: "#founding-merchants" },
+  primaryShort: { label: "Join Waitlist", href: "#founding-merchants" },
   secondary: { label: "Sign Up", href: SIGN_UP_URL },
 } as const;
 

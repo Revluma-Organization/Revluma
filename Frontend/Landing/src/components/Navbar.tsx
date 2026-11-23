@@ -73,7 +73,7 @@ export function Navbar() {
               <a
                 href={joinHref}
                 onClick={onJoin}
-                className={`hidden h-full items-center whitespace-nowrap rounded-full bg-white px-4 text-[0.9rem] font-medium text-[#1C1C1C] transition-colors hover:bg-white/90 min-[380px]:inline-flex sm:px-5 sm:text-[0.95rem] ${ON_DARK_FOCUS}`}
+                className={`inline-flex h-full items-center whitespace-nowrap rounded-full bg-white px-4 text-[0.9rem] font-medium text-[#1C1C1C] transition-colors hover:bg-white/90 sm:px-5 sm:text-[0.95rem] ${ON_DARK_FOCUS}`}
               >
                 {CTA.primaryShort.label}
               </a>
