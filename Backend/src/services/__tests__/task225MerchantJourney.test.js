@@ -92,8 +92,12 @@ scenario(68, 'OAuth reconnect binds tenant store', () => assert.match(callback, 
 scenario(69, 'OAuth callback verifies HMAC before exchange', () => assert.ok(callback.indexOf('verifyHmac(req.query)') < callback.indexOf('exchangeAccessToken(normalizedShop, code)')));
 scenario(70, 'OAuth callback binds initiating shop', () => assert.match(callback, /shopify_shop !== normalizedShop/));
 scenario(71, 'OAuth callback binds initiating organization cookie', () => assert.match(callback, /getOrganizationByUser\(userId, req.signedCookies\?.shopify_organization/));
-scenario(72, 'OAuth callback consumes state atomically', () => assert.match(callback, /shopify:oauth:consumed:[\s\S]*'NX'/));
-scenario(73, 'OAuth duplicate callback rejected', () => assert.match(callback, /replayClaim !== 'OK'[\s\S]*409/));
+// 72/73/82: the replay guard moved from Redis SET NX to a Postgres one-time
+// claim (coordination.claimOnce — INSERT on a primary key, atomic across
+// instances). Behaviour is exercised in shopify.callback.test.js and
+// coordination.test.js; these assert the controller still wires it.
+scenario(72, 'OAuth callback consumes state atomically', () => assert.match(callback, /coordination\.claimOnce\(`shopify:oauth:consumed:\$\{stateDigest\}`/));
+scenario(73, 'OAuth duplicate callback rejected', () => assert.match(callback, /if \(!replayClaim\) \{[\s\S]*?oauth_state_replayed[\s\S]*?409/));
 scenario(74, 'OAuth cancellation returns safe frontend route', () => assert.match(callback, /access_denied[\s\S]*shopify=cancelled/));
 scenario(75, 'OAuth success distinguished from synchronization', () => assert.match(callback, /shopify', webhookSetupComplete \? 'authorized' : 'recovery_pending'/));
 scenario(76, 'OAuth code never included in frontend redirect', () => assert.doesNotMatch(callback, /searchParams.set\(['"]code/));
@@ -102,7 +106,7 @@ scenario(78, 'OAuth state never included in frontend redirect', () => assert.doe
 scenario(79, 'OAuth HMAC never included in frontend redirect', () => assert.doesNotMatch(callback, /searchParams.set\(['"]hmac/));
 scenario(80, 'OAuth secrets not logged', () => assert.doesNotMatch(callback, /logger\.(?:info|error|warn)\([^\n]*accessToken/));
 scenario(81, 'OAuth callback redirects only configured frontend origin', () => assert.match(callback, /new URL\('\/dashboard\/integrations', configuredFrontendUrl\)/));
-scenario(82, 'OAuth replay store outage fails closed', () => assert.match(callback, /oauth_replay_guard[\s\S]*!isRedisReady\(\)[\s\S]*503/));
+scenario(82, 'OAuth replay store outage fails closed', () => assert.match(callback, /oauth_replay_guard[\s\S]*?catch \(replayStoreError\) \{[\s\S]*?replay_store_unavailable[\s\S]*?503/));
 scenario(83, 'OAuth shop mismatch is rejected before token exchange', () => assert.ok(callback.indexOf('shop_mismatch') < callback.indexOf('exchangeAccessToken(normalizedShop, code)')));
 scenario(84, 'OAuth invalid domain is rejected before token exchange', () => assert.ok(callback.indexOf('isValidShopDomain(shop)') < callback.indexOf('exchangeAccessToken(normalizedShop, code)')));
 scenario(85, 'OAuth state mismatch is rejected before token exchange', () => assert.ok(callback.indexOf('isStateAccepted(storedState, state)') < callback.indexOf('exchangeAccessToken(normalizedShop, code)')));

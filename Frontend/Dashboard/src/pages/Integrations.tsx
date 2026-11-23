@@ -8,6 +8,8 @@ import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { api, ApiError } from "@/lib/api";
+import type { DataHealthSummary } from "@/lib/revStoreContext";
+import { capabilityLabel, startCapabilityAuthorization } from "@/lib/shopifyAuthorization";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 import magentoLogo from "@/assets/magento-logo.png";
@@ -98,12 +100,14 @@ interface ConnectedStore {
     synchronization: { status: string; attempt_count: number; required_resources_complete: boolean; resources: SyncResource[] };
     webhooks: { registration: { complete: boolean }; delivery: { status: string; note: string } };
   };
-  setup_status: "disconnected" | "webhooks_pending" | "in_progress" | "failed" | "pending" | "complete";
+  setup_status: "disconnected" | "webhooks_pending" | "in_progress" | "failed" | "pending" | "complete" | "recovering";
   webhooks_registered: number | null;
   webhooks_required: number | null;
   webhook_details?: WebhookDetail[] | null;
   last_synced_at: string | null;
-  sync_status?: "pending" | "in_progress" | "complete" | "failed";
+  sync_status?: "pending" | "in_progress" | "complete" | "complete_with_limitations" | "partial" | "failed";
+  // Server-evaluated data health — the same source of truth Rev answers from.
+  data_health?: DataHealthSummary | null;
   monitoring_mode?: "disconnected" | "webhook_and_sync" | "sync_only_limited" | "awaiting_verified_sync";
   // Task 213 — canonical rev-integration-state-v1 block (additive) from the
   // product API. The UI normalizes it fail-closed; a missing/invalid block
@@ -299,6 +303,8 @@ export default function Integrations() {
       const callbackShop = searchParams.get("shop");
       const failureStage = searchParams.get("stage");
       const failureReference = searchParams.get("reference");
+      const authorizationOutcome = searchParams.get("authorization");
+      const approvedCapabilities = (searchParams.get("capabilities") || "").split(",").map((item) => item.trim()).filter(Boolean);
       void fetchStatuses().then((result) => {
         const shopifyStore = result?.find(
           (store) => store.platform === "shopify" &&
@@ -314,6 +320,15 @@ export default function Integrations() {
             callbackStatus === "error"
               ? `The connection could not be completed${failureStage ? ` during ${failureStage.replace(/_/g, " ")}` : ""}.${failureReference ? ` Reference: ${failureReference}.` : ""} Please try connecting again.`
               : "Shopify returned to Revluma, but no saved connection was found for this store in your account. Please try connecting again.",
+          );
+        } else if (authorizationOutcome === "approved" || authorizationOutcome === "partially_granted") {
+          // Capability approval: the registry was updated from the scopes
+          // Shopify actually granted and retrieval resumed server-side.
+          showStatusCard(
+            "success",
+            authorizationOutcome === "approved" ? "Access Approved" : "Access Partially Approved",
+            `${approvedCapabilities.length ? `Revluma can now read ${approvedCapabilities.map(capabilityLabel).join(", ")} and is retrieving it automatically.` : "Shopify returned to Revluma."}${authorizationOutcome === "partially_granted" ? " Some requested access was not granted; Rev will say when a question depends on it." : ""}`,
+            "Got it",
           );
         } else if (!isStoreSetupComplete(shopifyStore)) {
           const setupFailed = shopifyStore.setup_status === "failed";
@@ -341,6 +356,9 @@ export default function Integrations() {
       next.delete("stage");
       next.delete("reference");
       next.delete("reason");
+      next.delete("authorization");
+      next.delete("capabilities");
+      next.delete("authorization_request");
       setSearchParams(next, { replace: true });
       void refetchStates();
     } else {
@@ -348,7 +366,7 @@ export default function Integrations() {
     }
   }, [fetchStatuses, refetchStates, searchParams, setSearchParams, showStatusCard]);
 
-  const shopifySetupInProgress = stores.some((store) => store.platform === "shopify" && (store.connection_state === "reconnecting" || (store.connection_status === "connected" && (store.setup_status === "in_progress" || store.setup_status === "webhooks_pending" || store.setup_status === "pending"))));
+  const shopifySetupInProgress = stores.some((store) => store.platform === "shopify" && (store.connection_state === "reconnecting" || (store.connection_status === "connected" && (store.setup_status === "in_progress" || store.setup_status === "webhooks_pending" || store.setup_status === "pending" || store.setup_status === "recovering"))));
   useEffect(() => {
     if (!shopifySetupInProgress) return;
     const intervalId = window.setInterval(() => {
@@ -420,6 +438,32 @@ export default function Integrations() {
       showStatusCard("error", "Reconnect Could Not Start", getErrorMessage(error, "Reconnect could not be started. Refresh the integration state and try again."));
       setReconnectingStoreIds(current => current.filter(id => id !== store.id));
       await fetchStatuses();
+    }
+  }
+
+  async function handleApproveCapabilities(store: ConnectedStore, capabilities: string[]) {
+    if (reconnectingStoreIds.includes(store.id) || capabilities.length === 0) return;
+    setReconnectingStoreIds(current => [...current, store.id]);
+    try {
+      const result = await startCapabilityAuthorization({ storeId: store.id, shopDomain: store.shop_domain, capabilities, trigger: "merchant", resume: { surface: "integrations" } });
+      if (result.kind === "redirect") {
+        window.location.assign(result.url);
+        return;
+      }
+      // Already granted, or not offered by Shopify for this store: say so
+      // instead of sending the merchant through a pointless approval.
+      showStatusCard(
+        "success",
+        "No Approval Needed",
+        result.refused.length
+          ? result.refused.map(item => item.explanation || `${capabilityLabel(item.capability)} is not available for this store.`).join(" ")
+          : "Revluma already has this access. Retrieval continues automatically.",
+      );
+      setReconnectingStoreIds(current => current.filter(id => id !== store.id));
+      await fetchStatuses();
+    } catch (error) {
+      showStatusCard("error", "Approval Could Not Start", getErrorMessage(error, "Shopify approval could not be started. Please try again."));
+      setReconnectingStoreIds(current => current.filter(id => id !== store.id));
     }
   }
 
@@ -634,7 +678,11 @@ export default function Integrations() {
                     const syncRunning = store.diagnostics?.synchronization.status === "running" || store.status === "syncing";
                     const syncFailed = store.diagnostics?.synchronization.status === "failed" || store.status === "error";
                     const needsReconnect = store.reconnect_eligible === true || store.diagnostic?.reconnect_eligible === true;
-                    const heading = setupDone ? "Your store is ready!" : needsReconnect ? "Shopify reconnect required" : failedCount > 0 || store.setup_status === "failed" ? "Setup needs attention" : isRetrying ? "Getting your store ready..." : "Shopify setup";
+                    const health = store.data_health ?? null;
+                    const permissionAction = health?.merchant_action?.kind === "grant_permission" ? health.merchant_action : null;
+                    const recovering = store.setup_status === "recovering";
+                    const optionalPermissions = health?.optional_permissions ?? [];
+                    const heading = setupDone ? "Your store is ready!" : needsReconnect ? "Shopify reconnect required" : permissionAction ? "Shopify approval needed" : recovering ? "Refreshing your store data" : failedCount > 0 || store.setup_status === "failed" ? "Setup needs attention" : isRetrying ? "Getting your store ready..." : "Shopify setup";
                     const rowDetail = (topic: string) => details.find((item) => item.topic === topic);
                     const rowState = (topic: string) => rowDetail(topic)?.status ?? "unknown";
                     return (
@@ -651,8 +699,29 @@ export default function Integrations() {
                               <p className="mt-1 text-xs opacity-80">Reason: {store.diagnostic.reason_code}. {store.diagnostic.reconnect_eligible ? "Merchant reconnect is available." : store.diagnostic.retry_eligible ? "A bounded retry is available." : "No automatic recovery is claimed."}</p>
                             </div>
                           )}
-                          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{setupDone ? "Your store is connected, all required webhooks are registered, and initial synchronization is complete." : isRetrying ? "Connecting your store and configuring its webhook subscriptions." : store.setup_status === "failed" || failedCount > 0 ? "Webhook registration or initial synchronization needs attention." : "Store setup is in progress or awaiting verification."}</p>
+                          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{setupDone ? "Your store is connected, all required webhooks are registered, and initial synchronization is complete." : permissionAction ? `Rev needs read access to ${(permissionAction.capabilities ?? []).map(capabilityLabel).join(", ")}. Revluma asks Shopify only for what is missing and resumes automatically after you approve.` : recovering ? "Shopify did not return some data on the last attempt. Revluma is retrying automatically — nothing is needed from you, and Rev's answers say which data is affected." : isRetrying ? "Connecting your store and configuring its webhook subscriptions." : store.setup_status === "failed" || failedCount > 0 ? "Webhook registration or initial synchronization needs attention." : "Store setup is in progress or awaiting verification."}</p>
+                          {setupDone && store.sync_status === "complete_with_limitations" && (health?.limitations?.length ?? 0) > 0 && (
+                            <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300">
+                              <summary className="cursor-pointer font-medium">Data Rev can't use yet ({health?.limitations?.length})</summary>
+                              <ul className="mt-2 list-disc space-y-0.5 pl-4">
+                                {health?.limitations?.slice(0, 12).map((item) => <li key={item}>{item}</li>)}
+                              </ul>
+                              <p className="mt-2 opacity-80">Your sales, product, customer and inventory data are complete. Rev mentions these gaps only when a question depends on them.</p>
+                            </details>
+                          )}
+                          {setupDone && optionalPermissions.length > 0 && (
+                            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                              Optional: approve read access to {optionalPermissions.map(capabilityLabel).join(", ")} to let Rev answer questions about them.{" "}
+                              <button type="button" disabled={reconnectingStoreIds.includes(store.id)} onClick={() => void handleApproveCapabilities(store, optionalPermissions)} className="font-semibold text-[#007FFF] underline underline-offset-2 disabled:opacity-60">Review in Shopify</button>
+                            </p>
+                          )}
                           <div className="mt-5 flex flex-wrap gap-2">
+                            {!needsReconnect && permissionAction && (
+                              <button type="button" onClick={() => void handleApproveCapabilities(store, permissionAction.capabilities ?? [])} disabled={reconnectingStoreIds.includes(store.id)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#007FFF] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#007FFF]/90 disabled:opacity-60">
+                                {reconnectingStoreIds.includes(store.id) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
+                                {reconnectingStoreIds.includes(store.id) ? "Opening Shopify…" : "Approve access in Shopify"}
+                              </button>
+                            )}
                             {needsReconnect && (
                               <button type="button" onClick={() => void handleReconnect(store)} disabled={reconnectingStoreIds.includes(store.id)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#007FFF] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#007FFF]/90 disabled:opacity-60">
                                 {reconnectingStoreIds.includes(store.id) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
@@ -661,7 +730,7 @@ export default function Integrations() {
                             )}
                             <button type="button" onClick={() => setWebhookDetailsStoreId(store.id)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">View diagnostics</button>
                           </div>
-                          {!setupDone && !needsReconnect && store.connection_status === "connected" && (
+                          {!setupDone && !needsReconnect && !permissionAction && !recovering && store.connection_status === "connected" && (
                             <button type="button" onClick={() => { setWebhookDetailsStoreId(store.id); void handleRetryStoreSetup(store.id); }} disabled={isRetrying}
                               className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800">
                               {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}

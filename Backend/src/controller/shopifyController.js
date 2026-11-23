@@ -13,7 +13,21 @@ const { buildCookieOptions } = require('../utils/cookieOptions');
 
 const {exchangeAccessToken,getOrganizationByUser,upsertStore,syncShopifyStore,} = require("../services/shopifyService");
 const { prisma } = require('../configs/database');
-const { getRedisClient, isRedisReady } = require('../configs/redis');
+const coordination = require('../services/coordination');
+
+// One OAuth session (reconnect or reauthorization) per store at a time, and
+// one-time consumption of each OAuth state. Both live in Postgres
+// (coordination.js) so a Redis outage can no longer block merchants from
+// connecting or re-authorizing a store.
+const OAUTH_SESSION_TTL_SECONDS = 600;
+const OAUTH_STATE_REPLAY_TTL_SECONDS = 900;
+const OAUTH_COOKIES = ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user', 'shopify_organization',
+  'shopify_reconnect_store', 'shopify_reconnect_attempt', 'shopify_reauth_store'];
+const CAPABILITY_ID = /^[a-z][a-z0-9_]{1,40}$/;
+
+function oauthSessionKey(storeId) {
+  return `shopify:oauth:session:${storeId}`;
+}
 
 /**GET /api/v1/shopify/install, Redirect authenticated merchant to Shopify OAuth.*/
 
@@ -52,22 +66,69 @@ exports.installShopify = async (req, res, next) => {
     if (!organization) return res.status(403).json({ success: false, error: "Active organisation membership required." });
 
     const reconnectStoreId = req.query.store_id;
+    const mode = req.query.mode === 'reauthorize' ? 'reauthorize' : (req.query.mode === 'reconnect' || reconnectStoreId !== undefined ? 'reconnect' : 'install');
     let reconnectStore = null;
-    if (req.query.mode === 'reconnect' || reconnectStoreId !== undefined) {
+    let sessionLease = null;
+    let scopePlan = null;
+    let authorization = null;
+    if (mode !== 'install') {
       if (typeof reconnectStoreId !== 'string' || !/^[0-9a-f-]{36}$/i.test(reconnectStoreId)) {
-        return res.status(400).json({ success: false, error: 'A valid store_id is required to reconnect.' });
+        return res.status(400).json({ success: false, error: `A valid store_id is required to ${mode}.` });
       }
       reconnectStore = await prisma.stores.findFirst({
         where: { id: reconnectStoreId, organization_id: organization.id, platform: 'shopify', shop_domain: normalizedShop, status: { not: 'deleted' } },
       });
-      if (!reconnectStore) return res.status(403).json({ success: false, error: 'You cannot reconnect this Shopify store.' });
-      if (!isRedisReady()) return res.status(503).json({ success: false, error: 'Reconnect is temporarily unavailable.' });
-      const reconnectKey = `shopify:oauth:reconnect:${reconnectStore.id}`;
-      const claimed = await getRedisClient().set(reconnectKey, reconnectAttemptId, 'EX', 600, 'NX');
-      if (claimed !== 'OK') return res.status(409).json({ success: false, error: 'A reconnect session is already in progress.' });
-      const { recordIntegrationEvent } = require('../services/integrationLifecycleStore');
-      const transition = await recordIntegrationEvent({ storeId: reconnectStore.id, type: 'reconnect_started', source: 'merchant_oauth', eventReference: `reconnect:${userId}:${Date.now()}` });
-      if (!transition.accepted) return res.status(409).json({ success: false, error: 'Reconnect state could not be started safely.' });
+      if (!reconnectStore) return res.status(403).json({ success: false, error: `You cannot ${mode} this Shopify store.` });
+
+      if (mode === 'reauthorize') {
+        // Capability reauthorization: ask Shopify only for the missing read
+        // scopes of the named capabilities; never for anything already granted.
+        const requested = String(req.query.capabilities || '').split(',').map(item => item.trim()).filter(Boolean);
+        if (!requested.length || requested.length > 12 || !requested.every(item => CAPABILITY_ID.test(item))) {
+          return res.status(400).json({ success: false, error: 'capabilities must list the capabilities to authorize.' });
+        }
+        if (!reconnectStore.access_token) {
+          return res.status(409).json({ success: false, error: 'This store must be reconnected before additional access can be granted.', code: 'RECONNECT_REQUIRED' });
+        }
+        const { reauthorizationScopes } = require('../services/permissionRegistry');
+        const { ensureRequests } = require('../services/authorizationRequests');
+        const resume = {
+          surface: req.query.resume_surface === 'rev' ? 'rev' : 'integrations',
+          conversation_id: typeof req.query.conversation_id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.query.conversation_id) ? req.query.conversation_id : undefined,
+          question: typeof req.query.question === 'string' ? req.query.question : undefined,
+        };
+        authorization = await ensureRequests({
+          store: reconnectStore, capabilities: requested, trigger: req.query.trigger === 'rev_investigation' ? 'rev_investigation' : 'merchant',
+          requestedBy: userId, resume,
+        });
+        if (!authorization.requests.length) {
+          // Nothing to ask Shopify for: already granted, or not grantable.
+          return res.status(200).json({
+            success: true, redirectUrl: null,
+            data: { not_needed: authorization.not_needed, refused: authorization.refused },
+          });
+        }
+        scopePlan = reauthorizationScopes(reconnectStore.granted_scopes, authorization.requests.map(row => row.capability));
+      }
+
+      try {
+        sessionLease = await coordination.acquireLease(oauthSessionKey(reconnectStore.id), {
+          ttlSeconds: OAUTH_SESSION_TTL_SECONDS, purpose: `oauth_${mode}`, metadata: { attempt_id: reconnectAttemptId },
+        });
+      } catch (leaseError) {
+        logger.error('shopify_oauth_session_store_unavailable', { store_id: reconnectStore.id, mode, error_type: leaseError?.code || leaseError?.name });
+        return res.status(503).json({ success: false, error: `${mode === 'reconnect' ? 'Reconnect' : 'Authorization'} is temporarily unavailable.` });
+      }
+      if (!sessionLease) return res.status(409).json({ success: false, error: 'A Shopify authorization session is already in progress for this store.' });
+
+      if (mode === 'reconnect') {
+        const { recordIntegrationEvent } = require('../services/integrationLifecycleStore');
+        const transition = await recordIntegrationEvent({ storeId: reconnectStore.id, type: 'reconnect_started', source: 'merchant_oauth', eventReference: `reconnect:${userId}:${Date.now()}` });
+        if (!transition.accepted) {
+          await coordination.releaseLease(sessionLease).catch(() => false);
+          return res.status(409).json({ success: false, error: 'Reconnect state could not be started safely.' });
+        }
+      }
     }
 
     const state = generateState(userId);
@@ -84,19 +145,40 @@ exports.installShopify = async (req, res, next) => {
     res.cookie("shopify_user", userId, cookieOptions);
     res.cookie("shopify_organization", organization.id, cookieOptions);
     res.cookie("shopify_shop", normalizedShop, cookieOptions);
-    if (reconnectStore) {
+    if (reconnectStore && mode === 'reconnect') {
       res.cookie('shopify_reconnect_store', reconnectStore.id, cookieOptions);
-      res.cookie('shopify_reconnect_attempt', reconnectAttemptId, cookieOptions);
     }
-    
+    if (reconnectStore && mode === 'reauthorize') {
+      res.cookie('shopify_reauth_store', reconnectStore.id, cookieOptions);
+    }
+    if (sessionLease) {
+      // The lease owner token: only this OAuth attempt can release the session.
+      res.cookie('shopify_reconnect_attempt', `${reconnectStore.id}.${sessionLease.owner}`, cookieOptions);
+    }
+
     const installUrl = buildInstallUrl({
       shop: normalizedShop,
       state,
+      scopePlan,
     });
+    if (mode === 'reauthorize') {
+      logger.info('shopify_reauthorization_started', {
+        store_id: reconnectStore.id,
+        capabilities: authorization.requests.map(row => row.capability),
+        added_scopes: scopePlan.added,
+      });
+    }
 
     return res.status(200).json({
       success: true,
       redirectUrl: installUrl,
+      ...(mode === 'reauthorize' ? {
+        data: {
+          requests: authorization.requests.map(row => require('../services/authorizationRequests').publicRequest(row)),
+          added_scopes: scopePlan.added,
+          refused: authorization.refused,
+        },
+      } : {}),
     });
 
   } catch (error) {
@@ -228,10 +310,18 @@ exports.shopifyCallback = async (req, res, next) => {
         const { recordIntegrationEvent } = require('../services/integrationLifecycleStore');
         await recordIntegrationEvent({ storeId: reconnectStoreId, type: 'reconnect_failed', reasonCode: 'OAUTH_CANCELLED', source: 'merchant_oauth' }).catch(() => null);
       }
-      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user', 'shopify_organization', 'shopify_reconnect_store', 'shopify_reconnect_attempt']) {
+      const reauthStoreId = req.signedCookies?.shopify_reauth_store;
+      if (reauthStoreId) {
+        // The merchant declined additional access. The existing connection is
+        // untouched; the request is closed so it is not re-asked automatically.
+        const { declinePending } = require('../services/authorizationRequests');
+        await declinePending({ storeId: reauthStoreId, reason: 'merchant_cancelled' }).catch(() => 0);
+      }
+      for (const name of OAUTH_COOKIES) {
         res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
       }
       const frontendUrl = new URL('/dashboard/integrations?shopify=cancelled', configuredFrontendUrl);
+      if (reauthStoreId) frontendUrl.searchParams.set('authorization', 'declined');
       return res.redirect(frontendUrl.toString());
     }
 
@@ -330,15 +420,21 @@ exports.shopifyCallback = async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Organization not found', stage, reference: requestId });
     }
 
-    // Atomically consume OAuth state across backend instances. Fail closed if Redis is unavailable.
+    // Atomically consume OAuth state across backend instances (one Postgres
+    // row per state digest). Fail closed: if the replay store cannot answer,
+    // the one-use code is never exchanged.
     stage = 'oauth_replay_guard';
-    if (!isRedisReady()) {
-      logStage('failed', { reason: 'replay_store_unavailable' });
+    const stateDigest = crypto.createHash('sha256').update(state).digest('hex');
+    let replayClaim;
+    try {
+      replayClaim = await coordination.claimOnce(`shopify:oauth:consumed:${stateDigest}`, {
+        ttlSeconds: OAUTH_STATE_REPLAY_TTL_SECONDS, purpose: 'oauth_state', metadata: { request_id: requestId },
+      });
+    } catch (replayStoreError) {
+      logStage('failed', { reason: 'replay_store_unavailable', error_type: replayStoreError?.code || replayStoreError?.name });
       return res.status(503).json({ success: false, error: 'OAuth verification temporarily unavailable', stage, reference: requestId });
     }
-    const stateDigest = crypto.createHash('sha256').update(state).digest('hex');
-    const replayClaim = await getRedisClient().set('shopify:oauth:consumed:' + stateDigest, requestId, 'EX', 900, 'NX');
-    if (replayClaim !== 'OK') {
+    if (!replayClaim) {
       logStage('failed', { reason: 'oauth_state_replayed' });
       return res.status(409).json({ success: false, error: 'OAuth authorization already processed', stage, reference: requestId });
     }
@@ -383,6 +479,18 @@ exports.shopifyCallback = async (req, res, next) => {
     });
     await recordIntegrationEvent({ storeId: store.id, type: 'authorization_verified', reasonCode: 'CONNECTED', observedAt: authorization.verifiedAt, source: 'shopify_oauth', eventReference: `oauth:${requestId}:verified` });
 
+    // Resolve capability requests from Shopify's verified scopes — not from
+    // the redirect. Approved capabilities resume through the sync started
+    // below, which re-evaluates every blocked domain against live scopes.
+    stage = 'authorization_request_resolution';
+    let authorizationOutcome = { approved: [], declined: [] };
+    try {
+      const { resolveWithGrantedScopes } = require('../services/authorizationRequests');
+      authorizationOutcome = await resolveWithGrantedScopes({ storeId: store.id, grantedScopes: authorization.grantedScopes, viaOAuth: true });
+    } catch (resolutionError) {
+      logger.warn('shopify_authorization_requests_unresolved', { store_id: store.id, error_type: resolutionError?.code || resolutionError?.name });
+    }
+
     stage = 'webhook_reconciliation';
     let webhookSetupComplete = false;
     try {
@@ -425,14 +533,26 @@ exports.shopifyCallback = async (req, res, next) => {
      ...buildCookieOptions(req),
       path: "/",
      });
+    for (const name of ['shopify_reconnect_store', 'shopify_reconnect_attempt', 'shopify_reauth_store']) {
+      res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
+    }
     logStage('completed');
 
-    // Redirect merchant back to frontend
+    // Redirect merchant back to frontend. A Rev-initiated authorization
+    // returns to the conversation that needed it so the investigation resumes.
     stage = 'frontend_redirect';
     logStage('started', { frontend_url_configured: Boolean(process.env.FRONTEND_URL) });
-    const frontendUrl = new URL('/dashboard/integrations', configuredFrontendUrl);
+    const revResume = authorizationOutcome.approved.find(request => request.resume?.surface === 'rev');
+    const frontendUrl = revResume
+      ? new URL(/^[0-9a-f-]{36}$/i.test(String(revResume.resume.conversation_id || '')) ? `/dashboard/rev-intell/${revResume.resume.conversation_id}` : '/dashboard/rev-intell', configuredFrontendUrl)
+      : new URL('/dashboard/integrations', configuredFrontendUrl);
     frontendUrl.searchParams.set('shopify', webhookSetupComplete ? 'authorized' : 'recovery_pending');
     frontendUrl.searchParams.set('shop', normalizedShop);
+    if (authorizationOutcome.approved.length || authorizationOutcome.declined.length) {
+      frontendUrl.searchParams.set('authorization', authorizationOutcome.declined.length ? 'partially_granted' : 'approved');
+      frontendUrl.searchParams.set('capabilities', authorizationOutcome.approved.map(request => request.capability).join(','));
+      if (revResume) frontendUrl.searchParams.set('authorization_request', revResume.id);
+    }
     if (!['http:', 'https:'].includes(frontendUrl.protocol)) {
       const error = new Error('Frontend URL must use HTTP or HTTPS.');
       error.code = 'SHOPIFY_FRONTEND_URL_INVALID';
@@ -465,7 +585,7 @@ exports.shopifyCallback = async (req, res, next) => {
       configured_api_version: error.configuredApiVersion || undefined,
     });
     if (frontendOrigin) {
-      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user', 'shopify_organization', 'shopify_reconnect_store', 'shopify_reconnect_attempt']) {
+      for (const name of OAUTH_COOKIES) {
         res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
       }
       const frontendUrl = new URL('/dashboard/integrations', frontendOrigin);
@@ -484,18 +604,14 @@ exports.shopifyCallback = async (req, res, next) => {
       reference: requestId,
     });
   } finally {
-    const reconnectStoreId = req.signedCookies?.shopify_reconnect_store;
-    const reconnectAttemptId = req.signedCookies?.shopify_reconnect_attempt;
-    if (reconnectStoreId && reconnectAttemptId && isRedisReady()) {
+    // Release the per-store OAuth session lease, only if this attempt owns it.
+    const attempt = req.signedCookies?.shopify_reconnect_attempt;
+    const [sessionStoreId, sessionOwner] = typeof attempt === 'string' ? attempt.split('.') : [];
+    if (sessionStoreId && sessionOwner && /^[0-9a-f-]{36}$/i.test(sessionStoreId)) {
       try {
-        await getRedisClient().eval(
-          "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
-          1,
-          `shopify:oauth:reconnect:${reconnectStoreId}`,
-          reconnectAttemptId,
-        );
+        await coordination.releaseLease({ key: oauthSessionKey(sessionStoreId), owner: sessionOwner });
       } catch (lockError) {
-        logger.warn('shopify_reconnect_lock_release_failed', { store_id: reconnectStoreId, error_type: lockError.code || lockError.name });
+        logger.warn('shopify_oauth_session_release_failed', { store_id: sessionStoreId, error_type: lockError.code || lockError.name });
       }
     }
   }

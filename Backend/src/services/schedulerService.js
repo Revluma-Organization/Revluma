@@ -11,16 +11,17 @@
  *
  * Reliability:
  * - Prevents overlapping runs
- * - Uses Redis distributed locks when Redis is available
+ * - Coordinates every job through Postgres locks (schedulerLocks.js) that
+ *   also record each pass in automation_job_state. Redis is not on this path:
+ *   a Redis outage used to make jobs skip without leaving any trace.
  * - Supports start/stop lifecycle
  * - Does not crash the application when a scheduled task fails
  */
 
-const crypto = require('crypto');
-
 const logger = require('../utils/logger');
 const { prisma } = require('../configs/database');
-const { getRedisClient, isRedisReady } = require('../configs/redis');
+const { raiseAlert, resolveAlert } = require('../utils/engineeringAlert');
+const coordination = require('./coordination');
 
 const {
     rebuildBusinessState,
@@ -30,7 +31,7 @@ const {
     runIntelligenceAutomation,
 } = require('./mlService');
 const { syncShopifyStore } = require('./shopifySync');
-const { storeSyncEligibility } = require('./shopifySyncRecovery');
+const { runStoreSyncPass } = require('./syncSupervisor');
 const { ABANDONMENT_INACTIVITY_MS } = require('./checkoutInactivity');
 const { runFeatureJobs } = require('./featureWorkerService');
 const { recoverStuckDeliveries } = require('./webhookDeliveryRecovery');
@@ -170,107 +171,52 @@ let started = false;
 let lastMorningBriefingDate = null;
 
 // -----------------------------------------------------------------------------
-// Redis distributed lock
+// Job locks (Postgres)
 // -----------------------------------------------------------------------------
 
-const RELEASE_LOCK_SCRIPT = `
-if redis.call('get', KEYS[1]) == ARGV[1] then
-    return redis.call('del', KEYS[1])
-else
-    return 0
-end
-`;
-
 /**
- * Acquire a distributed Redis lock.
+ * Claim a job through the Postgres lock in automation_job_state.
  *
- * Returns:
- * - token when lock was acquired
- * - null when another worker owns the lock
- * - null when Redis is unavailable
+ * Returns the lock, or null when another instance holds a live claim. A
+ * lock-store failure is never silent: it is logged, raised as an engineering
+ * alert and recorded on the job row when the database accepts writes.
  */
 async function acquireLock(lockName, options = {}) {
-    const {
-        requireDistributed = false,
-        ttlSeconds = LOCK_TTL_SECONDS,
-    } = options;
-
-    if (!isRedisReady()) {
-        if (requireDistributed) {
-            logger.warn('scheduler_distributed_lock_unavailable', {
-                lock: lockName,
-                reason: 'redis_not_ready',
-            });
-            return null;
-        }
-        logger.info('scheduler_local_lock_used', {
-            lock: lockName,
-            reason: 'redis_not_ready',
-        });
-        return { local: true, key: lockName, token: null };
-    }
-
-    const redis = getRedisClient();
-
-    if (!redis) {
-        if (requireDistributed) return null;
-        return { local: true, key: lockName, token: null };
-    }
-
-    const token = crypto.randomUUID();
-    const key = `revluma:scheduler:${lockName}`;
-
+    const { ttlSeconds = LOCK_TTL_SECONDS } = options;
     try {
-        const result = await redis.set(
-            key,
-            token,
-            'EX',
-            ttlSeconds,
-            'NX'
-        );
-
-        if (result !== 'OK') {
-            return null;
+        const lock = await acquireDbLock(prisma, lockName, { ttlSeconds });
+        resolveAlert('scheduler_lock_store_unavailable', { subject: lockName });
+        if (!lock) {
+            logger.debug?.('scheduler_lock_held_elsewhere', { lock: lockName });
         }
-
-        return {
-            key,
-            token,
-        };
+        return lock;
     } catch (error) {
-        logger.error('scheduler_lock_acquire_failed', {
-            lock: lockName,
-            error_type: error.code || error.name || 'lock_error',
+        const errorType = error?.code || error?.name || 'lock_error';
+        logger.error('scheduler_lock_acquire_failed', { lock: lockName, error_type: errorType });
+        raiseAlert('scheduler_lock_store_unavailable', {
+            severity: 'critical', subject: lockName, error_type: errorType,
         });
-
+        await recordJobSkip(prisma, lockName, 'lock_error', { error_type: errorType });
         return null;
     }
 }
 
 /**
- * Release a lock only if this scheduler instance owns it.
+ * Release a lock this instance owns and record the pass outcome. `outcome`
+ * is passed to releaseDbLock: { result, error, status }.
  */
-async function releaseLock(lock) {
-    if (!lock || lock.local || !isRedisReady()) {
+async function releaseLock(lock, outcome = {}) {
+    if (!lock) {
         return;
     }
-
-    const redis = getRedisClient();
-
-    if (!redis) {
-        return;
-    }
-
     try {
-        await redis.eval(
-            RELEASE_LOCK_SCRIPT,
-            1,
-            lock.key,
-            lock.token
-        );
+        const released = await releaseDbLock(prisma, lock, outcome);
+        if (!released) {
+            logger.warn('scheduler_lock_release_superseded', { lock: lock.jobName });
+        }
     } catch (error) {
         logger.error('scheduler_lock_release_failed', {
-            lock: lock.key,
+            lock: lock.jobName,
             error_type: error.code || error.name || 'lock_error',
         });
     }
@@ -577,11 +523,27 @@ async function runMorningBriefings() {
         return;
     }
 
-    const lock = await acquireLock(
-        `morning-briefings-${today}`
-    );
+    const lock = await acquireLock('morning-briefings');
 
     if (!lock) {
+        return;
+    }
+
+    // One send per UTC day across instances: the daily claim is a durable
+    // Postgres fact, released again only if generation fails so the next
+    // tick inside the 05:00 window can retry.
+    let dailyClaim = null;
+    try {
+        dailyClaim = await coordination.acquireLease(`morning-briefings:${today}`, {
+            ttlSeconds: 36 * 60 * 60, purpose: 'daily_claim',
+        });
+    } catch (error) {
+        logger.error('scheduler_morning_briefings_claim_failed', {
+            error_type: error.code || error.name || 'claim_error',
+        });
+    }
+    if (!dailyClaim) {
+        await releaseLock(lock, { status: 'completed', result: { skipped: 'already_claimed_or_unavailable', date_utc: today } });
         return;
     }
 
@@ -604,6 +566,7 @@ async function runMorningBriefings() {
                 code: result.error?.code,
                 latency_ms: Date.now() - startedAt,
             });
+            await coordination.releaseLease(dailyClaim).catch(() => false);
 
             return;
         }
@@ -618,6 +581,7 @@ async function runMorningBriefings() {
         logger.error('scheduler_morning_briefings_exception', {
             error_type: error.code || error.name || 'processing_error',
         });
+        await coordination.releaseLease(dailyClaim).catch(() => false);
     } finally {
         morningBriefingsRunning = false;
         await releaseLock(lock);
@@ -1090,49 +1054,50 @@ async function promoteInactiveCheckouts() {
     return count;
 }
 
+// Store synchronization is supervised (syncSupervisor.js): due-store
+// selection honours per-store backoff and authorization state, failures are
+// isolated per store, and the pass counters — including skip reasons and the
+// stores waiting on backoff or on the merchant — are written to
+// automation_job_state under the 'store-sync' job.
+const STORE_SYNC_JOB = 'store-sync';
+const STORE_SYNC_LOCK_TTL_SECONDS = intSetting('STORE_SYNC_LOCK_TTL_SECONDS', '3600', 300);
+
 async function runStoreSync() {
     if (storeSyncRunning) return;
-    const lock = await acquireLock('store-sync');
+    const lock = await acquireLock(STORE_SYNC_JOB, { ttlSeconds: STORE_SYNC_LOCK_TTL_SECONDS });
     if (!lock) return;
     storeSyncRunning = true;
     const startedAt = Date.now();
+    let outcome = {};
 
     try {
-        await promoteInactiveCheckouts();
-        const stores = await prisma.stores.findMany({
-            where: storeSyncEligibility(Date.now(), STORE_SYNC_INTERVAL_MS),
-            orderBy: { last_synced_at: 'asc' },
-            take: 10,
-        });
-        let succeeded = 0;
-        for (const store of stores) {
-            try {
-                if (store.status === 'syncing') {
-                    logger.warn('scheduler_stale_shopify_sync_retry', { store_id: store.id, previous_updated_at: store.updated_at });
-                }
-                const result = await syncShopifyStore(store, { reconcileWebhooks: false });
-                if (!result.success) {
-                    logger.warn('scheduler_store_sync_skipped', { store_id: store.id, reason: result.alreadyRunning ? 'already_running' : 'not_completed' });
-                    continue;
-                }
-                succeeded++;
-            } catch (error) {
-                logger.warn('scheduler_store_sync_failed', {
-                    store_id: store.id,
-                    error_type: error.code || 'sync_error',
-                });
-            }
+        // Observation only: it must never block synchronization.
+        try {
+            await promoteInactiveCheckouts();
+        } catch (observationError) {
+            logger.warn('scheduler_inactive_checkouts_observation_failed', {
+                error_type: observationError?.code || observationError?.name || 'observation_error',
+            });
         }
-        logger.info('scheduler_store_sync_completed', {
-            stores: stores.length,
-            succeeded,
-            latency_ms: Date.now() - startedAt,
+        const counters = await runStoreSyncPass({
+            db: prisma,
+            syncFn: (store) => syncShopifyStore(store, { reconcileWebhooks: false }),
+            now: Date.now(),
+            intervalMs: STORE_SYNC_INTERVAL_MS,
+            limit: 10,
         });
+        const result = { ...counters, latency_ms: Date.now() - startedAt };
+        outcome = { result };
+        const log = counters.failed > 0 ? logger.warn : logger.info;
+        log.call(logger, 'scheduler_store_sync_completed', result);
     } catch (error) {
-        logger.error('scheduler_store_sync_failed', { error_type: error.code || 'scheduler_error' });
+        const errorType = error.code || error.name || 'scheduler_error';
+        logger.error('scheduler_store_sync_failed', { error_type: errorType });
+        raiseAlert('store_sync_pass_failed', { severity: 'critical', subject: STORE_SYNC_JOB, error_type: errorType });
+        outcome = { status: 'failed', error: errorType, result: { latency_ms: Date.now() - startedAt } };
     } finally {
         storeSyncRunning = false;
-        await releaseLock(lock);
+        await releaseLock(lock, outcome);
     }
 }
 
@@ -1147,8 +1112,21 @@ async function runSyncStallReaper() {
     if (!lock) return;
     syncStallReaperRunning = true;
     const startedAt = Date.now();
+    let outcome = {};
     try {
         const result = await runReaper(prisma, { now: Date.now() });
+        const housekeeping = await runCoordinationHousekeeping();
+        outcome = {
+            result: {
+                considered: result.considered,
+                reaped_domains: result.reaped_domains,
+                terminalized_stores: result.terminalized_stores,
+                refined_stores: result.refined_stores,
+                errors: (result.errors || []).length,
+                ...housekeeping,
+                latency_ms: Date.now() - startedAt,
+            },
+        };
         const repaired = result.reaped_domains > 0 || result.terminalized_stores > 0;
         const refined = result.refined_stores > 0;
         if (repaired || refined) {
@@ -1173,30 +1151,51 @@ async function runSyncStallReaper() {
             });
         }
     } catch (error) {
-        logger.error('scheduler_sync_stall_reaper_failed', {
-            error_type: error?.code || error?.name || 'reaper_error',
-        });
+        const errorType = error?.code || error?.name || 'reaper_error';
+        logger.error('scheduler_sync_stall_reaper_failed', { error_type: errorType });
+        outcome = { status: 'failed', error: errorType };
     } finally {
         syncStallReaperRunning = false;
-        await releaseLock(lock);
+        await releaseLock(lock, outcome);
     }
+}
+
+// Expired coordination leases/claims are deleted, and authorization requests
+// the merchant never acted on are marked expired, so neither table grows
+// without bound and a stale request is never presented as current.
+async function runCoordinationHousekeeping() {
+    const summary = { leases_purged: null, authorization_requests_expired: null };
+    try {
+        summary.leases_purged = await coordination.purgeExpired({ db: prisma });
+    } catch (error) {
+        logger.warn('coordination_purge_failed', { error_type: error?.code || error?.name });
+    }
+    try {
+        const { expireStaleRequests } = require('./authorizationRequests');
+        summary.authorization_requests_expired = await expireStaleRequests({ db: prisma });
+    } catch (error) {
+        logger.warn('authorization_request_expiry_failed', { error_type: error?.code || error?.name });
+    }
+    return summary;
 }
 
 async function runWebhookDeliveryRecovery() {
     const lock = await acquireLock('webhook-delivery-recovery');
     if (!lock) return;
+    let outcome = {};
     try {
         const result = await recoverStuckDeliveries({ olderThanSeconds: WEBHOOK_DELIVERY_STALE_SECONDS });
         if (result.recovered) {
             logger.warn('scheduler_webhook_delivery_recovery_completed', result);
         }
+        outcome = { result: { ...result } };
         return result;
     } catch (error) {
-        logger.error('scheduler_webhook_delivery_recovery_failed', {
-            error_type: error?.code || error?.name || 'recovery_error',
-        });
+        const errorType = error?.code || error?.name || 'recovery_error';
+        logger.error('scheduler_webhook_delivery_recovery_failed', { error_type: errorType });
+        outcome = { status: 'failed', error: errorType };
     } finally {
-        await releaseLock(lock);
+        await releaseLock(lock, outcome);
     }
 }
 
@@ -1446,5 +1445,7 @@ module.exports = {
     runAutomationQueue,
     runTrainingObservationQueue,
     runIntelligenceFindingsRefresh,
+    runStoreSync,
+    runCoordinationHousekeeping,
     promoteInactiveCheckouts,
 };

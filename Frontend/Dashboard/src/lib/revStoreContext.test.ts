@@ -17,6 +17,8 @@ import {
   isSyncNotStarted,
   isSyncStatusUnknown,
   isSyncStale,
+  merchantActionRequired,
+  dataStatusNote,
   storeContextFromResponse,
   storeLabel,
   type StoreContext,
@@ -207,5 +209,46 @@ describe("storeContextFromResponse", () => {
     const failed = { ...UNKNOWN_STORE, loaded: true, loadError: true };
     expect(buildStarters(failed)[0].label).toBe("Retry");
     expect(buildStarters(failed).some(starter => /connect your Shopify store/i.test(starter.sub))).toBe(false);
+  });
+});
+
+// Self-managing data operations: when the server supplies data health it is
+// the source of truth. Routine sync/retry/optional-permission states must not
+// raise a global failure banner; only a genuine merchant action is surfaced.
+describe("data-health driven status", () => {
+  const healthy = { overall: "healthy_with_limitations", core_state: "complete", syncing: false, merchant_action: null, optional_permissions: ["markets"], limitations: ["Markets: Shopify permission not granted (read_markets)"] };
+
+  it("never reports a sync failure for limitations Revluma handles itself", () => {
+    expect(hasSyncFailure({ ...CONNECTED, syncStatus: "partial", dataHealth: healthy })).toBe(false);
+    expect(hasSyncFailure({ ...CONNECTED, syncStatus: "complete_with_limitations", dataHealth: healthy })).toBe(false);
+    expect(merchantActionRequired({ ...CONNECTED, dataHealth: healthy })).toBeNull();
+    expect(dataStatusNote({ ...CONNECTED, dataHealth: healthy })).toBeNull();
+  });
+
+  it("keeps the legacy failure indicator when no data health is supplied", () => {
+    expect(hasSyncFailure({ ...CONNECTED, syncStatus: "partial", dataHealth: null })).toBe(true);
+  });
+
+  it("surfaces only genuine merchant actions", () => {
+    const action = { kind: "grant_permission", reason: "core_permission_missing", capabilities: ["inventory"] };
+    expect(merchantActionRequired({ ...CONNECTED, dataHealth: { ...healthy, overall: "action_required", merchant_action: action } })).toEqual(action);
+    expect(merchantActionRequired({ ...CONNECTED, loadError: true, dataHealth: { ...healthy, merchant_action: action } })).toBeNull();
+  });
+
+  it("describes automatic recovery quietly, with the data's real age", () => {
+    const now = Date.parse("2026-11-23T12:00:00Z");
+    const note = dataStatusNote({ ...CONNECTED, dataHealth: { ...healthy, overall: "recovering", newest_resource_success: "2026-11-23T09:00:00Z" } }, now);
+    expect(note).toContain("automatically");
+    expect(note).toContain("3 h ago");
+    expect(dataStatusNote({ ...CONNECTED, dataHealth: { ...healthy, overall: "syncing", syncing: true, newest_resource_success: null, last_store_sync: null }, lastSyncedAt: null }, now)).toContain("Importing");
+  });
+
+  it("reads data_health and the store id from GET /stores, ranking complete_with_limitations as synced", () => {
+    const ctx = storeContextFromResponse({ success: true, data: { stores: [
+      { id: "a", platform: "shopify", shop_domain: "a.myshopify.com", connection_status: "connected", sync_status: "failed", status: "active", updated_at: "2026-11-23T00:00:00Z" },
+      { id: "b", platform: "shopify", shop_domain: "b.myshopify.com", connection_status: "connected", sync_status: "complete_with_limitations", status: "active", updated_at: "2026-11-22T00:00:00Z", data_health: healthy },
+    ] } });
+    expect(ctx.storeId).toBe("b");
+    expect(ctx.dataHealth?.overall).toBe("healthy_with_limitations");
   });
 });
