@@ -1974,6 +1974,9 @@ describe('Task 224 — Rev Intelligence conversation experience (305–311)', ()
 });
 
 describe('Task 230 return journey', () => {
+  // The workspace has no top "Return to Command Center" bar; the conversation
+  // menu button stands alone. The return context is still carried in the URL
+  // (for workspace navigation) and must stay safe.
   it('preserves the safe Command Center position after a new finding conversation is created', async () => {
     replies.set(`/rev/findings/${findingOne}`, Promise.resolve(findingReply()));
     renderPage(`/dashboard/rev-intell?finding=${findingOne}&return_to=${encodeURIComponent(`/dashboard/overview?finding=${findingOne}&section=priority`)}`);
@@ -1981,17 +1984,15 @@ describe('Task 230 return journey', () => {
     send('Investigate this finding');
     await act(async () => { streams[0].request.handlers.onMeta?.({ conversation_id: 'Created' }); });
     expect(new URLSearchParams(screen.getByLabelText('Current search').textContent || '').get('return_to')).toBe(`/dashboard/overview?finding=${findingOne}&section=priority`);
-    fireEvent.click(screen.getByRole('button', { name: /return to command center/i }));
-    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/overview');
-    expect(screen.getByLabelText('Current search')).toHaveTextContent(`finding=${findingOne}`);
-    expect(streams[0].request.signal?.aborted).toBe(true);
+    expect(screen.queryByRole('button', { name: /return to command center/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /open conversation history/i })).toBeInTheDocument();
   });
 
   it('rejects a hostile return destination and does not navigate outside the workspace', async () => {
     renderPage('/dashboard/rev-intell/A?return_to=https%3A%2F%2Fevil.example');
     await screen.findByText('Message from A');
-    fireEvent.click(screen.getByRole('button', { name: /return to command center/i }));
-    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/overview');
-    expect(screen.getByLabelText('Current search')).toBeEmptyDOMElement();
+    expect(screen.queryByRole('button', { name: /return to command center/i })).toBeNull();
+    expect(document.querySelector('a[href*="evil.example"]')).toBeNull();
+    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/A');
   });
 });

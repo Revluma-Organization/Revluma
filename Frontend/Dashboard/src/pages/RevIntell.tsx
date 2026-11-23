@@ -29,7 +29,7 @@ import {
   Trash2, ImageIcon, AlertCircle, RefreshCcw, Square, Search,
   ThumbsUp, ThumbsDown, Volume2, CheckCircle2,
 } from "lucide-react";
-import { commandCenterReturnRoute, revConversationRoute } from "@/lib/workspaceNavigation";
+import { revConversationRoute } from "@/lib/workspaceNavigation";
 import { explainWorkspaceError, isKnownWorkspaceCode, merchantMessage } from "@/lib/workspaceCommunication";
 import { workspaceDesign } from "@/lib/workspaceDesign";
 import { RevOrb, RevOrbLoader } from "@/components/rev/RevOrb";
@@ -1768,13 +1768,6 @@ export default function RevIntell() {
       style={{ height: "calc(100dvh - var(--topbar-h, 64px))", margin: "-20px -20px 0", background: bg }}>
 
       <div className="flex flex-col flex-1 min-w-0 h-full">
-
-      <div className="shrink-0 px-4 pt-3 pr-16">
-        <button type="button" onClick={() => navigate(commandCenterReturnRoute(searchParams.toString()))}
-          className="min-h-11 rounded-lg px-2 text-sm font-medium hover:underline" style={{ color: t2 }}>
-          ← Return to Command Center
-        </button>
-      </div>
 
       {/* Hamburger (mobile) */}
       <div className="absolute top-4 right-4 z-30">
