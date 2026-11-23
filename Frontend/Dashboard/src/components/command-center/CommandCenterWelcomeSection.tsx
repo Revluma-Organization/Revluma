@@ -126,7 +126,7 @@ function WelcomeConnectionBadge({
   );
 
   const badgeClass = cn(
-    "inline-flex min-h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
+    "inline-flex min-h-6 shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4 transition-colors",
     style.pill,
   );
 
@@ -183,11 +183,11 @@ function StoreSwitcherDropdown({
           type="button"
           aria-label={`Switch store, current store: ${activeLabel}`}
           className={cn(
-            "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-transparent text-[#667085] transition-colors hover:border-[#E4E7EC] hover:bg-[#F9FAFB] hover:text-[#101828]",
+            "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-transparent text-[#667085] transition-colors hover:border-[#E4E7EC] hover:bg-[#F9FAFB] hover:text-[#101828]",
             FOCUS_RING,
           )}
         >
-          <ChevronDown className="h-4 w-4" aria-hidden="true" />
+          <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -324,92 +324,94 @@ export function CommandCenterWelcomeSection({
       inRouter,
   );
   const isRefreshDisabled = refreshing || (loading && !data);
+  const storeDomain =
+    (typeof storeIdentity.store?.shop_domain === "string" &&
+      storeIdentity.store.shop_domain.trim()) ||
+    "";
+  const storeDisplayUrl = storeDomain || storeIdentity.primaryName;
+  const storeDisplayTitle =
+    storeIdentity.primaryName &&
+    storeDomain &&
+    storeIdentity.primaryName !== storeDomain
+      ? `${storeIdentity.primaryName} (${storeDomain})`
+      : (storeDisplayUrl ?? undefined);
 
   return (
-    <header aria-labelledby="command-center-welcome-heading" className="pb-1">
-      {/* 1. Personalized Greeting */}
-      <div className="min-w-0">
-        <h1
-          id="command-center-welcome-heading"
-          className="text-[1.75rem] font-semibold leading-[1.16] tracking-[-0.03em] text-[#0F172A] sm:text-[2rem]"
-        >
-          {greeting.text}
-          {greeting.merchantName && <span aria-hidden="true"> 👋</span>}
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#526071]">
-          {WELCOME_SUPPORTING_COPY}
-        </p>
-      </div>
-
-      {/* 2. Connected Store Identity Row */}
-      <div
-        role="region"
-        aria-label="Connected store"
-        className="mt-5 flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2.5 rounded-xl border border-[#E4E7EC] bg-white px-4 py-3"
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <span
-            aria-hidden="true"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#EAECF0] bg-[#F9FAFB]"
+    <header aria-labelledby="command-center-welcome-heading" className="bg-white pb-1">
+      {/* 1. Personalized Greeting & 2. Compact Connected Store Status (same horizontal line) */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+        <div className="min-w-0 flex-1">
+          <h1
+            id="command-center-welcome-heading"
+            className="text-[1.75rem] font-semibold leading-[1.16] tracking-[-0.03em] text-[#0F172A] sm:text-[2rem]"
           >
-            {storeIdentity.platform === "shopify" ? (
-              <ShopifyBagIcon
-                className={cn(
-                  "h-4 w-4",
-                  connection.isConfirmedConnected ? "text-[#5E8E3E]" : "text-[#667085]",
-                )}
-              />
-            ) : (
-              <Store className="h-4 w-4 text-[#667085]" />
-            )}
-          </span>
+            {greeting.text}
+            {greeting.merchantName && <span aria-hidden="true"> 👋</span>}
+          </h1>
+          <p className="mt-1.5 max-w-xl text-sm leading-6 text-[#526071]">
+            {WELCOME_SUPPORTING_COPY}
+          </p>
+        </div>
 
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium leading-4 text-[#667085]">
-              {storeIdentity.label}
-            </p>
+        <div
+          role="region"
+          aria-label="Connected store"
+          className="flex w-fit max-w-full shrink-0 flex-col items-start gap-1.5 self-start rounded-xl border border-[#EAECF0] bg-white px-3 py-2 sm:max-w-[300px] sm:items-end md:max-w-[340px]"
+        >
+          {/* Current store connection status at the top */}
+          <WelcomeConnectionBadge status={connection} inRouter={inRouter} />
+
+          {/* Shopify icon with the store URL right next to it */}
+          <div className="flex min-w-0 max-w-full items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className="flex shrink-0 items-center justify-center"
+            >
+              {storeIdentity.platform === "shopify" ? (
+                <ShopifyBagIcon
+                  className={cn(
+                    "h-3.5 w-3.5",
+                    connection.isConfirmedConnected ? "text-[#5E8E3E]" : "text-[#667085]",
+                  )}
+                />
+              ) : (
+                <Store className="h-3.5 w-3.5 text-[#667085]" />
+              )}
+            </span>
+
             {loading && !data ? (
               <>
                 <div
                   aria-hidden="true"
-                  className="mt-1 h-4 w-48 max-w-full animate-pulse rounded bg-[#EAECF0] motion-reduce:animate-none"
+                  className="h-3.5 w-36 max-w-full animate-pulse rounded bg-[#EAECF0] motion-reduce:animate-none"
                 />
                 <span className="sr-only">Loading connected store details</span>
               </>
             ) : (
-              <div className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2">
-                <span
-                  className={cn(
-                    "truncate text-sm font-medium",
-                    storeIdentity.hasStore ? "text-[#0F172A]" : "text-[#667085]",
-                  )}
-                >
-                  {storeIdentity.primaryName}
-                </span>
-                {storeIdentity.secondaryDomain && (
-                  <span className="truncate text-xs text-[#667085]">
-                    {storeIdentity.secondaryDomain}
-                  </span>
+              <span
+                title={storeDisplayTitle}
+                className={cn(
+                  "truncate text-xs font-medium",
+                  storeIdentity.hasStore ? "text-[#101828]" : "text-[#667085]",
                 )}
-              </div>
+              >
+                {storeDisplayUrl}
+              </span>
+            )}
+
+            {canSwitchStores && storeIdentity.store && onSelectStore && (
+              <StoreSwitcherDropdown
+                activeStore={storeIdentity.store}
+                stores={storeIdentity.stores}
+                onSelectStore={onSelectStore}
+              />
             )}
           </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1.5">
-          <WelcomeConnectionBadge status={connection} inRouter={inRouter} />
-          {canSwitchStores && storeIdentity.store && onSelectStore && (
-            <StoreSwitcherDropdown
-              activeStore={storeIdentity.store}
-              stores={storeIdentity.stores}
-              onSelectStore={onSelectStore}
-            />
-          )}
         </div>
       </div>
 
       {/* 3. Last Successful Synchronization & 4. Refresh Control */}
-      <div className="mt-2.5 flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-0.5">
+      <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <span
           title={lastSynced.title ?? undefined}
           className="min-w-0 text-xs text-[#667085] tabular-nums"
@@ -440,7 +442,7 @@ export function CommandCenterWelcomeSection({
             aria-busy={refreshing}
             aria-label={refreshing ? "Refreshing…" : "Refresh briefing"}
             className={cn(
-              "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[#475467] transition-colors hover:bg-white hover:text-[#0F172A] hover:ring-1 hover:ring-[#E4E7EC] disabled:cursor-not-allowed disabled:opacity-55",
+              "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[#475467] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A] hover:ring-1 hover:ring-[#E4E7EC] disabled:cursor-not-allowed disabled:opacity-55",
               FOCUS_RING,
             )}
           >

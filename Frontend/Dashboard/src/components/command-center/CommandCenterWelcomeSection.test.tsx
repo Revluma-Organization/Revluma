@@ -160,14 +160,26 @@ describe("Command Center Welcome Section", () => {
     });
   });
 
-  describe("2. Connected Store Identity Row", () => {
-    it("displays the actual connected Shopify store and green Connected badge when confirmed", () => {
-      renderWelcome();
-      expect(screen.getByText("Your connected store")).toBeInTheDocument();
-      expect(screen.getByText("acme-apparel.myshopify.com")).toBeInTheDocument();
+  describe("2. Compact Connected Store Status", () => {
+    it("displays the compact store connection badge on the greeting row with white header background", () => {
+      const { container } = renderWelcome();
+      const header = container.querySelector("header");
+      expect(header?.className).toContain("bg-white");
+
+      const storeRegion = screen.getByRole("region", { name: "Connected store" });
+      expect(storeRegion.className).toContain("w-fit");
+      expect(storeRegion.parentElement?.className).toContain("sm:flex-row");
+
       const badge = screen.getByText("Connected");
       expect(badge).toBeInTheDocument();
       expect(badge.parentElement?.className).toContain("text-[#067647]");
+      expect(screen.getByText("acme-apparel.myshopify.com")).toBeInTheDocument();
+
+      // Status badge appears above the Shopify icon + store URL row.
+      const badgePosition = badge.compareDocumentPosition(
+        screen.getByText("acme-apparel.myshopify.com"),
+      );
+      expect(badgePosition & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it("does NOT render a fake store dropdown/chevron when only a single store exists", () => {
