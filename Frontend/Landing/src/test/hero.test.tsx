@@ -29,6 +29,18 @@ describe("Landing hero", () => {
     expect(screen.getByText(HERO.body)).toBeInTheDocument();
   });
 
+  it("keeps the headline readable word by word and starts the scene", () => {
+    const { container } = render(<App />);
+    const h1 = screen.getByRole("heading", { level: 1 });
+    // Words are split for the entrance but must keep their spaces.
+    expect(h1.textContent).toBe("Know whereyour store islosing revenue.");
+    expect(h1.querySelectorAll(".m-word")).toHaveLength(7);
+    // Without IntersectionObserver (old browsers, jsdom) the scene starts at once.
+    expect(container.querySelector(".hero-visual")).toHaveClass("is-live");
+    // The "Investigating" dots live inside the decorative, aria-hidden scene.
+    expect(container.querySelector(".rev-screen__thinking")?.closest("[aria-hidden='true']")).not.toBeNull();
+  });
+
   it("links the hero CTAs to the waitlist and the sign-up page", () => {
     render(<App />);
     const hero = screen.getByRole("region", { name: /know where/i });

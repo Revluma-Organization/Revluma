@@ -23,6 +23,7 @@ export function RevScreen() {
         <p className="rev-screen__question">Why did refunds increase last month?</p>
 
         <div className="rev-screen__answer">
+          <span className="rev-screen__thinking"><i /><i /><i /><em>Investigating</em></span>
           <div className="rev-screen__sources">
             <span>Investigated</span>
             <i>Orders</i>
