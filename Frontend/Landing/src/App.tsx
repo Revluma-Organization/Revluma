@@ -2,6 +2,7 @@ import { Hero } from "./components/Hero";
 import { Navbar } from "./components/Navbar";
 import { FeaturesSection } from "./components/features/FeaturesSection";
 import { HowItWorksSection } from "./components/how-it-works/HowItWorksSection";
+import { MeetRevSection } from "./components/meet-rev/MeetRevSection";
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
         <Hero />
         <FeaturesSection id="platform" />
         <HowItWorksSection id="how-it-works" />
+        <MeetRevSection id="meet-rev" />
       </main>
     </>
   );

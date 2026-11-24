@@ -1090,6 +1090,7 @@
         /* Rebuilt landing sections rendered by the same embed (see #platform). */
         .revluma-section { display: block; position: relative; background: #FBFAF8; }
         .revluma-section[data-pending] { min-height: 60rem; }
+        .revluma-section--dark { background: #0C0A1D; }
         /* The landing nav is pinned to the top (fixed, inside the hero embed), so in-page
            links like #platform stop just below it instead of underneath it. */
         html { scroll-padding-top: 5rem; }
@@ -1575,30 +1576,14 @@
         </ol>
     </div>
 
-    <!-- ── Stats ── -->
-    <section class="py-24 px-6 border-y border-[#1F1F1F]">
-        <div class="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-12 text-center">
-            <div class="reveal">
-                <p class="text-4xl md:text-5xl font-bold tracking-tighter mb-2 counter" data-target="2400">0</p>
-                <p class="text-[#555] text-sm uppercase tracking-widest font-semibold">Brands Active</p>
-            </div>
-            <div class="reveal">
-                <p class="text-4xl md:text-5xl font-bold tracking-tighter mb-2"><span class="counter"
-                        data-target="38">0</span>%</p>
-                <p class="text-[#555] text-sm uppercase tracking-widest font-semibold">Avg. Revenue Lift</p>
-            </div>
-            <div class="reveal">
-                <p class="text-4xl md:text-5xl font-bold tracking-tighter mb-2">$<span class="counter"
-                        data-target="124">0</span>M</p>
-                <p class="text-[#555] text-sm uppercase tracking-widest font-semibold">Revenue Recovered</p>
-            </div>
-            <div class="reveal">
-                <p class="text-4xl md:text-5xl font-bold tracking-tighter mb-2"><span class="counter"
-                        data-target="4">0</span> min</p>
-                <p class="text-[#555] text-sm uppercase tracking-widest font-semibold">Avg. Setup Time</p>
-            </div>
-        </div>
-    </section>
+    <!-- ── Meet Rev: the intelligence interface (section 6) ──
+         Built from Frontend/Landing (React) into /landing-hero/ and rendered in its own shadow root:
+         one worked Rev conversation from a clearly labelled sample store.
+         The light-DOM text below is the no-JS / pre-load fallback; it is replaced once it mounts. -->
+    <div id="meet-rev" class="revluma-section revluma-section--dark" data-pending>
+        <h2 style="position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">Don't just look at the numbers. Understand what they mean.</h2>
+        <p style="position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">Rev is the intelligence interface at the centre of Revluma. Ask about your store in plain language. Rev investigates the data that's available, separates what it verified from what it suspects, says what's missing, and recommends sensible next steps.</p>
+    </div>
 
     <!-- ── Why Revluma vs Others ── -->
     <section class="py-32 px-6">
@@ -2806,27 +2791,6 @@
                 laptop.classList.add('laptop-visible');
             }
         }, 1500);
-
-        // Animated counters
-        const counters = document.querySelectorAll('.counter');
-        const counterObserver = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const el = entry.target;
-                    const target = parseInt(el.dataset.target);
-                    const duration = 1800;
-                    const step = target / (duration / 16);
-                    let current = 0;
-                    const timer = setInterval(() => {
-                        current += step;
-                        if (current >= target) { current = target; clearInterval(timer); }
-                        el.textContent = Math.floor(current).toLocaleString();
-                    }, 16);
-                    counterObserver.unobserve(el);
-                }
-            });
-        }, { threshold: 0.5 });
-        counters.forEach(c => counterObserver.observe(c));
 
         // Intersection Observer for scroll reveals. Elements reveal once, a little
         // after they enter the screen; siblings revealed together are staggered.
