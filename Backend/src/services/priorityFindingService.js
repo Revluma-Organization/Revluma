@@ -53,10 +53,38 @@ function freshnessFor(finding, now, resource) {
   };
 }
 
+const STORE_SIGNAL_TYPES = new Set([
+  'storefront_domain_unconfigured',
+  'abandoned_checkouts_open',
+  'inventory_stockouts',
+  'no_storefront_events',
+]);
+
+function resourceIdForFindingType(type) {
+  if (type === 'refund_increase') return 'order.refunds';
+  if (type === 'storefront_domain_unconfigured') return 'shop.identity';
+  if (type === 'abandoned_checkouts_open') return 'abandoned-checkouts';
+  if (type === 'inventory_stockouts') return 'inventory.levels';
+  if (type === 'integration_failure' || type === 'no_storefront_events') return null;
+  return 'orders';
+}
+
 function limitationsFor(finding, freshness, resource) {
   const evidence = object(finding.evidence);
   const limits = [];
-  if (finding.type !== 'integration_failure') limits.push('The observed change does not establish its underlying cause.');
+  if (finding.type === 'storefront_domain_unconfigured') {
+    limits.push('Domain configuration reflects synchronized Shopify settings and does not measure traffic or conversion impact.');
+  } else if (finding.type === 'no_recent_orders') {
+    limits.push('Zero recorded orders over this window does not establish whether traffic, pricing, or checkout setup explains the absence of sales.');
+  } else if (finding.type === 'abandoned_checkouts_open') {
+    limits.push('Abandoned checkout records do not establish total storefront visits, checkout conversion rate, or how much cart value would convert.');
+  } else if (finding.type === 'inventory_stockouts') {
+    limits.push('Current inventory snapshots do not establish historical stockout duration or missed demand.');
+  } else if (finding.type === 'no_storefront_events') {
+    limits.push('Zero recorded storefront events can reflect either zero storefront visits or inactive storefront event instrumentation.');
+  } else if (finding.type !== 'integration_failure') {
+    limits.push('The observed change does not establish its underlying cause.');
+  }
   if (finding.type === 'revenue_change') limits.push('Recorded net sales are not an estimate of recoverable revenue.');
   if (finding.type === 'refund_increase') limits.push('Refund adjustments do not establish the shopper or product reason for the refunds.');
   if (finding.type === 'returning_customer_change') limits.push('Purchase-share movement does not establish buyer intent or churn.');
@@ -85,8 +113,12 @@ function assessFinding(finding, { now = new Date(), resource = null } = {}) {
     confidence = 'insufficient_evidence';
     confidenceReasons.push('The source evidence or comparable-period contract is not certified complete.');
   } else if (currentValidity === 'current_evidence_verified') {
-    confidence = freshness.state === 'fresh' && evidence.coverage_run_id ? 'high' : 'moderate';
-    confidenceReasons.push('Verified source evidence with certified comparison coverage.');
+    confidence = freshness.state === 'fresh' && (evidence.coverage_run_id || STORE_SIGNAL_TYPES.has(finding.type)) ? 'high' : 'moderate';
+    confidenceReasons.push(
+      STORE_SIGNAL_TYPES.has(finding.type)
+        ? 'Verified directly from synchronized store records.'
+        : 'Verified source evidence with certified comparison coverage.'
+    );
     confidenceReasons.push(`Evidence freshness is ${freshness.state}.`);
     if (finding.type === 'integration_failure') confidenceReasons.push('Confidence applies to the recorded integration state, not to unavailable commerce performance.');
   } else {
@@ -131,7 +163,7 @@ function prioritizedFindings(findings, { now = new Date(), resourcesByStore = ne
     const entry = { finding, duplicates: [] };
     const state = resourcesByStore instanceof Map ? resourcesByStore.get(entry.finding.store_id) : resourcesByStore?.[entry.finding.store_id];
     const capabilities = state?.capabilities || [];
-    const resourceId = entry.finding.type === 'refund_increase' ? 'order.refunds' : entry.finding.type === 'integration_failure' ? null : 'orders';
+    const resourceId = resourceIdForFindingType(entry.finding.type);
     const capability = resourceId ? capabilities.find(item => item.id === resourceId) : null;
     const resource = capability ? { availability: capability.operational ? capability.sync_state === 'failed' ? 'retrieval_failed' : capability.authorization === 'missing_scope' ? 'unauthorized' : capability.freshness === 'stale' ? 'stale' : 'available' : 'unauthorized', freshness: capability.freshness, reason: capability.limited_reasons?.[0] || null } : null;
     const assessment = assessFinding(entry.finding, { now, resource });
@@ -171,6 +203,16 @@ const RECOMMENDATIONS = {
     'The purchasing-customer share changed, but the evidence does not explain buyer intent or churn.', 'Recalculate the same returning-buyer share after an equivalent period with certified customer-order history.'],
   refund_increase: ["Review the refund transactions in this finding's current period in Shopify Admin. Compare their affected orders, products and recorded refund reasons with the previous period to see whether the increase is concentrated in a particular product or issue.",
     'The refund increase identifies recorded adjustment activity, not its cause or a recoverable revenue amount.', 'Compare refund value using the same transaction-date attribution and currency in the next equivalent period.'],
+  no_recent_orders: ['Verify storefront availability, run a live test checkout on an active product, and inspect acquisition channels in Shopify Admin to confirm shoppers can reach and purchase products.',
+    'Certified order history shows zero completed sales across this window, signaling an urgent acquisition or checkout readiness check.', 'Track verified completed-order counts across the next equivalent period.'],
+  storefront_domain_unconfigured: ['Connect a branded custom domain in Shopify Admin (Settings -> Domains), set it as the primary domain, and confirm SSL certificate provisioning.',
+    'Using a default .myshopify.com primary domain signals an incomplete public storefront launch configuration.', 'Confirm that a custom primary domain appears in synchronized store domain records after the next sync.'],
+  abandoned_checkouts_open: ['Inspect recent open abandoned checkouts in Shopify Admin for shipping rate surprises, payment method gaps, or checkout friction, and verify whether automated checkout reminder emails are active.',
+    'Open abandoned checkouts highlight active shopper intent that did not complete checkout, without assuming conversion rate.', 'Compare open abandoned checkout counts alongside completed orders across the next equivalent window.'],
+  inventory_stockouts: ['Audit zero-stock SKUs in Shopify Admin (Products -> Inventory) to confirm whether active listings need replenishment, incoming transfers, or archiving.',
+    'Zero available units on tracked inventory levels can block purchases on active listings until stock is updated.', 'Confirm zero-stock inventory counts decrease after replenishment updates synchronize.'],
+  no_storefront_events: ['Confirm the storefront is published and accessible to shoppers, check traffic sources in Shopify Analytics, and verify storefront event tracking is active on the live theme.',
+    'Zero recorded visitor or session events means either no traffic is reaching the storefront or event instrumentation is inactive.', 'Verify incoming storefront session events appear in synchronized event records.'],
 };
 function recommendationForFinding(finding, assessment) {
   const template = RECOMMENDATIONS[finding.type];
@@ -179,7 +221,7 @@ function recommendationForFinding(finding, assessment) {
   const current = assessment.eligible;
   return { contract_version: RECOMMENDATION_CONTRACT_VERSION, available: current,
     step: current ? template[0] : null, rationale: current ? template[1] : null,
-    expected_result: current ? 'Identify whether the observed change is concentrated in particular records and whether any independently recorded operational issue explains the pattern.' : null,
+    expected_result: current ? 'Identify whether the observed condition is concentrated in specific store settings, products, or channels and verify changes after the next sync.' : null,
     validation_method: current ? template[2] : null,
     prerequisites: current ? [] : ['Restore fresh, verified source evidence before treating this as a current recommendation.'],
     lifecycle_state: current ? 'presented' : 'invalidated', read_only: true, executed: false, execution_status: 'not_requested' };
@@ -189,11 +231,52 @@ function observationFor(finding) {
   const e = object(finding.evidence);
   const money = (value, label, period) => ({ label, value: finite(value), unit: 'money', currency: text(e.currency, 3), period, availability: finite(value) === null || !e.currency ? 'unknown' : 'available' });
   const count = (value, label, period) => ({ label, value: finite(value), unit: 'count', currency: null, period, availability: finite(value) === null ? 'unknown' : 'available' });
+  const statusObs = (value, label, period = 'observation') => ({ label, value: text(value, 120), unit: 'status', currency: null, period, availability: text(value, 120) ? 'available' : 'unknown' });
   if (finding.type === 'revenue_change') return [money(e.currentRevenue, 'Current net sales', 'current'), money(e.previousRevenue, 'Previous net sales', 'comparison'), count(e.currentCount, 'Current completed orders', 'current'), count(e.previousCount, 'Previous completed orders', 'comparison')];
   if (finding.type === 'refund_increase') return [money(e.currentRefundTotal, 'Current refund value', 'current'), money(e.previousRefundTotal, 'Previous refund value', 'comparison'), count(e.currentCount, 'Current refund transactions', 'current'), count(e.previousCount, 'Previous refund transactions', 'comparison')];
   if (finding.type === 'order_volume_change') return [count(e.currentCount, 'Current completed orders', 'current'), count(e.previousCount, 'Previous completed orders', 'comparison')];
   if (finding.type === 'returning_customer_change') return [count(e.currentReturning, 'Current returning buyers', 'current'), count(e.previousReturning, 'Previous returning buyers', 'comparison'), count(e.currentCount, 'Current purchasing customers', 'current'), count(e.previousCount, 'Previous purchasing customers', 'comparison')];
-  if (finding.type === 'integration_failure') return [{ label: 'Recorded store status', value: text(e.status, 50), unit: 'status', currency: null, period: 'observation', availability: text(e.status, 50) ? 'available' : 'unknown' }, { label: 'Failed webhook registrations', value: finite(e.failed_webhook_registrations), unit: 'count', currency: null, period: 'observation', availability: finite(e.failed_webhook_registrations) === null ? 'unknown' : 'available' }];
+  if (finding.type === 'integration_failure') return [statusObs(e.status, 'Recorded store status'), count(e.failed_webhook_registrations, 'Failed webhook registrations', 'observation')];
+  if (finding.type === 'no_recent_orders') {
+    const items = [
+      count(e.currentCount, 'Current 7d completed orders', 'current'),
+      count(e.previousCount, 'Previous 7d completed orders', 'comparison'),
+    ];
+    if (finite(e.activeProductsCount) !== null) items.push(count(e.activeProductsCount, 'Active catalog products', 'observation'));
+    if (text(e.lastOrderAt, 40)) {
+      const formatted = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(e.lastOrderAt));
+      items.push(statusObs(formatted, 'Last recorded order', 'observation'));
+    }
+    return items;
+  }
+  if (finding.type === 'storefront_domain_unconfigured') {
+    return [
+      statusObs(e.primaryDomainHost, 'Primary domain'),
+      count(e.customDomainCount, 'Custom domains connected', 'observation'),
+    ];
+  }
+  if (finding.type === 'abandoned_checkouts_open') {
+    const items = [
+      count(e.openAbandonedCount, 'Open abandoned checkouts', 'current'),
+      money(e.openAbandonedValue, 'Recorded cart value', 'current'),
+    ];
+    if (finite(e.completedAfterCheckoutCount) !== null) {
+      items.push(count(e.completedAfterCheckoutCount, 'Completed checkouts (30d)', 'current'));
+    }
+    return items;
+  }
+  if (finding.type === 'inventory_stockouts') {
+    return [
+      count(e.zeroStockCount, 'Zero-stock levels', 'observation'),
+      count(e.totalLevelsCount, 'Total tracked levels', 'observation'),
+      count(e.inStockCount, 'In-stock levels', 'observation'),
+    ];
+  }
+  if (finding.type === 'no_storefront_events') {
+    const items = [count(e.recordedEventsCount, 'Recorded events (30d)', 'current')];
+    if (finite(e.activeProductsCount) !== null) items.push(count(e.activeProductsCount, 'Active catalog products', 'observation'));
+    return items;
+  }
   return [];
 }
 
@@ -203,10 +286,15 @@ function presentPriorityFinding(entry, organizationId) {
   const evidence = object(finding.evidence);
   const references = [{ id: `finding:${finding.id}`, source_type: 'intelligence_findings', source_record_id: finding.id }];
   if (evidence.coverage_run_id) references.push({ id: `order-coverage:${evidence.coverage_run_id}`, source_type: evidence.coverage_source || 'order_coverage', source_record_id: evidence.coverage_run_id });
-  if (finding.type === 'integration_failure') references.push({ id: `store:${finding.store_id}`, source_type: 'stores', source_record_id: finding.store_id });
+  if (finding.type === 'integration_failure' || STORE_SIGNAL_TYPES.has(finding.type)) {
+    references.push({ id: `store:${finding.store_id}`, source_type: evidence.source || 'stores', source_record_id: finding.store_id });
+  }
+  const category = finding.type === 'integration_failure' || finding.type === 'storefront_domain_unconfigured' || finding.type === 'no_storefront_events'
+    ? 'data_readiness'
+    : 'business_performance';
   return {
     contract_version: CONTRACT_VERSION, id: finding.id, organization_id: organizationId, store_id: finding.store_id,
-    category: finding.type === 'integration_failure' ? 'data_readiness' : 'business_performance', type: finding.type,
+    category, type: finding.type,
     title: finding.title, description: finding.description, severity: finding.severity,
     priority: { method_version: PRIORITY_METHOD_VERSION, classification: finding.severity,
       rationale: [`Recorded severity: ${finding.severity}.`, `Evidence freshness: ${assessment.freshness.state}.`, `Confidence: ${assessment.confidence.replaceAll('_', ' ')}.`, 'Only current, verified, sufficiently covered findings are eligible.'],

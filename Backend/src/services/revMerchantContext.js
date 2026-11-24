@@ -10,12 +10,41 @@ function validIanaTimezone(value) {
   try { new Intl.DateTimeFormat('en', { timeZone: candidate }); return candidate; }
   catch { return null; }
 }
-const FINANCIAL_FINDING_TYPES = new Set(['revenue_change', 'order_volume_change', 'returning_customer_change', 'refund_increase']);
+const FINANCIAL_FINDING_TYPES = new Set(['revenue_change', 'order_volume_change', 'returning_customer_change', 'refund_increase', 'no_recent_orders']);
+const STORE_SIGNAL_FINDING_TYPES = new Set([
+  'storefront_domain_unconfigured',
+  'abandoned_checkouts_open',
+  'inventory_stockouts',
+  'no_storefront_events',
+]);
 const validDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
 function certifiedFinding(finding) {
   const evidence = finding?.evidence;
   if (!evidence || evidence.verified !== true) return false;
   if (finding.type === 'integration_failure') return evidence.source === 'stores' && evidence.storeId === finding.store_id;
+  if (STORE_SIGNAL_FINDING_TYPES.has(finding.type)) {
+    if (evidence.complete !== true || evidence.storeId !== finding.store_id || !validDate(evidence.observed_at)) return false;
+    if (finding.type === 'storefront_domain_unconfigured') {
+      return evidence.source === 'store_profiles' &&
+        typeof evidence.primaryDomainHost === 'string' &&
+        /\.myshopify\.com$/i.test(evidence.primaryDomainHost.trim()) &&
+        evidence.customDomainCount === 0;
+    }
+    if (finding.type === 'abandoned_checkouts_open') {
+      return evidence.source === 'abandoned_carts' &&
+        Number.isInteger(evidence.openAbandonedCount) && evidence.openAbandonedCount >= 1 &&
+        typeof evidence.openAbandonedValue === 'number' && Number.isFinite(evidence.openAbandonedValue) && evidence.openAbandonedValue >= 0;
+    }
+    if (finding.type === 'inventory_stockouts') {
+      return evidence.source === 'inventory_levels' &&
+        Number.isInteger(evidence.zeroStockCount) && evidence.zeroStockCount >= 1 &&
+        Number.isInteger(evidence.totalLevelsCount) && evidence.totalLevelsCount >= 1;
+    }
+    if (finding.type === 'no_storefront_events') {
+      return evidence.source === 'events' && evidence.recordedEventsCount === 0;
+    }
+    return false;
+  }
   if (!FINANCIAL_FINDING_TYPES.has(finding.type)) return false; // Fail closed for unknown finding contracts.
   if (evidence.complete !== true || evidence.coverage_source !== TRUSTED_SOURCE ||
       typeof evidence.coverage_run_id !== 'string' || !evidence.coverage_run_id.trim()) return false;
@@ -26,6 +55,7 @@ function certifiedFinding(finding) {
   if (!(ps < pe && pe <= cs && cs < ce && pe - ps === ce - cs)) return false;
   if (typeof evidence.currency !== 'string' || !/^[A-Z]{3}$/.test(evidence.currency)) return false;
   if (![evidence.currentCount, evidence.previousCount].every(n => Number.isInteger(n) && n >= 0)) return false;
+  if (finding.type === 'no_recent_orders' && evidence.currentCount !== 0) return false;
   if (finding.type === 'revenue_change' &&
       ![evidence.currentRevenue, evidence.previousRevenue].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)) return false;
   if (finding.type === 'returning_customer_change' &&
@@ -41,6 +71,10 @@ const EVIDENCE_KEYS = new Set([
   'refund_coverage_complete', 'refund_sync_run_id', 'currentStart', 'currentEnd',
   'previousStart', 'previousEnd', 'failed_webhook_registrations',
   'coverage_source', 'coverage_run_id',
+  'primaryDomainHost', 'customDomainCount', 'totalDomainsCount',
+  'openAbandonedCount', 'openAbandonedValue', 'completedAfterCheckoutCount', 'windowDays',
+  'zeroStockCount', 'totalLevelsCount', 'inStockCount',
+  'recordedEventsCount', 'activeProductsCount', 'lastOrderAt', 'observed_at',
 ]);
 function boundedEvidence(evidence) {
   return Object.fromEntries(Object.entries(evidence).filter(([key, value]) =>
