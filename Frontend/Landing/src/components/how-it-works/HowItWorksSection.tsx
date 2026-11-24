@@ -31,7 +31,7 @@ const H = 420;
 const CY = 210;
 const CX = [200, 600, 1000] as const;
 const RA = 200;
-const NODE = 236; // circle diameter
+const NODE = 192; // circle diameter
 
 const pt = (cx: number, deg: number) => {
   const a = (deg * Math.PI) / 180;
@@ -85,22 +85,22 @@ export function HowItWorksSection({ id }: { id?: string }) {
   useReveal(body);
 
   return (
-    <section id={id} aria-labelledby="hiw-title" className="hiw-section relative overflow-hidden py-16 sm:py-20 lg:py-24">
+    <section id={id} aria-labelledby="hiw-title" className="hiw-section relative overflow-hidden py-14 sm:py-16">
       <div className="relative mx-auto max-w-page px-5 sm:px-8">
-        <div ref={intro} className="hiw-intro mx-auto max-w-[52rem] text-center">
+        <div ref={intro} className="hiw-intro mx-auto max-w-[46rem] text-center">
           <p className="fx-intro__eyebrow hiw-eyebrow fx-up" style={vars({ "--i": 0 })}>
             {HOW_IT_WORKS.eyebrow}
           </p>
           <h2
             id="hiw-title"
-            className="fx-up mt-4 font-headline text-[clamp(1.6rem,6.4vw,2.2rem)] font-black leading-[1.08] tracking-[-0.03em] text-ink [font-synthesis:none] [text-wrap:balance] sm:text-[clamp(2rem,3.8vw,2.8rem)]"
+            className="fx-up mt-4 font-headline text-[clamp(1.5rem,6vw,2rem)] font-black leading-[1.08] tracking-[-0.03em] text-ink [font-synthesis:none] [text-wrap:balance] sm:text-[clamp(1.8rem,3vw,2.35rem)]"
             style={vars({ "--i": 1 })}
           >
             <span className="block">{HOW_IT_WORKS.headline.lead}</span>
             <span className="block text-indigo-deep">{HOW_IT_WORKS.headline.accent}</span>
           </h2>
           <p
-            className="fx-up mx-auto mt-4 max-w-[38rem] text-[0.98rem] leading-relaxed text-ink-muted [text-wrap:pretty] sm:text-[1.04rem]"
+            className="fx-up mx-auto mt-3 max-w-[42rem] text-[0.92rem] leading-relaxed text-ink-muted [text-wrap:pretty] sm:text-[0.97rem]"
             style={vars({ "--i": 2 })}
           >
             {HOW_IT_WORKS.description}
