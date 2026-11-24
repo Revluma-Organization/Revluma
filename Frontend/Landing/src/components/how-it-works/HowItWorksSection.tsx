@@ -1,28 +1,92 @@
 import { useRef, type CSSProperties } from "react";
+import { Lightbulb, PlugZap, ScanSearch, type LucideIcon } from "lucide-react";
 import { HOW_IT_WORKS } from "@/content";
 import { useReveal } from "@/useReveal";
 
 /**
- * "How it works": three steps side by side. Each step is a pearl-white sphere
- * holding everything for that step: the step number at the top, the step
- * name, a bold subhead and the description. A hairline connector runs behind
- * the spheres with a small signal travelling from step to step. The intro
- * reuses the features section's eyebrow and reveal classes (fx-*); sphere
- * styles and motion live in how-it-works.css, and all motion is off with
- * reduced motion.
+ * "How it works": an infographic of three steps. White raised circles carry a
+ * line icon each; a gradient path weaves around them (over the first, under
+ * the second, over the third) and ends in an arrow, with dashed outlines
+ * closing the open sides. Each step's copy sits beneath its circle.
+ *
+ * From 900px the circles and path are one scalable SVG-backed diagram; below
+ * that the same steps become a vertical timeline. The intro reuses the
+ * features section's eyebrow and reveal classes (fx-*); everything else is in
+ * how-it-works.css, and all motion is off with reduced motion.
  */
 
+type StepId = (typeof HOW_IT_WORKS.steps)[number]["id"];
+
+const ICONS: Record<StepId, LucideIcon> = {
+  connect: PlugZap,
+  analyze: ScanSearch,
+  understand: Lightbulb,
+};
+
+/* Diagram geometry, in viewBox units. Circle centres sit at the middle of three
+   equal columns; each path arc has radius D/2, so neighbouring arcs meet
+   tangentially between the circles and the line flows as one S-curve. */
+const W = 1200;
+const H = 420;
+const CY = 210;
+const CX = [200, 600, 1000] as const;
+const RA = 200;
+const NODE = 236; // circle diameter
+
+const pt = (cx: number, deg: number) => {
+  const a = (deg * Math.PI) / 180;
+  return [cx + RA * Math.cos(a), CY + RA * Math.sin(a)] as const;
+};
+const f = (n: number) => +n.toFixed(1);
+
+// Angles are measured clockwise from 3 o'clock (SVG y points down).
+const START = pt(CX[0], 84); // just right of the bottom of circle 1
+const END_DEG = 286; // past the top of circle 3
+const END = pt(CX[2], END_DEG);
+const MAIN = [
+  `M ${f(START[0])} ${f(START[1])}`,
+  `A ${RA} ${RA} 0 1 1 ${CX[0] + RA} ${CY}`, // around the left of circle 1 and over it
+  `A ${RA} ${RA} 0 0 0 ${CX[1] + RA} ${CY}`, // under circle 2
+  `A ${RA} ${RA} 0 0 1 ${f(END[0])} ${f(END[1])}`, // up and over circle 3
+].join(" ");
+
+// Arrowhead at the end of the path, along its tangent.
+const ARROW = (() => {
+  const a = (END_DEG * Math.PI) / 180;
+  const dir = [-Math.sin(a), Math.cos(a)];
+  const nrm = [-dir[1], dir[0]];
+  const tip = [END[0] + dir[0] * 22, END[1] + dir[1] * 22];
+  const b1 = [END[0] + nrm[0] * 13, END[1] + nrm[1] * 13];
+  const b2 = [END[0] - nrm[0] * 13, END[1] - nrm[1] * 13];
+  return `M ${f(tip[0])} ${f(tip[1])} L ${f(b1[0])} ${f(b1[1])} L ${f(b2[0])} ${f(b2[1])} Z`;
+})();
+
+// Dashed outlines on the sides the path leaves open.
+const D2 = `M ${CX[0] + RA} ${CY} A ${RA} ${RA} 0 0 1 ${CX[1] + RA} ${CY}`; // over circle 2
+const D3_START = pt(CX[2], END_DEG + 30);
+const D3 = `M ${f(D3_START[0])} ${f(D3_START[1])} A ${RA} ${RA} 0 1 1 ${CX[1] + RA} ${CY}`; // rest of circle 3
+
 const vars = (v: Record<string, string | number>) => v as CSSProperties;
+const pct = (n: number, of: number) => `${(n / of) * 100}%`;
+
+function Node({ id }: { id: StepId }) {
+  const Icon = ICONS[id];
+  return (
+    <div className="hiw-node__disc">
+      <Icon className="hiw-node__icon" strokeWidth={1.35} aria-hidden="true" />
+    </div>
+  );
+}
 
 export function HowItWorksSection({ id }: { id?: string }) {
   const intro = useRef<HTMLDivElement>(null);
-  const steps = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
   useReveal(intro);
-  useReveal(steps);
+  useReveal(body);
 
   return (
     <section id={id} aria-labelledby="hiw-title" className="hiw-section relative overflow-hidden py-16 sm:py-20 lg:py-24">
-      <div className="relative mx-auto max-w-page px-4 sm:px-8">
+      <div className="relative mx-auto max-w-page px-5 sm:px-8">
         <div ref={intro} className="hiw-intro mx-auto max-w-[52rem] text-center">
           <p className="fx-intro__eyebrow hiw-eyebrow fx-up" style={vars({ "--i": 0 })}>
             {HOW_IT_WORKS.eyebrow}
@@ -43,29 +107,52 @@ export function HowItWorksSection({ id }: { id?: string }) {
           </p>
         </div>
 
-        <div ref={steps} className="hiw-track">
-          <div className="hiw-rail" aria-hidden="true">
-            <i />
+        <div ref={body} className="hiw-body">
+          {/* Desktop diagram: decorative; the steps themselves are the list below. */}
+          <div className="hiw-diagram" aria-hidden="true">
+            <svg className="hiw-diagram__svg" viewBox={`0 0 ${W} ${H}`} fill="none">
+              <defs>
+                <linearGradient id="hiw-grad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2={W} y2="0">
+                  <stop offset="0" stopColor="#2B13CF" />
+                  <stop offset="0.5" stopColor="#5B34F0" />
+                  <stop offset="1" stopColor="#8E5CFF" />
+                </linearGradient>
+              </defs>
+              <path className="hiw-dash" d={D2} />
+              <path className="hiw-dash hiw-dash--late" d={D3} />
+              <path className="hiw-path" d={MAIN} pathLength={1} stroke="url(#hiw-grad)" />
+              <path className="hiw-arrow" d={ARROW} fill="#8E5CFF" />
+            </svg>
+            {HOW_IT_WORKS.steps.map((step, i) => (
+              <div
+                key={step.id}
+                className="hiw-node"
+                style={vars({ "--s": i, left: pct(CX[i] - NODE / 2, W), top: pct(CY - NODE / 2, H), width: pct(NODE, W) })}
+              >
+                <Node id={step.id} />
+              </div>
+            ))}
           </div>
+
           <ol className="hiw-steps">
             {HOW_IT_WORKS.steps.map((step, i) => {
               const num = String(i + 1).padStart(2, "0");
               return (
                 <li key={step.id} className="hiw-step" style={vars({ "--s": i })} aria-labelledby={`hiw-step-${step.id}`}>
-                  <div className="hiw-orb-wrap">
-                    <div className="hiw-orb">
-                      <div className="hiw-orb__inner">
-                        <span className="hiw-orb__num" aria-hidden="true">
-                          {num}
-                        </span>
-                        <h3 id={`hiw-step-${step.id}`} className="hiw-orb__label">
-                          <span className="sr-only">Step {i + 1}: </span>
-                          {step.label}
-                        </h3>
-                        <p className="hiw-orb__title">{step.title}</p>
-                        <p className="hiw-orb__body">{step.body}</p>
-                      </div>
-                    </div>
+                  {/* Phones and tablets: the circle sits beside the copy on a vertical line. */}
+                  <div className="hiw-step__node" aria-hidden="true">
+                    <Node id={step.id} />
+                  </div>
+                  <div className="hiw-step__copy">
+                    <p className="hiw-step__kicker" aria-hidden="true">
+                      Step {num}
+                    </p>
+                    <h3 id={`hiw-step-${step.id}`} className="hiw-step__label">
+                      <span className="sr-only">Step {i + 1}: </span>
+                      {step.label}
+                    </h3>
+                    <p className="hiw-step__title">{step.title}</p>
+                    <p className="hiw-step__body">{step.body}</p>
                   </div>
                 </li>
               );
