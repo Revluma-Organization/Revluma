@@ -1,18 +1,19 @@
-/* Meet Rev (section 6): one Rev conversation in a dark chat window on the
- * light landing canvas. Calm by design: a single column of messages, one
- * exchange at a time, plain text over panels. Motion is limited to messages
- * arriving and Rev working, and is off with reduced motion. */
+/* Meet Rev (section 6): a mock of the real Rev Intelligence chat from the
+ * Revluma dashboard (RevIntell + RevAnswerView), with the same light theme,
+ * colours, type sizes and components. One exchange at a time; motion is
+ * limited to messages arriving and Rev working, and is off with reduced
+ * motion. Internal layout follows the app frame's width (container queries). */
 
 .mr-section {
   background: #fbfaf8;
   color: #0c0a1d;
 }
-/* A soft indigo halo behind the window so it lifts off the light canvas. */
+/* A soft indigo halo behind the app so it lifts off the canvas. */
 .mr-glow {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(40rem 24rem at 50% 70%, rgba(91, 70, 255, 0.12), transparent 70%);
+  background: radial-gradient(44rem 26rem at 50% 70%, rgba(91, 70, 255, 0.1), transparent 70%);
 }
 
 .mr-eyebrow {
@@ -47,538 +48,655 @@
   height: 100%;
   object-fit: cover;
 }
+/* RevOrbLoader: the orb with its blue glow while Rev works. */
+.mr-orb--glow {
+  box-shadow: 0 0 14px 2px rgba(79, 168, 255, 0.45);
+}
 
-/* ---- Window ---------------------------------------------------------------- */
+/* ---- App frame ------------------------------------------------------------- */
 .mr-stage {
   margin-top: 2rem;
 }
-.mr-window {
+.mr-app {
+  container-type: inline-size;
   display: flex;
-  flex-direction: column;
-  max-width: 46rem;
+  max-width: 64rem;
   margin: 0 auto;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 22px;
-  background: linear-gradient(180deg, #17142f 0%, #110f24 100%);
-  color: rgba(255, 255, 255, 0.86);
+  border: 1px solid #e8eaf0;
+  border-radius: 18px;
+  background: #f7f8fc;
+  color: #1a1a2e;
+  text-align: left;
   box-shadow:
-    0 1px 2px rgba(12, 10, 29, 0.08),
-    0 30px 70px -28px rgba(12, 10, 29, 0.5),
-    0 0 90px -30px rgba(91, 70, 255, 0.45);
+    0 1px 2px rgba(16, 24, 40, 0.06),
+    0 30px 70px -30px rgba(12, 10, 29, 0.35),
+    0 0 90px -40px rgba(91, 70, 255, 0.4);
 }
-.mr-window__bar {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.65rem 0.95rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-}
-.mr-window__dots {
+
+/* Sidebar (the dashboard's dark workspace rail). */
+.mr-side {
   display: none;
-  gap: 5px;
+  flex: none;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 12.5rem;
+  padding: 1rem 0.7rem;
+  background: #111318;
+  color: #a1a6b3;
+  font-size: 0.8rem;
 }
-.mr-window__dots i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.16);
-}
-@media (min-width: 640px) {
-  .mr-window__dots {
-    display: inline-flex;
+@container (min-width: 760px) {
+  .mr-side {
+    display: flex;
   }
 }
-.mr-window__app {
+.mr-side__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0 0.5rem 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+}
+.mr-side__brand img {
+  border-radius: 6px;
+}
+.mr-side__label {
+  margin: 0 0 0.3rem;
+  padding: 0 0.5rem;
+  font-size: 0.62rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7080;
+}
+.mr-side__item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+  font-weight: 550;
+}
+.mr-side__item.is-active {
+  background: #1f06ac;
+  color: #fff;
+}
+.mr-side__item b {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 0.6rem;
+  font-weight: 700;
+}
+.mr-side__user {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: auto;
+  padding: 0.6rem 0.5rem 0;
+  border-top: 1px solid #23262e;
+  font-size: 0.74rem;
+  color: #d5d8e0;
+}
+.mr-side__user i {
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  background: #2a2e38;
+  font-style: normal;
+  font-weight: 700;
+  color: #fff;
+}
+.mr-side__user span {
+  display: grid;
+  line-height: 1.25;
+}
+.mr-side__user em {
+  font-style: normal;
+  color: #6b7080;
+}
+
+.mr-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Top bar: breadcrumb, sample-data label, Rev Intell pill. */
+.mr-top {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 3rem;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid #e8eaf0;
+  background: #fff;
+}
+.mr-crumbs {
+  display: none;
+  margin: 0;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+.mr-crumbs span {
+  margin: 0 0.3rem;
+  color: #c0c5d0;
+}
+.mr-crumbs strong {
+  font-weight: 600;
+  color: #1a1a2e;
+}
+.mr-tag {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #fde4b0;
+  border-radius: 999px;
+  background: #fffaeb;
+  font-size: 0.68rem;
+  font-weight: 650;
+  color: #b54708;
+  white-space: nowrap;
+}
+.mr-revpill {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.8rem;
-  font-weight: 650;
-  color: #fff;
-  white-space: nowrap;
-}
-.mr-window__tag {
   margin-left: auto;
-  overflow: hidden;
-  padding: 0.15rem 0.55rem;
-  border: 1px dashed rgba(255, 255, 255, 0.22);
+  padding: 0.25rem 0.65rem 0.25rem 0.3rem;
+  border: 1px solid rgba(31, 6, 172, 0.16);
   border-radius: 999px;
-  font-size: 0.66rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.6);
+  background: rgba(31, 6, 172, 0.06);
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: #1f06ac;
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
-.mr-window__tag-short {
-  display: none;
-}
-@media (max-width: 479px) {
-  .mr-window__tag-full {
-    display: none;
+@container (min-width: 560px) {
+  .mr-crumbs {
+    display: block;
   }
-  .mr-window__tag-short {
-    display: inline;
+  .mr-tag {
+    margin-left: auto;
+  }
+  .mr-revpill {
+    margin-left: 0;
+  }
+}
+@container (max-width: 419px) {
+  /* Keep the full sample-data label on phones; the pill gives way. */
+  .mr-revpill {
+    display: none;
   }
 }
 
 /* ---- Thread ---------------------------------------------------------------- */
+.mr-chat {
+  flex: 1;
+  padding: 1.25rem 1rem 0.5rem;
+}
+@container (min-width: 560px) {
+  .mr-chat {
+    padding: 1.5rem 1.75rem 0.5rem;
+  }
+}
 /* Messages sit at the bottom, like a chat. Only the current exchange is
-   shown in full; the previous one is a faded strip above it. */
+   shown in full; the one before is a faded strip above it. */
 .mr-thread {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 1.1rem;
-  min-height: 16rem;
-  padding: 1.25rem 1.1rem 1.1rem;
+  gap: 1.25rem;
+  max-width: 46rem;
+  min-height: 21rem;
+  margin: 0 auto;
 }
-@media (min-width: 640px) {
+/* On wider frames the chat keeps one height, like the app's viewport: the
+   window never jumps, and the previous exchange gives way first. */
+@container (min-width: 560px) {
   .mr-thread {
-    padding: 1.4rem 1.75rem 1.25rem;
+    height: 26rem;
+    min-height: 0;
+    overflow: hidden;
   }
 }
 .mr-turn {
   display: grid;
-  gap: 0.9rem;
+  gap: 1.25rem;
 }
 .mr-past {
   position: relative;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  max-height: 4.6rem;
+  max-height: 4.2rem;
   overflow: hidden;
-  opacity: 0.4;
+  opacity: 0.45;
   pointer-events: none;
 }
 .mr-past::before {
   content: "";
   position: absolute;
-  inset: 0 0 auto;
+  inset: 0;
   z-index: 1;
-  height: 100%;
-  background: linear-gradient(to bottom, #17142f 0%, rgba(23, 20, 47, 0) 100%);
+  background: linear-gradient(to bottom, #f7f8fc 0%, rgba(247, 248, 252, 0) 100%);
 }
-.mr-past .mr-msg,
-.mr-past .mr-rev__body > *,
-.mr-past .mr-chart__bar {
+.mr-past .mr-user,
+.mr-past .mr-rev > * {
   animation: none !important;
 }
+.mr-past .mr-user {
+  margin-bottom: 1.25rem;
+}
 
-.mr-msg--user {
+/* User bubble: right-aligned, indigo, squared top-right corner. */
+.mr-user {
   display: flex;
   justify-content: flex-end;
 }
-.mr-bubble {
+.mr-user p {
   margin: 0;
-  max-width: 85%;
-  padding: 0.55rem 0.95rem;
-  border-radius: 18px 18px 4px 18px;
-  background: linear-gradient(135deg, #2b13cf, #5b3fff);
-  color: #fff;
-  font-size: 0.92rem;
-  font-weight: 550;
-}
-
-.mr-rev__head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.mr-rev__name {
-  font-size: 0.86rem;
-  font-weight: 700;
-  color: #fff;
-}
-.mr-rev__body {
-  display: grid;
-  gap: 0.6rem;
-  margin-top: 0.45rem;
-  padding-left: 2rem;
+  max-width: 72%;
+  padding: 0.75rem 1rem;
+  border-radius: 16px 6px 16px 16px;
+  background: linear-gradient(135deg, #1f06ac, #17057f);
   font-size: 0.9rem;
-  line-height: 1.55;
-}
-.mr-pill {
-  padding: 0.12rem 0.55rem;
-  border-radius: 999px;
-  background: rgba(181, 71, 8, 0.2);
-  color: #fdb022;
-  font-size: 0.68rem;
-  font-weight: 650;
-}
-.mr-turn[data-step="verify"] .mr-pill {
-  background: rgba(18, 183, 106, 0.16);
-  color: #6ce9a6;
-}
-
-.mr-lead {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.86);
-  text-wrap: pretty;
-}
-.mr-lead--strong {
-  font-size: 1.02rem;
-  font-weight: 550;
   line-height: 1.5;
   color: #fff;
 }
-.mr-lead--sub {
-  margin-top: 0.2rem;
-  color: rgba(255, 255, 255, 0.6);
-}
-.mr-tag {
-  display: inline-block;
-  margin-right: 0.5rem;
-  padding: 0.05rem 0.45rem;
-  border: 1px dashed rgba(253, 176, 34, 0.55);
-  border-radius: 6px;
-  color: #fdb022;
-  font-size: 0.68rem;
-  font-weight: 650;
-  vertical-align: 0.1em;
-}
 
-.mr-list {
-  list-style: disc;
-  display: grid;
-  gap: 0.35rem;
+/* Rev: no avatar, full width, plain text. */
+.mr-rev {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mr-rev--answer > * {
+  max-width: 100%;
+}
+.mr-text {
   margin: 0;
-  padding-left: 1.1rem;
-  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: #101828;
 }
-.mr-list--facts li::marker {
-  color: #32d583;
-}
-.mr-list--hyp li::marker {
-  color: #fdb022;
-}
-.mr-list--gap li::marker {
-  color: rgba(255, 255, 255, 0.4);
-}
-.mr-cite {
-  display: inline-grid;
-  place-items: center;
-  min-width: 1rem;
-  height: 1rem;
-  padding: 0 0.2rem;
-  border-radius: 5px;
-  background: rgba(169, 155, 255, 0.2);
-  color: #d4ccff;
-  font-size: 0.6rem;
-  font-weight: 700;
-  vertical-align: 0.1em;
-}
-
-/* Checks: a quiet row under the first answer. */
-.mr-checks {
+.mr-pillrow {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem 0.9rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 0.76rem;
-  color: rgba(255, 255, 255, 0.6);
-}
-.mr-checks li {
-  display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-}
-.mr-checks li.is-done svg {
-  color: #32d583;
-}
-.mr-checks li.is-missing {
-  color: rgba(255, 255, 255, 0.4);
-}
-.mr-checks li em {
-  font-style: normal;
-  color: #fdb022;
-}
-.mr-checks--live {
-  margin-top: 0.6rem;
-  padding-left: 2rem;
-}
-.mr-working {
-  font-size: 0.76rem;
-  color: rgba(255, 255, 255, 0.55);
-}
-
-.mr-dots {
-  display: inline-flex;
-  gap: 4px;
-  padding: 0.45rem 0.6rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-}
-.mr-dots i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.6);
-}
-
-/* Chart: one small visual, only in the "how do you know" reply. */
-.mr-chart {
-  margin: 0.15rem 0 0;
-  max-width: 24rem;
-  padding: 0.6rem 0.7rem 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-}
-.mr-chart__label {
-  display: flex;
-  justify-content: space-between;
   gap: 0.5rem;
-  margin-bottom: 0.4rem;
-  font-size: 0.68rem;
-  font-weight: 650;
-  color: rgba(255, 255, 255, 0.78);
+  margin: 0;
+  font-size: 0.72rem;
+  color: #667085;
 }
-.mr-chart__label span {
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.45);
+.mr-state {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #fffaeb;
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #b54708;
 }
-.mr-chart__plot {
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-  gap: 0.35rem;
-  height: 4.6rem;
-  padding-bottom: 0.95rem;
+.mr-sec + .mr-sec {
+  margin-top: 0.75rem;
 }
-.mr-chart__ref {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(0.95rem + (100% - 0.95rem) * var(--y));
-  border-top: 1.5px dashed rgba(255, 255, 255, 0.35);
+.mr-sec h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #101828;
 }
-.mr-chart__col {
-  position: relative;
-  display: flex;
-  flex: 1;
-  height: 100%;
-  align-items: flex-end;
-  justify-content: center;
+.mr-sec ul {
+  margin: 0;
+  padding-left: 1rem;
+  list-style: disc;
 }
-.mr-chart__col i {
-  position: absolute;
-  bottom: -0.95rem;
-  font-size: 0.58rem;
-  font-style: normal;
-  color: rgba(255, 255, 255, 0.42);
+.mr-marker {
+  margin-left: 5px;
+  padding: 2px 5px;
+  border: 1px solid rgba(31, 6, 172, 0.18);
+  border-radius: 6px;
+  background: rgba(31, 6, 172, 0.07);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #1f06ac;
+  vertical-align: baseline;
 }
-.mr-chart__bar {
-  width: 100%;
-  max-width: 1.5rem;
-  border-radius: 4px 4px 2px 2px;
-  background: linear-gradient(to top, #2b13cf, #7c6cff);
-  transform-origin: bottom;
+.mr-period {
+  margin: 0;
+  font-size: 0.7rem;
+  color: #667085;
 }
-.mr-chart__col.is-low .mr-chart__bar {
-  background: linear-gradient(to top, #c11574, #f670c7);
-}
-
 .mr-sources {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.3rem;
-  margin: 0;
+  gap: 0.25rem 0.6rem;
   font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: #1f06ac;
 }
-.mr-source {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.08rem 0.45rem 0.08rem 0.15rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  color: rgba(255, 255, 255, 0.78);
-  font-weight: 550;
+.mr-sources > span:first-child {
+  font-size: 0.68rem;
+  font-weight: 650;
+  color: #667085;
 }
 .mr-source b {
-  display: grid;
-  place-items: center;
-  width: 0.95rem;
-  height: 0.95rem;
-  border-radius: 50%;
-  background: rgba(169, 155, 255, 0.2);
-  color: #d4ccff;
-  font-size: 0.56rem;
+  margin-right: 3px;
+  font-weight: 750;
 }
 
-.mr-recs {
-  list-style: decimal;
-  display: grid;
-  gap: 0.4rem;
-  margin: 0;
-  padding-left: 1.2rem;
-  color: rgba(255, 255, 255, 0.72);
+/* "How I checked" disclosure. */
+.mr-how {
+  width: 100%;
+  border: 1px solid #eaecf0;
+  border-radius: 10px;
+  background: #fff;
 }
-.mr-recs li::marker {
-  color: #a99bff;
-  font-weight: 700;
-}
-.mr-recs strong {
-  font-weight: 650;
-  color: #fff;
-}
-.mr-note {
-  display: inline-flex;
+.mr-how summary {
+  display: flex;
   align-items: center;
-  gap: 0.35rem;
-  margin: 0.1rem 0 0;
+  gap: 6px;
+  padding: 8px 11px;
+  list-style: none;
   font-size: 0.74rem;
-  color: rgba(255, 255, 255, 0.5);
+  font-weight: 650;
+  color: #667085;
+  cursor: pointer;
 }
-.mr-note svg {
-  color: #a99bff;
+.mr-how summary::-webkit-details-marker {
+  display: none;
+}
+.mr-how__chev {
+  margin-left: auto;
+  transition: rotate 0.2s;
+}
+.mr-how[open] .mr-how__chev {
+  rotate: 180deg;
+}
+.mr-how > div {
+  padding: 0 11px 10px;
+}
+.mr-how__label {
+  margin: 0 0 0.35rem;
+  font-size: 0.66rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #667085;
+}
+.mr-how ul,
+.mr-inv ul {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.74rem;
+  color: #344054;
+}
+.mr-how li,
+.mr-inv li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.mr-how em,
+.mr-inv em {
+  font-style: normal;
+  color: #98a2b3;
+}
+.is-done {
+  flex: none;
+  color: #067647;
+}
+.is-missing {
+  flex: none;
+  color: #98a2b3;
 }
 
-/* ---- Composer: the suggested reply is the one thing to do next. ------------ */
-.mr-composer {
+/* Recommended next steps. */
+.mr-recs {
   display: grid;
-  gap: 0.6rem;
-  padding: 0.75rem 1.1rem 1.1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 0.5rem;
+  width: 100%;
+  padding-top: 10px;
+  border-top: 1px solid #eaecf0;
 }
-@media (min-width: 640px) {
-  .mr-composer {
-    padding: 0.85rem 1.75rem 1.35rem;
-  }
+.mr-recs p {
+  margin: 0;
 }
-.mr-suggest {
+.mr-recs__label {
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #667085;
+}
+.mr-recs__note {
+  font-size: 0.75rem;
+  color: #667085;
+}
+.mr-rec {
+  display: flex;
+  gap: 0.5rem;
+}
+.mr-rec > svg {
+  flex: none;
+  margin-top: 3px;
+  color: #1f06ac;
+}
+.mr-rec__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #101828;
+}
+.mr-rec__why {
+  margin-top: 1px !important;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: #667085;
+}
+
+/* Follow-up chip (the visitor's way forward) and the action row. */
+.mr-follow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem 0.75rem;
-  min-height: 2.1rem;
 }
 .mr-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.42rem 0.95rem;
-  border: 1px solid rgba(169, 155, 255, 0.55);
+  gap: 0.25rem;
+  min-height: 2.5rem;
+  padding: 5px 13px;
+  border: 1px solid rgba(31, 6, 172, 0.16);
   border-radius: 999px;
-  background: rgba(124, 108, 255, 0.16);
-  color: #fff;
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 600;
+  background: rgba(31, 6, 172, 0.06);
+  font-size: 0.78rem;
+  font-weight: 550;
+  color: #1f06ac;
   cursor: pointer;
   transition:
-    background-color 0.2s,
-    border-color 0.2s,
-    opacity 0.2s;
+    background-color 0.15s,
+    border-color 0.15s;
 }
 .mr-chip:hover:not(:disabled) {
-  background: rgba(124, 108, 255, 0.3);
-  border-color: #a99bff;
+  border-color: rgba(31, 6, 172, 0.35);
+  background: rgba(31, 6, 172, 0.11);
 }
 .mr-chip:focus-visible {
-  outline: 2px solid #a99bff;
+  outline: 2px solid #1f06ac;
   outline-offset: 2px;
 }
 .mr-chip:disabled {
-  opacity: 0.4;
   cursor: default;
 }
-.mr-chip--ghost {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: transparent;
-  color: rgba(255, 255, 255, 0.8);
-}
-.mr-suggest:not([data-ready]) .mr-hint {
-  visibility: hidden;
-}
 .mr-hint {
+  font-size: 0.7rem;
+  color: #98a2b3;
+}
+.mr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.9rem;
+  font-size: 0.7rem;
+  color: #64748b;
+}
+.mr-actions span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* Rev at work: orb loader + the investigation card. */
+.mr-working {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #667085;
+}
+.mr-inv {
+  width: min(100%, 30rem);
+  overflow: hidden;
+  border: 1px solid #eaecf0;
+  border-radius: 12px;
+  background: #fff;
+}
+.mr-inv__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  min-height: 44px;
+  padding: 10px 14px;
+  background: #fafafb;
+}
+.mr-inv__head strong {
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: #101828;
+}
+.mr-inv__head > span {
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.42);
+  color: #667085;
+}
+.mr-inv__chev {
+  margin-left: auto;
+  color: #667085;
+}
+.mr-spin {
+  flex: none;
+  color: #1f06ac;
+}
+.mr-inv ul {
+  padding: 8px 14px 10px;
+  border-top: 1px solid #eaecf0;
+}
+.mr-inv ul:empty {
+  display: none;
+}
+
+/* ---- Composer -------------------------------------------------------------- */
+.mr-dock {
+  padding: 0.5rem 1rem 0.75rem;
+}
+@container (min-width: 560px) {
+  .mr-dock {
+    padding: 0.5rem 1.75rem 0.85rem;
+  }
 }
 .mr-input {
+  max-width: 46rem;
+  margin: 0 auto;
+  border: 1px solid #e8eaf0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+.mr-input p {
+  margin: 0;
+  padding: 0.9rem 1.25rem 0.4rem;
+  font-size: 0.9rem;
+  color: #98a2b3;
+}
+.mr-input__bar {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.45rem 0.45rem 0.45rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  font-size: 0.84rem;
-  color: rgba(255, 255, 255, 0.38);
+  justify-content: space-between;
+  padding: 0 0.75rem 0.75rem;
+  color: #64748b;
 }
-.mr-input i {
+.mr-input__right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+.mr-input__right > svg {
+  opacity: 0.6;
+}
+.mr-send {
   display: grid;
   place-items: center;
-  width: 1.9rem;
-  height: 1.9rem;
-  margin-left: auto;
-  border-radius: 10px;
-  background: rgba(124, 108, 255, 0.35);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 12px;
+  background: #e5e7eb;
+  color: #9ca3af;
+}
+.mr-send--stop {
+  background: #111827;
   color: #fff;
 }
+.mr-footer {
+  margin: 0.5rem 0 0;
+  font-size: 0.63rem;
+  text-align: center;
+  color: #64748b;
+}
 
-/* ---- Motion -------------------------------------------------------------- */
+/* ---- Motion ---------------------------------------------------------------- */
 @media (prefers-reduced-motion: no-preference) {
-  .mr-stage .mr-window {
-    opacity: 0;
-    translate: 0 30px;
-    transition:
-      opacity 0.9s cubic-bezier(0.25, 1, 0.5, 1),
-      translate 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+  .mr-turn > .mr-user {
+    animation: mr-in 0.35s ease-out both;
   }
-  .mr-stage.is-in .mr-window {
-    opacity: 1;
-    translate: 0 0;
+  .mr-turn .mr-rev > * {
+    animation: mr-in 0.4s ease-out both;
   }
-
-  /* Messages arrive. */
-  .mr-msg {
-    animation: mr-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  .mr-turn .mr-rev--answer > :nth-child(2) {
+    animation-delay: 0.08s;
   }
-  .mr-rev__body > * {
-    animation: mr-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  .mr-turn .mr-rev--answer > :nth-child(3) {
+    animation-delay: 0.16s;
   }
-  .mr-rev__body > :nth-child(2) {
-    animation-delay: 0.12s;
-  }
-  .mr-rev__body > :nth-child(3) {
+  .mr-turn .mr-rev--answer > :nth-child(n + 4) {
     animation-delay: 0.24s;
   }
-  .mr-rev__body > :nth-child(4) {
-    animation-delay: 0.36s;
+  .mr-inv li {
+    animation: mr-in 0.3s ease-out both;
   }
-  .mr-chart__bar {
-    animation: mr-grow 0.7s cubic-bezier(0.16, 1, 0.3, 1) calc(0.3s + var(--d, 0s)) both;
-  }
-
-  /* Rev at work. */
-  .mr-checks--live li {
-    animation: mr-in 0.35s ease-out var(--d, 0s) both;
+  .mr-spin {
+    animation: mr-rotate 0.9s linear infinite;
   }
   .mr-working {
-    animation: mr-breathe 1.4s ease-in-out infinite;
-  }
-  .mr-dots i {
-    animation: mr-bounce 1s ease-in-out infinite;
-  }
-  .mr-dots i:nth-child(2) {
-    animation-delay: 0.15s;
-  }
-  .mr-dots i:nth-child(3) {
-    animation-delay: 0.3s;
-  }
-
-  /* The suggested reply draws the eye once it's ready. */
-  .mr-suggest[data-ready] .mr-chip:not(.mr-chip--ghost) {
     animation:
       mr-in 0.4s ease-out both,
-      mr-ring 2.2s ease-out 0.6s 2;
+      mr-breathe 1.4s ease-in-out 0.4s infinite !important;
+  }
+  /* The follow-up chip draws the eye once Rev has answered. */
+  .mr-turn .mr-chip:not(:disabled) {
+    animation: mr-ring 2.2s ease-out 0.9s 2;
   }
 
   @keyframes mr-in {
@@ -591,12 +709,9 @@
       translate: 0 0;
     }
   }
-  @keyframes mr-grow {
-    from {
-      transform: scaleY(0);
-    }
+  @keyframes mr-rotate {
     to {
-      transform: scaleY(1);
+      rotate: 360deg;
     }
   }
   @keyframes mr-breathe {
@@ -604,24 +719,12 @@
       opacity: 0.45;
     }
   }
-  @keyframes mr-bounce {
-    0%,
-    60%,
-    100% {
-      translate: 0 0;
-      opacity: 0.5;
-    }
-    30% {
-      translate: 0 -3px;
-      opacity: 1;
-    }
-  }
   @keyframes mr-ring {
     0% {
-      box-shadow: 0 0 0 0 rgba(169, 155, 255, 0.55);
+      box-shadow: 0 0 0 0 rgba(31, 6, 172, 0.3);
     }
     100% {
-      box-shadow: 0 0 0 10px rgba(169, 155, 255, 0);
+      box-shadow: 0 0 0 10px rgba(31, 6, 172, 0);
     }
   }
 }
