@@ -29,6 +29,12 @@ describe("Homepage hero embed", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it("mounts every rebuilt section into a host that exists on the homepage", async () => {
+    const { SECTIONS } = await import("@/embed");
+    expect(Object.keys(SECTIONS)).toEqual(["revluma-hero", "problem"]);
+    for (const id of Object.keys(SECTIONS)) expect(homepage).toContain(`<div id="${id}"`);
+  });
+
   it("is wired into the homepage and the removed hero pieces are gone", () => {
     expect(homepage).toContain('<div id="revluma-hero"');
     expect(homepage).toContain('src="/landing-hero/hero.js"');
