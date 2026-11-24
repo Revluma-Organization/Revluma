@@ -36,7 +36,7 @@ NOW = datetime(2026, 11, 7, 12, 0, 0, tzinfo=timezone.utc)
 
 APP_SCOPES = "read_orders,read_customers,read_products,read_inventory,read_locations,read_legal_policies,read_online_store_navigation"
 CRIT = ("store_domains", "products", "variants", "orders", "refunds", "inventory", "webhooks")
-OPT = ("customers", "locations", "transactions", "fulfillments", "abandoned_checkouts")
+OPT = ("customers", "locations", "transactions", "fulfillments", "abandoned_checkouts", "collections", "shop.taxes")
 TOPICS = (
     "orders/create", "orders/updated", "products/create", "products/update",
     "products/delete", "inventory_levels/updated",

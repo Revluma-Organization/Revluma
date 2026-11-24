@@ -35,7 +35,7 @@ NOW = datetime(2026, 11, 7, 12, 0, 0, tzinfo=timezone.utc)
 APP_SCOPES = "read_orders,read_customers,read_products,read_inventory,read_locations,read_legal_policies,read_online_store_navigation"
 
 CRIT_DOMAINS = ("store_domains", "products", "variants", "orders", "refunds", "inventory", "webhooks")
-OPT_APP_DOMAINS = ("customers", "locations", "transactions", "fulfillments", "abandoned_checkouts")
+OPT_APP_DOMAINS = ("customers", "locations", "transactions", "fulfillments", "abandoned_checkouts", "collections", "shop.taxes")
 TOPICS = (
     "orders/create", "orders/updated", "products/create", "products/update",
     "products/delete", "inventory_levels/updated",
@@ -363,11 +363,28 @@ def test_s12_partial_capability_coverage():
 
 
 def test_s13_unsupported_resource():
+    from src.intelligence.integration_evidence import _resource_capability
+
+    # Synthetic resource without a dedicated sync ledger reports 'unsupported'
+    # as a build limitation, never a sync failure.
+    cap = _resource_capability(
+        {"id": "synthetic.unbacked", "domain": None, "scopes": ("read_products",),
+         "approval": "none", "critical": False, "category": "content", "note": ""},
+        ["read_products"], None, NOW,
+    )
+    assert cap["sync"]["state"] == "unsupported"
+
+    # Optional resources with live sync ledgers (e.g. discount-nodes, collections,
+    # shop.taxes) resolve against real ledger state; ungranted optional scopes
+    # never demote a connected store or fabricate last_error.
     rec = _records()
     r = _state(rec)
     discount = next(c for c in r["capabilities"] if c["id"] == "discount-nodes")
-    assert discount["sync_state"] == "unsupported"
-    # Unsupported is a build limitation, never a sync failure.
+    assert discount["sync_state"] == "never_synchronized"
+    assert discount["app_requested"] is False
+    collections = next(c for c in r["capabilities"] if c["id"] == "collections")
+    assert collections["sync_state"] == "succeeded"
+    assert collections["operational"] is True
     assert r["overall_status"] == "connected"
     assert r["last_error"] is None
 

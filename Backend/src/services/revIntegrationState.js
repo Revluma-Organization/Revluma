@@ -377,8 +377,17 @@ function synchronizationFor(domains, store, now) {
   else if (failed.length && !succeeded.length) phase = retrying ? 'waiting_retrying' : 'failed';
   else if (failed.length || partial.length) phase = 'partially_completed';
   else if (succeeded.length) {
-    const allKnown = SYNC_DOMAINS.every(domain => succeeded.includes(domain));
-    phase = allKnown ? 'completed' : 'partially_completed';
+    const granted = store ? store.granted_scopes : [];
+    const recorded = Boolean(store && store.scope_list_recorded);
+    const expected = [...new Set(INTEGRATION_RESOURCES
+      .filter(resource => resource.domain && (
+        !recorded
+        || !resource.scopes.length
+        || resource.scopes.every(scope => scopeSatisfied(granted, scope))
+      ))
+      .map(resource => resource.domain))];
+    const allExpected = expected.length > 0 && expected.every(domain => succeeded.includes(domain));
+    phase = allExpected ? 'completed' : 'partially_completed';
   } else {
     phase = 'unknown';
   }

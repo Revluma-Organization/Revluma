@@ -609,7 +609,17 @@ def _synchronization(domains: dict[str, dict], store: dict | None, now: datetime
     elif failed or partial:
         phase = "partially_completed"
     elif succeeded:
-        if SYNC_DOMAINS and set(SYNC_DOMAINS) <= set(succeeded):
+        granted = store["granted_scopes"] if store else []
+        recorded = bool(store and store.get("scope_list_recorded"))
+        expected = {
+            r["domain"] for r in INTEGRATION_RESOURCES
+            if r["domain"] and (
+                not recorded
+                or not r["scopes"]
+                or all(_scope_satisfied(granted, s) for s in r["scopes"])
+            )
+        }
+        if expected and expected <= set(succeeded):
             phase = "completed"
         else:
             phase = "partially_completed"

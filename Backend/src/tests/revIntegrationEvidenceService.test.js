@@ -18,7 +18,7 @@ const NOW = new Date('2026-11-07T12:00:00.000Z');
 const FIVE_MIN = new Date('2026-11-07T11:55:00.000Z');
 const THREE_DAYS = new Date('2026-11-04T11:55:00.000Z');
 const FULL_SCOPES = 'read_products,read_orders,read_inventory,read_customers,read_checkouts,read_locations,read_discounts,read_content,read_themes,read_shipping,read_returns';
-const DOMAINS = ['store_domains', 'products', 'variants', 'orders', 'refunds', 'inventory', 'locations', 'transactions', 'fulfillments', 'customers', 'abandoned_checkouts', 'webhooks'];
+const DOMAINS = ['store_domains', 'products', 'variants', 'orders', 'refunds', 'inventory', 'locations', 'transactions', 'fulfillments', 'order.returns', 'customers', 'abandoned_checkouts', 'discount-nodes', 'collections', 'content.pages', 'content.blogs', 'themes', 'shop.shipping_configuration', 'shop.taxes', 'webhooks'];
 
 const store = (overrides = {}) => ({
   id: STORE, organization_id: ORG, platform: 'shopify', status: 'active',

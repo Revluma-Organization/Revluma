@@ -340,6 +340,65 @@ test('domainCoverage: no domain map at all -> unavailable', () => {
   const cov = domainCoverage(null, ['orders'], NOW);
   assert.equal(cov.data_quality, DATA_QUALITY.UNAVAILABLE);
 });
+test('domainCoverage: canonical string freshness from rev-integration-state-v1 -> complete', () => {
+  const cov = domainCoverage({
+    orders: { state: 'succeeded', freshness: 'fresh', last_succeeded_at: '2026-11-08T11:30:00.000Z' },
+  }, ['orders'], NOW);
+  assert.equal(cov.complete, true);
+  assert.equal(cov.data_quality, DATA_QUALITY.COMPLETE);
+});
+test('domainCoverage: canonical string freshness stale -> stale', () => {
+  const cov = domainCoverage({
+    orders: { state: 'succeeded', freshness: 'stale', last_succeeded_at: '2026-11-01T11:30:00.000Z' },
+  }, ['orders'], NOW);
+  assert.equal(cov.complete, false);
+  assert.equal(cov.data_quality, DATA_QUALITY.STALE);
+});
+test('integration parity: real evaluateIntegrationState output produces complete data_quality across all business indicators', () => {
+  const dbPath = require.resolve('../configs/database');
+  const prevDb = require.cache[dbPath];
+  if (!prevDb) {
+    require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { prisma: null } };
+  }
+  const { evaluateIntegrationState } = require('./revIntegrationState');
+  const recent = '2026-11-08T11:50:00.000Z';
+  const realState = evaluateIntegrationState({
+    organization_id: 'org-1',
+    store: {
+      id: 'store-1',
+      organization_id: 'org-1',
+      platform: 'shopify',
+      shop_domain: 'acme.myshopify.com',
+      status: 'active',
+      access_token: 'shpat_test',
+      granted_scopes: 'read_orders,read_products,read_inventory,read_checkouts,read_customers,read_locations',
+      installed_at: '2026-10-26T00:00:00.000Z',
+      last_synced_at: recent,
+      updated_at: recent,
+    },
+    domain_states: [
+      'orders', 'products', 'inventory', 'abandoned_checkouts', 'store_domains',
+      'variants', 'refunds', 'customers', 'locations', 'transactions', 'fulfillments',
+    ].map((domain) => ({
+      domain,
+      status: 'ok',
+      last_succeeded_at: recent,
+      last_attempted_at: recent,
+      pagination_complete: true,
+      records_discovered: 10,
+    })),
+    webhook_registrations: [],
+    webhook_deliveries: [],
+    order_coverage: [],
+  }, NOW);
+
+  const contract = buildBusinessHealth(bundle({ integration: realState }), NOW);
+  assert.deepEqual(validateBusinessHealth(contract), []);
+  for (const cat of ['revenue', 'orders', 'checkouts', 'product_availability']) {
+    assert.equal(byCat(contract)[cat].data_quality, DATA_QUALITY.COMPLETE, `${cat} must have complete data_quality with live rev-integration-state-v1 output`);
+    assert.equal(byCat(contract)[cat].coverage.complete, true, `${cat} coverage must be complete`);
+  }
+});
 
 // ── Integration indicator maps the canonical state (never re-derived) ─────
 test('integration: connected -> healthy; carries canonical explanation', () => {
