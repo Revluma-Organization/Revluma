@@ -1,31 +1,16 @@
-import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, Reorder, motion, useReducedMotion } from "framer-motion";
+import { type MouseEvent, useMemo, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
-  ArrowDown,
-  ArrowDownUp,
   ArrowRight,
-  ArrowUp,
-  Calendar,
-  Check,
-  ChevronDown,
-  CircleDot,
+  ChevronRight,
   Clock,
-  Compass,
   Database,
-  Flag,
-  Flame,
-  GripVertical,
-  History,
+  Eye,
   Info,
-  LayoutList,
-  Radar,
-  RotateCcw,
-  Rows3,
-  ShieldAlert,
+  RefreshCw,
+  Search,
   ShieldCheck,
-  Sparkles,
   Target,
 } from "lucide-react";
 import { useInRouterContext, useNavigate } from "react-router-dom";
@@ -36,22 +21,14 @@ import { cc } from "./tokens";
 import type { CommandCenterData, Finding } from "./types";
 
 export interface TopPrioritiesSectionProps {
-  data: CommandCenterData;
+  data: CommandCenterData | null;
+  loading?: boolean;
   refreshing?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }
 
-type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
-type QueueSortMode = "rank" | "severity" | "custom";
-type QueueDensity = "comfortable" | "compact";
-
-const EASE_OUT_EXPO = [0.22, 1, 0.36, 1] as const;
-
-const SEVERITY_ORDER: Record<Finding["severity"], number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-};
+type SeverityTier = "all" | "critical_high" | "medium" | "low";
 
 const money = (value: number, currency: string) => {
   try {
@@ -68,15 +45,27 @@ const dateTime = (value: string | null) =>
       )
     : "Not recorded";
 
-function observationText(
-  item: Finding["evidence"]["observations"][number],
-): string {
+const relativeTime = (value: string | null) => {
+  if (!value) return "Not recorded";
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) return "Not recorded";
+  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
+  return `${Math.floor(minutes / 1440)}d ago`;
+};
+
+function observationText(item: Finding["evidence"]["observations"][number]): string {
   if (item.value === null || item.availability !== "available") return "Unavailable";
   if (item.unit === "money" && typeof item.value === "number" && item.currency) {
     return money(item.value, item.currency);
   }
   if (item.unit === "count" || item.unit === "status") {
     return `${item.value}`;
+  }
+  if (item.unit === "percent" && typeof item.value === "number") {
+    return `${item.value}%`;
   }
   return `${item.value} ${item.unit}`;
 }
@@ -99,76 +88,42 @@ function findingEvidenceAppState(finding: Finding): CommandCenterAppState {
   return "unavailable";
 }
 
-interface SeverityVisual {
-  label: string;
-  pillClass: string;
-  rankPillClass: string;
-  primaryRankClass: string;
-  borderLeftClass: string;
-  rowTintClass: string;
-  spotlightBgClass: string;
-  dotClass: string;
-  Icon: typeof Flame;
+function matchesSeverityTier(severity: Finding["severity"], tier: SeverityTier): boolean {
+  if (tier === "all") return true;
+  if (tier === "critical_high") return severity === "critical" || severity === "high";
+  return severity === tier;
 }
 
-function getSeverityVisual(severity: Finding["severity"]): SeverityVisual {
+function getSeverityBadge(severity: Finding["severity"]) {
   if (severity === "critical") {
     return {
       label: "Critical",
-      pillClass: "border-[#FDA4AF] bg-[#FFE4E6] text-[#9F1239]",
-      rankPillClass: "border-[#FDA4AF] bg-[#FFE4E6] text-[#9F1239]",
-      primaryRankClass:
-        "bg-gradient-to-br from-[#E11D48] to-[#B42318] text-white shadow-[0_4px_12px_-3px_rgba(225,29,72,0.5)]",
-      borderLeftClass: "border-l-[#B42318]",
-      rowTintClass: "hover:border-[#FDA4AF] hover:bg-[#FFF5F6]",
-      spotlightBgClass: "bg-gradient-to-br from-[#FFF5F6] via-white to-[#F5F3FF]/55",
-      dotClass: "bg-[#E11D48]",
-      Icon: Flame,
+      pillClass: "bg-[#DC2626] text-white",
+      accentBorderClass: "border-l-2 border-l-[#B42318]",
     };
   }
   if (severity === "high") {
     return {
       label: "High",
-      pillClass: "border-[#FCA5A5] bg-[#FEF2F2] text-[#B42318]",
-      rankPillClass: "border-[#FECACA] bg-[#FEF2F2] text-[#B42318]",
-      primaryRankClass:
-        "bg-gradient-to-br from-[#DC2626] to-[#B42318] text-white shadow-[0_4px_12px_-3px_rgba(180,35,24,0.45)]",
-      borderLeftClass: "border-l-[#B42318]",
-      rowTintClass: "hover:border-[#FCA5A5] hover:bg-[#FFF7F7]",
-      spotlightBgClass: "bg-gradient-to-br from-[#FFF6F5] via-white to-[#EEF2FF]/50",
-      dotClass: "bg-[#DC2626]",
-      Icon: AlertTriangle,
+      pillClass: "border border-[#FECACA] bg-[#FEF2F2] text-[#B42318]",
+      accentBorderClass: "border-l-2 border-l-[#B42318]",
     };
   }
   if (severity === "medium") {
     return {
       label: "Medium",
-      pillClass: "border-[#FCD34D] bg-[#FEF3C7] text-[#92400E]",
-      rankPillClass: "border-[#FDE68A] bg-[#FEF3C7] text-[#92400E]",
-      primaryRankClass:
-        "bg-gradient-to-br from-[#F59E0B] to-[#D97706] text-white shadow-[0_4px_12px_-3px_rgba(217,119,6,0.45)]",
-      borderLeftClass: "border-l-[#D97706]",
-      rowTintClass: "hover:border-[#FCD34D] hover:bg-[#FFFBEB]",
-      spotlightBgClass: "bg-gradient-to-br from-[#FFFBEB]/85 via-white to-[#EEF2FF]/45",
-      dotClass: "bg-[#D97706]",
-      Icon: Flag,
+      pillClass: "border border-[#FDE68A] bg-[#FEF3C7] text-[#92400E]",
+      accentBorderClass: "border-l-2 border-l-[#D97706]",
     };
   }
   return {
     label: "Low",
-    pillClass: "border-[#A5B4FC] bg-[#E0E7FF] text-[#3730A3]",
-    rankPillClass: "border-[#C7D2FE] bg-[#EEF2FF] text-[#4438E8]",
-    primaryRankClass:
-      "bg-gradient-to-br from-[#4438E8] to-[#6D28D9] text-white shadow-[0_4px_12px_-3px_rgba(68,56,232,0.45)]",
-    borderLeftClass: "border-l-[#4438E8]",
-    rowTintClass: "hover:border-[#A5B4FC] hover:bg-[#EEF2FF]/65",
-    spotlightBgClass: "bg-gradient-to-br from-[#EEF2FF]/80 via-white to-[#F5F3FF]/50",
-    dotClass: "bg-[#4438E8]",
-    Icon: CircleDot,
+    pillClass: "border border-[#C7D2FE] bg-[#EEF2FF] text-[#4438E8]",
+    accentBorderClass: "border-l-2 border-l-[#4438E8]",
   };
 }
 
-function usePriorityNavigation() {
+function useWorkspaceNavigation() {
   const inRouter = useInRouterContext();
   const navigate = useNavigate();
 
@@ -190,1419 +145,896 @@ function usePriorityNavigation() {
   };
 }
 
-export function TopPrioritiesSection({
-  data,
-  refreshing = false,
-}: TopPrioritiesSectionProps) {
-  const openRoute = usePriorityNavigation();
-  const prefersReducedMotion = useReducedMotion();
-  const cardRef = useRef<HTMLElement | null>(null);
+function formatSourceLabel(source: string): string {
+  return source.replaceAll("_", " ");
+}
 
-  const finding = data.priority_finding;
-  const secondary = useMemo(
-    () => (data.findings || []).filter((item) => item.id !== finding?.id),
-    [data.findings, finding?.id],
+function PriorityCardSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading top priorities"
+      className="space-y-4"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-2">
+          <div className="h-5 w-36 animate-pulse rounded-md bg-[#E7E9EF] motion-reduce:animate-none" />
+          <div className="h-3.5 w-64 animate-pulse rounded-md bg-[#EEF0F4] motion-reduce:animate-none" />
+        </div>
+        <div className="h-7 w-28 animate-pulse rounded-full bg-[#E7E9EF] motion-reduce:animate-none" />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {Array.from({ length: 3 }, (_, idx) => (
+          <div
+            key={idx}
+            className="h-[88px] animate-pulse rounded-xl border border-[#E7E9EF] bg-white p-4 motion-reduce:animate-none"
+          >
+            <div className="h-3 w-24 rounded bg-[#EEF0F4]" />
+            <div className="mt-2.5 h-6 w-10 rounded bg-[#E7E9EF]" />
+            <div className="mt-2 h-2.5 w-32 rounded bg-[#F1F3F7]" />
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-3">
+        {Array.from({ length: 2 }, (_, idx) => (
+          <div
+            key={idx}
+            className="grid animate-pulse rounded-xl border border-[#E7E9EF] bg-white motion-reduce:animate-none lg:grid-cols-[120px_minmax(0,1fr)_248px]"
+          >
+            <div className="p-5">
+              <div className="h-5 w-16 rounded-md bg-[#E7E9EF]" />
+            </div>
+            <div className="space-y-2.5 px-5 pb-5 lg:py-5">
+              <div className="h-4 w-56 rounded bg-[#E7E9EF]" />
+              <div className="h-3.5 w-full max-w-md rounded bg-[#EEF0F4]" />
+              <div className="h-3 w-48 rounded bg-[#F1F3F7]" />
+            </div>
+            <div className="border-t border-[#E7E9EF] p-5 lg:border-l lg:border-t-0">
+              <div className="h-3 w-16 rounded bg-[#EEF0F4]" />
+              <div className="mt-2.5 h-3.5 w-40 rounded bg-[#E7E9EF]" />
+              <div className="mt-4 h-4 w-28 rounded bg-[#E5E4FA]" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <span className="sr-only">Loading verified priority findings.</span>
+    </div>
   );
-  const allFindings = useMemo(
-    () => (finding ? [finding, ...secondary] : secondary),
-    [finding, secondary],
+}
+
+interface PriorityCardProps {
+  finding: Finding;
+  rank: number;
+  isPrimary: boolean;
+  onInvestigate: (route: string) => void;
+}
+
+function PriorityItemCard({ finding, rank, isPrimary, onInvestigate }: PriorityCardProps) {
+  const severity = getSeverityBadge(finding.severity);
+  const verified = isVerifiedFinding(finding);
+  const evidenceState = findingEvidenceAppState(finding);
+  const availableObservations = finding.evidence.observations.filter(
+    (obs) => obs.value !== null && obs.availability === "available",
   );
+  const refCount = finding.evidence.references.length;
+  const confidenceText = `${finding.confidence.classification.replaceAll("_", " ")} confidence`;
+  const updatedIso = finding.last_verified_at || finding.detected_at;
+  const periodLabel = `${finding.reporting_period.kind.replaceAll("_", " ")} · ${finding.reporting_period.timezone}`;
 
-  // Interactive priority-list triage state (local UI only — never mutates backend authority)
-  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
-  const [sortMode, setSortMode] = useState<QueueSortMode>("rank");
-  const [density, setDensity] = useState<QueueDensity>("comfortable");
-  const [customSecondaryIds, setCustomSecondaryIds] = useState<string[]>([]);
-  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
-  const [reviewedIds, setReviewedIds] = useState<Record<string, boolean>>({});
-  const [showTierGuide, setShowTierGuide] = useState(false);
-
-  const secondaryIdSignature = useMemo(
-    () => secondary.map((item) => item.id).join("|"),
-    [secondary],
-  );
-  useEffect(() => {
-    const incomingIds = secondary.map((item) => item.id);
-    setCustomSecondaryIds((prev) => {
-      if (prev.length === 0) return incomingIds;
-      const kept = prev.filter((id) => incomingIds.includes(id));
-      const added = incomingIds.filter((id) => !kept.includes(id));
-      return [...kept, ...added];
-    });
-  }, [secondaryIdSignature, secondary]);
-
-  const authoritativeRankById = useMemo(() => {
-    const map = new Map<string, number>();
-    if (finding) map.set(finding.id, 1);
-    secondary.forEach((item, index) => {
-      map.set(item.id, index + 2);
-    });
-    return map;
-  }, [finding, secondary]);
-
-  const severityCounts = useMemo(() => {
-    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
-    allFindings.forEach((item) => {
-      counts[item.severity] = (counts[item.severity] ?? 0) + 1;
-    });
-    return counts;
-  }, [allFindings]);
-
-  const orderedSecondary = useMemo(() => {
-    const byId = new Map(secondary.map((item) => [item.id, item]));
-    let list: Finding[];
-
-    if (sortMode === "custom" && customSecondaryIds.length > 0) {
-      list = customSecondaryIds
-        .map((id) => byId.get(id))
-        .filter((item): item is Finding => Boolean(item));
-    } else if (sortMode === "severity") {
-      list = [...secondary].sort(
-        (a, b) =>
-          (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9) ||
-          (authoritativeRankById.get(a.id) ?? 99) - (authoritativeRankById.get(b.id) ?? 99),
-      );
-    } else {
-      list = secondary;
-    }
-
-    if (severityFilter === "all") return list;
-    return list.filter((item) => item.severity === severityFilter);
-  }, [secondary, sortMode, customSecondaryIds, severityFilter, authoritativeRankById]);
-
-  const handleReorderSecondary = useCallback((reordered: Finding[]) => {
-    setSortMode("custom");
-    setCustomSecondaryIds((prev) => {
-      const reorderedIds = reordered.map((item) => item.id);
-      const hiddenIds = prev.filter((id) => !reorderedIds.includes(id));
-      return [...reorderedIds, ...hiddenIds];
-    });
-  }, []);
-
-  const moveSecondaryItem = useCallback(
-    (id: string, direction: -1 | 1) => {
-      const currentIds = orderedSecondary.map((item) => item.id);
-      const idx = currentIds.indexOf(id);
-      const target = idx + direction;
-      if (idx === -1 || target < 0 || target >= currentIds.length) return;
-      const nextVisible = [...currentIds];
-      const [moved] = nextVisible.splice(idx, 1);
-      nextVisible.splice(target, 0, moved);
-
-      setSortMode("custom");
-      setCustomSecondaryIds((prev) => {
-        const hiddenIds = prev.filter((itemId) => !nextVisible.includes(itemId));
-        return [...nextVisible, ...hiddenIds];
-      });
-    },
-    [orderedSecondary],
-  );
-
-  const toggleExpanded = useCallback((id: string) => {
-    setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
-  }, []);
-
-  const toggleReviewed = useCallback((id: string) => {
-    setReviewedIds((prev) => ({ ...prev, [id]: !prev[id] }));
-  }, []);
-
-  const eligibleCount = data.priority_selection.eligible_count;
-  const isCritical = Boolean(finding && ["critical", "high"].includes(finding.severity));
-  const verified = finding ? isVerifiedFinding(finding) : false;
-  const primarySeverityVisual = finding ? getSeverityVisual(finding.severity) : null;
-  const showPrimaryUnderFilter =
-    Boolean(finding) && (severityFilter === "all" || finding?.severity === severityFilter);
-
-  const availableResourceCount = (data.evidence?.resources || []).filter(
-    (item) => item.availability === "available",
-  ).length;
-  const reportingPeriodLabel =
-    data.reporting_period?.label ||
-    (typeof data.reporting_period?.days === "number"
-      ? `Last ${data.reporting_period.days} days`
-      : null);
-
-  const sectionState: CommandCenterAppState = refreshing
-    ? "updating"
-    : data.business_state.presentation_status === "failed"
-      ? "unavailable"
-      : data.business_state.stale
-        ? "stale"
-        : finding
-          ? findingEvidenceAppState(finding)
-          : "empty";
-
-  const statusText = refreshing
-    ? "Updating"
-    : eligibleCount > 0
-      ? `${eligibleCount} ${eligibleCount === 1 ? "eligible priority" : "eligible priorities"}`
-      : "No verified priorities";
-
-  const handlePointerMove = useCallback(
-    (event: MouseEvent<HTMLElement>) => {
-      if (prefersReducedMotion || !cardRef.current) return;
-      const rect = cardRef.current.getBoundingClientRect();
-      cardRef.current.style.setProperty("--priority-mx", `${event.clientX - rect.left}px`);
-      cardRef.current.style.setProperty("--priority-my", `${event.clientY - rect.top}px`);
-    },
-    [prefersReducedMotion],
-  );
-
-  const topRailGradient = isCritical
-    ? "from-[#E11D48] via-[#F97316] to-[#6366F1]"
-    : finding
-      ? "from-[#4438E8] via-[#7C3AED] to-[#06B6D4]"
-      : "from-[#4438E8] via-[#7C3AED] to-[#38BDF8]";
-
-  const filterOptions: Array<{
-    id: SeverityFilter;
-    label: string;
-    count: number;
-    dotClass?: string;
-  }> = [
-    { id: "all", label: "All", count: allFindings.length },
-    ...(severityCounts.critical > 0
-      ? [
-          {
-            id: "critical" as const,
-            label: "Critical",
-            count: severityCounts.critical,
-            dotClass: "bg-[#E11D48]",
-          },
-        ]
-      : []),
-    ...(severityCounts.high > 0
-      ? [
-          {
-            id: "high" as const,
-            label: "High",
-            count: severityCounts.high,
-            dotClass: "bg-[#DC2626]",
-          },
-        ]
-      : []),
-    ...(severityCounts.medium > 0
-      ? [
-          {
-            id: "medium" as const,
-            label: "Medium",
-            count: severityCounts.medium,
-            dotClass: "bg-[#D97706]",
-          },
-        ]
-      : []),
-    ...(severityCounts.low > 0
-      ? [
-          {
-            id: "low" as const,
-            label: "Low",
-            count: severityCounts.low,
-            dotClass: "bg-[#4438E8]",
-          },
-        ]
-      : []),
-  ];
-
-  const hasMultipleFindings = allFindings.length > 1;
-  const primaryReviewed = finding ? Boolean(reviewedIds[finding.id]) : false;
+  const handleCardClick = (event: MouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, a, summary, details, input")) return;
+    onInvestigate(finding.investigation.route);
+  };
 
   return (
-    <motion.section
-      ref={cardRef}
-      id="priority-finding"
-      aria-labelledby="priority-findings-heading"
-      onMouseMove={handlePointerMove}
-      initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.36, ease: EASE_OUT_EXPO }}
+    <article
+      onClick={handleCardClick}
       className={cn(
-        finding ? cc.intelligence : cc.surface,
-        "group/priority relative overflow-hidden scroll-mt-24 transition-colors duration-200",
-        isCritical
-          ? "border-[#FECDD3] shadow-[0_12px_32px_-16px_rgba(225,29,72,0.18)]"
-          : "border-[#C7D2FE] shadow-[0_12px_32px_-16px_rgba(68,56,232,0.16)]",
+        "group min-w-0 cursor-pointer overflow-hidden rounded-xl border border-[#E7E9EF] bg-white transition-colors hover:border-[#D4D8E4]",
+        severity.accentBorderClass,
       )}
     >
-      {/* Vibrant 3px Top Semantic Gradient Rail */}
-      <div
-        aria-hidden="true"
-        className={cn("h-[3px] w-full bg-gradient-to-r", topRailGradient)}
-      />
-
-      {/* Pointer-Tracking Luminous Aura */}
-      {!prefersReducedMotion && (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover/priority:opacity-100"
-          style={{
-            background: isCritical
-              ? "radial-gradient(560px circle at var(--priority-mx, 50%) var(--priority-my, 0%), rgba(225,29,72,0.075), transparent 65%)"
-              : "radial-gradient(560px circle at var(--priority-mx, 50%) var(--priority-my, 0%), rgba(68,56,232,0.085), transparent 65%)",
-          }}
-        />
-      )}
-
-      {/* Richly Tinted Editorial Header */}
-      <div
-        className={cn(
-          "relative flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6",
-          isCritical
-            ? "border-[#FFE4E6] bg-gradient-to-r from-[#FFF1F2] via-[#FFF7ED]/70 to-[#EEF2FF]/80"
-            : "border-[#E0E7FF] bg-gradient-to-r from-[#EEF2FF] via-[#F5F3FF] to-[#ECFEFF]/75",
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-3.5">
-          <div
-            aria-hidden="true"
+      <div className="grid min-w-0 lg:grid-cols-[124px_minmax(0,1fr)_256px]">
+        {/* Column 1: Compact Severity & Rank */}
+        <div className="flex flex-wrap items-center gap-2 px-5 pt-4 lg:flex-col lg:items-start lg:gap-2 lg:py-5 lg:pl-5 lg:pr-3">
+          <span
             className={cn(
-              "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white",
-              isCritical
-                ? "bg-gradient-to-br from-[#E11D48] to-[#B42318] shadow-[0_8px_18px_-4px_rgba(225,29,72,0.48)]"
-                : "bg-gradient-to-br from-[#4438E8] to-[#7C3AED] shadow-[0_8px_18px_-4px_rgba(68,56,232,0.48)]",
+              "inline-flex items-center rounded-md px-2.5 py-0.5 text-[11px] font-semibold leading-4 tracking-[0.01em]",
+              severity.pillClass,
             )}
           >
-            {isCritical ? (
-              <ShieldAlert className="h-5 w-5" />
-            ) : finding ? (
-              <Target className="h-5 w-5" />
+            {severity.label}
+          </span>
+          <span className="text-[11px] font-semibold tabular-nums text-[#707582]">
+            #{rank}
+          </span>
+          {isPrimary && (
+            <span className="inline-flex items-center rounded-md border border-[#E7E9EF] bg-[#F8F9FB] px-2 py-0.5 text-[11px] font-medium text-[#343844]">
+              {verified ? "Verified finding" : "Evidence-limited"}
+            </span>
+          )}
+        </div>
+
+        {/* Column 2: Title, Verified Observations, Explanation, Evidence & Provenance */}
+        <div className="min-w-0 px-5 pb-4 pt-2.5 lg:px-4 lg:py-5">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            {isPrimary ? (
+              <h3 className="text-[15px] font-semibold leading-snug tracking-[-0.01em] text-[#17191F]">
+                {finding.title}
+              </h3>
             ) : (
-              <Radar className="h-5 w-5" />
+              <h4 className="text-[14.5px] font-semibold leading-snug tracking-[-0.01em] text-[#17191F]">
+                {finding.title}
+              </h4>
+            )}
+            {(evidenceState === "stale" || evidenceState === "partial") && (
+              <StateBadge state={evidenceState} />
             )}
           </div>
+
+          {/* Verified observed figures (never invented revenue impact) */}
+          {availableObservations.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-[13px] leading-5">
+              {availableObservations.map((obs, idx) => (
+                <span key={`${obs.label}-${idx}`} className="inline-flex items-baseline gap-1">
+                  <span className="text-[#707582]">{obs.label}:</span>
+                  <span className="font-semibold tabular-nums text-[#17191F]">
+                    {observationText(obs)}
+                  </span>
+                  {idx < availableObservations.length - 1 && (
+                    <span className="ml-1.5 text-[#D1D5DB]" aria-hidden="true">
+                      ·
+                    </span>
+                  )}
+                </span>
+              ))}
+              <span className="text-[12px] text-[#707582]">({periodLabel})</span>
+            </div>
+          )}
+
+          {/* Concise factual description (rendered once) */}
+          <p className="mt-2 text-[13.5px] leading-6 text-[#4B5563]">
+            {finding.description}
+          </p>
+
+          {/* Deterministic tie statement, when present */}
+          {finding.priority.tie?.statement && (
+            <p className="mt-2 rounded-lg border border-[#E7E9EF] bg-[#F8F9FB] px-3 py-2 text-xs leading-5 text-[#4B5563]">
+              {finding.priority.tie.statement}
+            </p>
+          )}
+
+          {/* Compact evidence & context chips (Linear / Reference A style) */}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-[#E7E9EF] bg-[#F8F9FB] px-2.5 py-1 text-[#4B5563]">
+              <span className="font-medium text-[#17191F]">Evidence:</span>
+              <span className="tabular-nums">
+                {refCount > 0
+                  ? `${refCount} ${refCount === 1 ? "source" : "sources"}`
+                  : formatSourceLabel(finding.evidence.source)}
+              </span>
+            </span>
+
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-[#E7E9EF] bg-[#F8F9FB] px-2.5 py-1 text-[#4B5563]">
+              <span>{confidenceText}</span>
+            </span>
+
+            {updatedIso && (
+              <span
+                className="inline-flex items-center gap-1 text-[12px] text-[#707582]"
+                title={dateTime(updatedIso)}
+              >
+                <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
+                <span>Updated {relativeTime(updatedIso)}</span>
+              </span>
+            )}
+          </div>
+
+          {/* Primary finding epistemic separation: Priority vs. Confidence vs. Limitations */}
+          {isPrimary && (
+            <div className="mt-4 grid gap-3 rounded-xl border border-[#E7E9EF] bg-[#F8F9FB] p-3.5 sm:grid-cols-3">
+              <div className="min-w-0">
+                <h4 className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[#17191F]">
+                  Why this is the priority
+                </h4>
+                <ul className="mt-1.5 space-y-1 text-xs leading-5 text-[#4B5563]">
+                  {(finding.priority.rationale.length > 0
+                    ? finding.priority.rationale
+                    : ["Ranked by verified severity, freshness, and coverage."]
+                  ).map((item, idx) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="min-w-0">
+                <h4 className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[#17191F]">
+                  Confidence
+                </h4>
+                <ul className="mt-1.5 space-y-1 text-xs leading-5 text-[#4B5563]">
+                  {(finding.confidence.rationale.length > 0
+                    ? finding.confidence.rationale
+                    : [confidenceText]
+                  ).map((item, idx) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="min-w-0">
+                <h4 className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[#17191F]">
+                  Limits of this conclusion
+                </h4>
+                <ul className="mt-1.5 space-y-1 text-xs leading-5 text-[#4B5563]">
+                  {(finding.limitations.length > 0
+                    ? finding.limitations
+                    : ["No additional evidence limitations recorded."]
+                  ).map((item, idx) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* Keyboard-native progressive disclosure for provenance, lifecycle & unknowns */}
+          <details className="mt-3">
+            <summary className={cn(cc.disclosure, "inline-flex items-center gap-1 select-none")}>
+              Inspect evidence, provenance and uncertainty
+            </summary>
+            <div className="mt-2.5 space-y-2.5 rounded-xl border border-[#E7E9EF] bg-[#FAFBFD] p-3.5 text-xs leading-5 text-[#4B5563]">
+              <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+                <div>
+                  <dt className="font-medium text-[#707582]">Finding ID</dt>
+                  <dd className="mt-0.5 font-mono text-[11px] text-[#17191F] break-all">
+                    {finding.id}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-[#707582]">Ranking method</dt>
+                  <dd className="mt-0.5 font-mono text-[11px] text-[#17191F]">
+                    {finding.priority.method_version}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-[#707582]">Coverage run</dt>
+                  <dd className="mt-0.5 text-[#17191F]">
+                    {finding.coverage.run_id || "Not recorded"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-[#707582]">Lifecycle validity</dt>
+                  <dd className="mt-0.5 text-[#17191F]">
+                    {finding.lifecycle.current_validity.replaceAll("_", " ")}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-[#707582]">Detected</dt>
+                  <dd className="mt-0.5 tabular-nums text-[#17191F]">
+                    {dateTime(finding.detected_at)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-[#707582]">Last verified</dt>
+                  <dd className="mt-0.5 tabular-nums text-[#17191F]">
+                    {dateTime(finding.last_verified_at)}
+                  </dd>
+                </div>
+              </dl>
+
+              {!isPrimary && finding.limitations.length > 0 && (
+                <div>
+                  <p className="font-medium text-[#17191F]">Limitations</p>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    {finding.limitations.map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {finding.unknowns.length > 0 && (
+                <div>
+                  <p className="font-medium text-[#17191F]">Unknowns</p>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    {finding.unknowns.map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {finding.evidence.references.length > 0 && (
+                <div>
+                  <p className="font-medium text-[#17191F]">Evidence references</p>
+                  <ul className="mt-1 space-y-0.5">
+                    {finding.evidence.references.map((ref) => (
+                      <li key={ref.id} className="font-mono text-[11px] text-[#4B5563]">
+                        {ref.source_type}: {ref.source_record_id}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {finding.evidence.duplicate_finding_ids.length > 0 && (
+                <p className="text-[11px] text-[#707582]">
+                  Deduplicated records retained: {finding.evidence.duplicate_finding_ids.join(", ")}
+                </p>
+              )}
+            </div>
+          </details>
+        </div>
+
+        {/* Column 3: Next Step & Functional Rev Intelligence Action */}
+        <div className="flex flex-col justify-between gap-4 border-t border-[#E7E9EF] bg-[#FAFBFD] px-5 py-4 lg:border-l lg:border-t-0 lg:px-5 lg:py-5">
+          <div className="min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-[#707582]">Next step</span>
+              <ChevronRight
+                className="h-3.5 w-3.5 shrink-0 text-[#9CA3AF] transition-transform group-hover:translate-x-0.5"
+                aria-hidden="true"
+              />
+            </div>
+
+            {finding.recommendation.available && finding.recommendation.step ? (
+              <div className="mt-2 space-y-1.5">
+                <p className="text-[13px] font-medium leading-5 text-[#17191F]">
+                  {finding.recommendation.step}
+                </p>
+                {finding.recommendation.expected_result && (
+                  <p className="text-xs leading-5 text-[#4B5563]">
+                    {finding.recommendation.expected_result}
+                  </p>
+                )}
+                <p className="pt-0.5 text-[11px] leading-4 text-[#707582]">
+                  Read-only merchant action, not executed by Revluma.
+                </p>
+              </div>
+            ) : finding.recommendation.prerequisites.length > 0 ? (
+              <ul className="mt-2 space-y-1.5 text-xs leading-5 text-[#4B5563]">
+                {finding.recommendation.prerequisites.map((prereq, idx) => (
+                  <li key={idx}>{prereq}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs leading-5 text-[#707582]">
+                Review this signal in Rev Intelligence with its underlying records.
+              </p>
+            )}
+          </div>
+
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => onInvestigate(finding.investigation.route)}
+              className={cn(
+                "inline-flex min-h-10 items-center gap-1.5 rounded-lg text-xs font-semibold text-[#4438E8] transition-colors hover:text-[#372CD1]",
+                cc.focus,
+              )}
+            >
+              <span>
+                {isPrimary
+                  ? "Investigate in Rev Intelligence"
+                  : finding.next_step?.label &&
+                      finding.next_step.label !== "Investigate with Rev"
+                    ? finding.next_step.label
+                    : "View investigation"}
+              </span>
+              <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export function TopPrioritiesSection({
+  data,
+  loading = false,
+  refreshing = false,
+  error = null,
+  onRetry,
+}: TopPrioritiesSectionProps) {
+  const openRoute = useWorkspaceNavigation();
+  const [activeTier, setActiveTier] = useState<SeverityTier>("all");
+
+  const primary = data?.priority_finding ?? null;
+  const secondaryFindings = useMemo(
+    () => (data ? data.findings.filter((item) => item.id !== primary?.id) : []),
+    [data, primary?.id],
+  );
+  const allEligibleFindings = useMemo(
+    () => (primary ? [primary, ...secondaryFindings] : secondaryFindings),
+    [primary, secondaryFindings],
+  );
+
+  const severityCounts = useMemo(() => {
+    const counts = { criticalHigh: 0, medium: 0, low: 0 };
+    for (const item of allEligibleFindings) {
+      if (item.severity === "critical" || item.severity === "high") counts.criticalHigh += 1;
+      else if (item.severity === "medium") counts.medium += 1;
+      else counts.low += 1;
+    }
+    return counts;
+  }, [allEligibleFindings]);
+
+  const effectiveTier = allEligibleFindings.length === 0 ? "all" : activeTier;
+  const visiblePrimary =
+    primary && matchesSeverityTier(primary.severity, effectiveTier) ? primary : null;
+  const visibleSecondary = useMemo(
+    () => secondaryFindings.filter((item) => matchesSeverityTier(item.severity, effectiveTier)),
+    [secondaryFindings, effectiveTier],
+  );
+
+  // Loading state (never flashes empty state)
+  if (loading && !data) {
+    return (
+      <section
+        id="priority-finding"
+        aria-labelledby="priority-findings-heading"
+        className="min-w-0"
+      >
+        <h2 id="priority-findings-heading" className="sr-only">
+          Top priorities
+        </h2>
+        <PriorityCardSkeleton />
+      </section>
+    );
+  }
+
+  // Standalone error state with functional Retry
+  if (error && !data) {
+    return (
+      <section
+        id="priority-finding"
+        aria-labelledby="priority-findings-heading"
+        className="min-w-0 space-y-4"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <Target className="mt-0.5 h-5 w-5 shrink-0 text-[#4438E8]" aria-hidden="true" />
+            <div>
+              <h2
+                id="priority-findings-heading"
+                className="text-[1.125rem] font-semibold leading-6 tracking-[-0.015em] text-[#17191F]"
+              >
+                Top priorities
+              </h2>
+              <p className="mt-0.5 text-[13px] leading-5 text-[#707582]">
+                The most important issues identified across your store.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div
+          role="alert"
+          className="flex flex-col gap-3 rounded-xl border border-[#FECACA] bg-white p-5 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B42318]">
+              <AlertCircle className="h-4 w-4" aria-hidden="true" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[#17191F]">
+                Unable to load verified priorities
+              </p>
+              <p className="mt-0.5 text-xs leading-5 text-[#707582]">{error}</p>
+            </div>
+          </div>
+          {onRetry && (
+            <button type="button" onClick={onRetry} className={cc.secondary}>
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Retry</span>
+            </button>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  if (!data) return null;
+
+  const eligibleCount = allEligibleFindings.length;
+  const activeCountLabel = `${eligibleCount} active ${eligibleCount === 1 ? "finding" : "findings"}`;
+
+  const resources = data.evidence?.resources ?? [];
+  const monitoredSourceCount = resources.length;
+  const limitedSourceCount = resources.filter((resource) =>
+    ["stale", "partial", "unauthorized", "not_synchronized", "retrieval_failed"].includes(
+      resource.availability,
+    ),
+  ).length;
+  const isStale =
+    data.business_state.stale ||
+    data.business_state.presentation_status === "stale" ||
+    allEligibleFindings.some((item) => item.evidence_freshness.state === "stale");
+  const isPartialCoverage =
+    data.business_state.presentation_status === "partial" || limitedSourceCount > 0;
+
+  const lastUpdatedIso =
+    data.evidence?.last_successful_sync_at ||
+    data.evidence?.snapshot_generated_at ||
+    data.retrieved_at ||
+    null;
+
+  const revExploreRoute = data.briefing?.next_investigation?.route || "/dashboard/rev-intell";
+
+  const summaryTiers = [
+    {
+      id: "critical_high" as const,
+      label: "Critical & High",
+      count: severityCounts.criticalHigh,
+      note: "requires immediate attention",
+      cardClass: "border-[#F3DCE0] bg-[#FFFBFB]",
+      activeRingClass: "ring-2 ring-[#B42318]/25 border-[#DC2626]",
+      barClass: "bg-[#DC2626]",
+      iconWrapClass: "bg-[#FEE2E2]/80 text-[#B42318]",
+      Icon: AlertCircle,
+    },
+    {
+      id: "medium" as const,
+      label: "Medium",
+      count: severityCounts.medium,
+      note: "should be reviewed soon",
+      cardClass: "border-[#F3E5C2] bg-[#FFFDF7]",
+      activeRingClass: "ring-2 ring-[#D97706]/25 border-[#D97706]",
+      barClass: "bg-[#D97706]",
+      iconWrapClass: "bg-[#FEF3C7]/90 text-[#92400E]",
+      Icon: AlertTriangle,
+    },
+    {
+      id: "low" as const,
+      label: "Low & Watch",
+      count: severityCounts.low,
+      note: "early signal to monitor",
+      cardClass: "border-[#E2E4F8] bg-[#FAF9FF]",
+      activeRingClass: "ring-2 ring-[#4438E8]/20 border-[#4438E8]",
+      barClass: "bg-[#4438E8]",
+      iconWrapClass: "bg-[#EEF2FF] text-[#4438E8]",
+      Icon: Eye,
+    },
+  ];
+
+  const toggleTier = (tier: Exclude<SeverityTier, "all">) => {
+    setActiveTier((current) => (current === tier ? "all" : tier));
+  };
+
+  return (
+    <section
+      id="priority-finding"
+      aria-labelledby="priority-findings-heading"
+      className="min-w-0 space-y-4"
+    >
+      {/* A. Clean, compact section header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <Target className="mt-0.5 h-5 w-5 shrink-0 text-[#4438E8]" aria-hidden="true" />
           <div className="min-w-0">
             <h2
               id="priority-findings-heading"
-              className="text-base font-semibold tracking-[-0.02em] text-[#1E1B4B]"
+              className="text-[1.125rem] font-semibold leading-6 tracking-[-0.015em] text-[#17191F]"
             >
               Top priorities
             </h2>
-            <p className="mt-0.5 text-[13px] leading-5 text-[#4B5565]">
+            <p className="mt-0.5 text-[13px] leading-5 text-[#707582]">
               The most important issues identified across your store.
             </p>
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <StateBadge state={sectionState} label={statusText} />
+        <div className="flex flex-wrap items-center gap-2">
+          {refreshing && <StateBadge state="updating" />}
+          {isStale && <StateBadge state="stale" />}
+          {!isStale && isPartialCoverage && (
+            <span className="inline-flex items-center rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2.5 py-0.5 text-[11px] font-medium text-[#92400E]">
+              Limited evidence
+            </span>
+          )}
+          <span className="inline-flex items-center rounded-full border border-[#E7E9EF] bg-white px-3 py-1 text-xs font-medium tabular-nums text-[#17191F]">
+            {activeCountLabel}
+          </span>
         </div>
       </div>
 
-      {/* Vibrant Triage Toolbar (Filter by Priority, Sort, Compact/Cards View) */}
-      {hasMultipleFindings && (
-        <div
-          role="toolbar"
-          aria-label="Priority list filters and sorting"
-          className="relative flex flex-col gap-2.5 border-b border-[#E0E7FF] bg-gradient-to-r from-[#F4F6FF] via-[#F7F5FF] to-[#F4F6FF] px-5 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-6"
-        >
-          {/* Priority Level Filter Pills */}
-          <div
-            className="flex flex-wrap items-center gap-1.5"
-            role="group"
-            aria-label="Filter by priority level"
-          >
-            {filterOptions.map((option) => {
-              const active = severityFilter === option.id;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setSeverityFilter(option.id)}
-                  className={cn(
-                    "relative inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8] focus-visible:ring-offset-1",
-                    active
-                      ? "text-white"
-                      : "border border-[#DDE2F4] bg-white/90 text-[#374151] hover:border-[#A5B4FC] hover:bg-[#EEF2FF] hover:text-[#3730A3]",
-                  )}
-                >
-                  {active && (
-                    <motion.span
-                      layoutId={prefersReducedMotion ? undefined : "priority-filter-active-pill"}
-                      transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
-                      aria-hidden="true"
-                      className="absolute inset-0 rounded-full bg-gradient-to-r from-[#4438E8] to-[#6366F1] shadow-[0_4px_12px_-3px_rgba(68,56,232,0.5)]"
-                    />
-                  )}
-                  <span className="relative inline-flex items-center gap-1.5">
-                    {option.dotClass && (
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          active ? "bg-white" : option.dotClass,
-                        )}
-                      />
+      {/* B. Compact severity summary row (preserves existing classifications) */}
+      <div className="grid gap-3 sm:grid-cols-3" role="group" aria-label="Priority counts by severity">
+        {summaryTiers.map((tier) => {
+          const Icon = tier.Icon;
+          const isSelected = effectiveTier === tier.id;
+          const canFilter = eligibleCount > 0;
+          const cardContent = (
+            <div className="flex min-w-0 items-stretch gap-3">
+              <span
+                className={cn("w-1 shrink-0 rounded-full", tier.barClass)}
+                aria-hidden="true"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-[#4B5563]">{tier.label}</span>
+                  <span
+                    className={cn(
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
+                      tier.iconWrapClass,
                     )}
-                    <span>{option.label}</span>
-                    <span
-                      className={cn(
-                        "rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums",
-                        active
-                          ? "bg-white/20 text-white"
-                          : "bg-[#EEF2FF] text-[#4438E8]",
-                      )}
-                    >
-                      {option.count}
-                    </span>
+                    aria-hidden="true"
+                  >
+                    <Icon className="h-3.5 w-3.5" />
                   </span>
-                </button>
-              );
-            })}
-          </div>
+                </div>
+                <p className="mt-1 text-[1.375rem] font-semibold leading-7 tracking-[-0.02em] tabular-nums text-[#17191F]">
+                  {tier.count}
+                </p>
+                <p className="mt-0.5 text-[11px] leading-4 text-[#707582]">{tier.note}</p>
+              </div>
+            </div>
+          );
 
-          {/* Sort & Density Quick Controls */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          if (canFilter) {
+            return (
+              <button
+                key={tier.id}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => toggleTier(tier.id)}
+                className={cn(
+                  "min-w-0 rounded-xl border px-3.5 py-3 text-left transition-colors hover:border-[#D4D8E4]",
+                  tier.cardClass,
+                  isSelected && tier.activeRingClass,
+                  cc.focus,
+                )}
+              >
+                {cardContent}
+              </button>
+            );
+          }
+
+          return (
+            <div
+              key={tier.id}
+              className={cn("min-w-0 rounded-xl border px-3.5 py-3", tier.cardClass)}
+            >
+              {cardContent}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Inline error notice when background refresh failed alongside cached data */}
+      {error && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-2.5 text-xs text-[#991B1B]"
+        >
+          <span>{error}</span>
+          {onRetry && (
             <button
               type="button"
-              onClick={() =>
-                setSortMode((prev) => (prev === "severity" ? "rank" : "severity"))
-              }
-              aria-label={`Sort secondary priorities. Currently sorted by ${sortMode}`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1 text-xs font-semibold text-[#3730A3] transition-colors hover:border-[#818CF8] hover:bg-[#EEF2FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8]"
+              onClick={onRetry}
+              className="font-semibold text-[#B42318] underline underline-offset-2 hover:text-[#7F1D1D]"
             >
-              <ArrowDownUp className="h-3.5 w-3.5 text-[#4438E8]" aria-hidden="true" />
-              <span>
-                {sortMode === "severity"
-                  ? "Sorted: Severity"
-                  : sortMode === "custom"
-                    ? "Sorted: Custom"
-                    : "Sorted: Rank"}
-              </span>
+              Retry
             </button>
-
-            {sortMode === "custom" && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSortMode("rank");
-                  setCustomSecondaryIds(secondary.map((item) => item.id));
-                }}
-                className="inline-flex items-center gap-1 rounded-lg border border-[#A5B4FC] bg-[#EEF2FF] px-2.5 py-1 text-xs font-semibold text-[#4438E8] transition-colors hover:bg-[#4438E8] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8]"
-              >
-                <RotateCcw className="h-3 w-3" aria-hidden="true" />
-                <span>Reset order</span>
-              </button>
-            )}
-
-            <div
-              className="inline-flex items-center rounded-lg border border-[#C7D2FE] bg-white p-0.5"
-              role="group"
-              aria-label="Queue row density"
-            >
-              <button
-                type="button"
-                aria-pressed={density === "comfortable"}
-                aria-label="Comfortable card rows"
-                onClick={() => setDensity("comfortable")}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8]",
-                  density === "comfortable"
-                    ? "bg-[#4438E8] text-white"
-                    : "text-[#525866] hover:text-[#3730A3]",
-                )}
-              >
-                <LayoutList className="h-3 w-3" aria-hidden="true" />
-                <span className="hidden sm:inline">Cards</span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={density === "compact"}
-                aria-label="Compact single-line rows"
-                onClick={() => setDensity("compact")}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8]",
-                  density === "compact"
-                    ? "bg-[#4438E8] text-white"
-                    : "text-[#525866] hover:text-[#3730A3]",
-                )}
-              >
-                <Rows3 className="h-3 w-3" aria-hidden="true" />
-                <span className="hidden sm:inline">Compact</span>
-              </button>
-            </div>
-          </div>
+          )}
         </div>
       )}
 
-      {/* Tier 1: Richly Colored #1 Priority Spotlight */}
-      {finding ? (
-        showPrimaryUnderFilter ? (
-          <article
-            aria-labelledby="current-priority-title"
-            className={cn(
-              "relative border-l-[4px] px-5 py-5 transition-opacity duration-200 sm:px-6 sm:py-6",
-              isCritical ? "border-l-[#B42318]" : "border-l-[#4438E8]",
-              primarySeverityVisual?.spotlightBgClass,
-              primaryReviewed && "opacity-90",
-            )}
+      {/* Stale data notice — never present outdated findings as freshly verified */}
+      {isStale && (
+        <div
+          role="status"
+          className="flex items-start gap-2.5 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-2.5 text-xs leading-5 text-[#92400E]"
+        >
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>
+            Underlying store data is stale. Findings reflect the last synchronized state rather
+            than live current performance.
+          </span>
+        </div>
+      )}
+
+      {/* Active severity filter pill */}
+      {effectiveTier !== "all" && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#E7E9EF] bg-white px-4 py-2 text-xs text-[#4B5563]">
+          <span>
+            Showing{" "}
+            <strong className="font-semibold text-[#17191F]">
+              {summaryTiers.find((t) => t.id === effectiveTier)?.label}
+            </strong>{" "}
+            priorities.
+          </span>
+          <button
+            type="button"
+            onClick={() => setActiveTier("all")}
+            className={cn("font-semibold text-[#4438E8] hover:text-[#372CD1]", cc.focus)}
           >
-            {/* Priority Signal Strip */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
-                <button
-                  type="button"
-                  aria-pressed={primaryReviewed}
-                  aria-label={
-                    primaryReviewed
-                      ? `Unmark ${finding.title} as reviewed`
-                      : `Mark ${finding.title} as reviewed`
-                  }
-                  onClick={() => toggleReviewed(finding.id)}
-                  className={cn(
-                    "inline-flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8] focus-visible:ring-offset-1",
-                    primaryReviewed
-                      ? "border-[#059669] bg-[#059669] text-white"
-                      : "border-[#A5B4FC] bg-white text-transparent hover:border-[#4438E8]",
-                  )}
-                >
-                  <Check className="h-3 w-3" strokeWidth={3} aria-hidden="true" />
-                </button>
+            Show all priorities
+          </button>
+        </div>
+      )}
 
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-md px-2 py-0.5 font-bold tracking-tight tabular-nums",
-                    primarySeverityVisual?.primaryRankClass,
-                  )}
-                >
-                  #1
-                </span>
+      {/* C. Populated State — Ranked verified priorities */}
+      {eligibleCount > 0 ? (
+        <div className="space-y-4">
+          {visiblePrimary && (
+            <PriorityItemCard
+              finding={visiblePrimary}
+              rank={1}
+              isPrimary
+              onInvestigate={openRoute}
+            />
+          )}
 
-                {primarySeverityVisual && (
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-semibold capitalize",
-                      primarySeverityVisual.pillClass,
-                    )}
-                  >
-                    {isCritical && !prefersReducedMotion ? (
-                      <span className="relative flex h-2 w-2" aria-hidden="true">
-                        <motion.span
-                          className="absolute inline-flex h-full w-full rounded-full bg-[#E11D48] opacity-60"
-                          animate={{ scale: [1, 1.9, 1], opacity: [0.65, 0, 0.65] }}
-                          transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
-                        />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-[#E11D48]" />
-                      </span>
-                    ) : (
-                      <primarySeverityVisual.Icon
-                        className="h-3 w-3 shrink-0"
-                        aria-hidden="true"
-                      />
-                    )}
-                    <span>{finding.priority.classification} priority</span>
-                  </span>
-                )}
-
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5",
-                    verified
-                      ? "border-[#6EE7B7] bg-[#D1FAE5] text-[#065F46]"
-                      : "border-[#FCD34D] bg-[#FEF3C7] text-[#92400E]",
-                  )}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full",
-                      verified ? "bg-[#059669]" : "bg-[#D97706]",
-                    )}
-                  />
-                  <span>{verified ? "Verified finding" : "Hypothesis"}</span>
-                </span>
-
-                <span className="inline-flex items-center rounded-full border border-[#C7D2FE] bg-[#EEF2FF] px-2.5 py-0.5 text-[#3730A3]">
-                  {finding.confidence.classification.replaceAll("_", " ")} confidence
-                </span>
-
-                <span className="inline-flex items-center rounded-full border border-[#CBD5E1] bg-white/90 px-2.5 py-0.5 text-[#334155]">
-                  {finding.evidence_freshness.state} evidence · {finding.coverage.state} coverage
+          {visibleSecondary.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[#707582]">
+                  Other eligible findings
+                </h3>
+                <span className="text-xs tabular-nums text-[#707582]">
+                  {visibleSecondary.length}{" "}
+                  {visibleSecondary.length === 1 ? "item" : "items"}
                 </span>
               </div>
 
-              {primaryReviewed && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-[#6EE7B7] bg-[#D1FAE5] px-2.5 py-0.5 text-[11px] font-semibold text-[#065F46]">
-                  <Check className="h-3 w-3" aria-hidden="true" />
-                  <span>Reviewed</span>
-                </span>
-              )}
+              <ol
+                aria-label="Other eligible priority findings"
+                className="space-y-3"
+              >
+                {visibleSecondary.map((finding, idx) => (
+                  <li key={finding.id} className="min-w-0">
+                    <PriorityItemCard
+                      finding={finding}
+                      rank={idx + 2}
+                      isPrimary={false}
+                      onInvestigate={openRoute}
+                    />
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {!visiblePrimary && visibleSecondary.length === 0 && (
+            <div className="rounded-xl border border-[#E7E9EF] bg-white p-6 text-center">
+              <p className="text-sm font-medium text-[#17191F]">
+                No findings in this severity category.
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTier("all")}
+                className={cn(
+                  "mt-3 inline-flex min-h-10 items-center justify-center rounded-lg border border-[#D9DCE5] bg-white px-3.5 text-xs font-semibold text-[#17191F] hover:bg-[#F4F5F8]",
+                  cc.focus,
+                )}
+              >
+                Show all priorities
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* D. Empty State — Clean, intentional, non-celebratory */
+        <div className="rounded-2xl border border-[#E7E9EF] bg-white px-5 py-8 sm:px-10 sm:py-10">
+          <div className="mx-auto max-w-[560px]">
+            <div
+              className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#ECFDF3] text-[#15803D]"
+              aria-hidden="true"
+            >
+              <ShieldCheck className="h-5 w-5" />
             </div>
 
-            {/* 1. Primary Title & Summary */}
-            <h3
-              id="current-priority-title"
-              className={cn(
-                "mt-3.5 text-lg font-semibold leading-snug tracking-[-0.025em] text-[#1E1B4B] sm:text-[1.35rem]",
-                primaryReviewed && "text-[#525866]",
-              )}
-            >
-              {finding.title}
+            <h3 className="mt-4 text-center text-[17px] font-semibold leading-snug tracking-[-0.015em] text-[#17191F]">
+              No verified priorities right now
             </h3>
-            <p className="mt-1.5 max-w-3xl text-sm leading-6 text-[#374151]">
-              {finding.description}
+
+            <p className="mt-2 text-center text-[13.5px] leading-6 text-[#707582]">
+              No findings currently meet the evidence threshold. This doesn&apos;t mean there are
+              no business problems. Further investigation may uncover issues.
             </p>
 
-            {/* 2. Color-Differentiated Bento Rationale & Observations Grid */}
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.06fr)_minmax(0,0.94fr)]">
-              <div className="space-y-3">
-                {/* Indigo Rationale Card */}
-                <div className="rounded-xl border border-[#C7D2FE] bg-gradient-to-br from-[#EEF2FF]/90 to-[#F5F3FF]/60 p-4">
-                  <div className="flex items-center gap-2">
-                    <span
-                      aria-hidden="true"
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[#4438E8] text-white"
-                    >
-                      <Target className="h-3.5 w-3.5" />
-                    </span>
-                    <h4 className="text-[13px] font-semibold text-[#1E1B4B]">
-                      Why this is the priority
-                    </h4>
-                  </div>
-                  <ul className="mt-2.5 space-y-1.5 text-xs leading-5">
-                    {finding.priority.rationale.map((reason) => (
-                      <li key={reason} className="flex gap-2">
-                        <span
-                          aria-hidden="true"
-                          className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#4438E8]"
-                        />
-                        <span className="text-[#312E81]">{reason}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* Emerald Confidence Card */}
-                <div className="rounded-xl border border-[#A7F3D0] bg-gradient-to-br from-[#ECFDF5]/95 to-[#F0FDF4]/60 p-4">
-                  <div className="flex items-center gap-2">
-                    <span
-                      aria-hidden="true"
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[#059669] text-white"
-                    >
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                    </span>
-                    <h4 className="text-[13px] font-semibold text-[#064E3B]">Confidence</h4>
-                  </div>
-                  <ul className="mt-2.5 space-y-1.5 text-xs leading-5">
-                    {finding.confidence.rationale.map((reason) => (
-                      <li key={reason} className="flex gap-2">
-                        <span
-                          aria-hidden="true"
-                          className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#059669]"
-                        />
-                        <span className="text-[#065F46]">{reason}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {finding.priority.tie && (
-                    <p className="mt-2.5 rounded-lg border border-[#A7F3D0] bg-white/85 px-3 py-2 text-xs leading-5 text-[#065F46]">
-                      {finding.priority.tie.statement}
-                    </p>
-                  )}
-                </div>
-
-                {/* Warm Amber Limitations Card */}
-                {finding.limitations.length > 0 && (
-                  <div className="rounded-xl border border-[#FCD34D]/80 bg-gradient-to-br from-[#FFFBEB] to-[#FEF3C7]/55 p-4">
-                    <div className="flex items-center gap-2">
-                      <span
-                        aria-hidden="true"
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[#D97706] text-white"
-                      >
-                        <AlertCircle className="h-3.5 w-3.5" />
-                      </span>
-                      <h4 className="text-[13px] font-semibold text-[#78350F]">
-                        Limits of this conclusion
-                      </h4>
-                    </div>
-                    <ul className="mt-2.5 space-y-1.5 text-xs leading-5">
-                      {finding.limitations.map((limit) => (
-                        <li key={limit} className="flex gap-2">
-                          <span
-                            aria-hidden="true"
-                            className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#D97706]"
-                          />
-                          <span className="text-[#92400E]">{limit}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-
-              {/* Luminous Cobalt-Indigo Supporting Observations Deck */}
-              <div className="flex flex-col justify-between rounded-xl border border-[#C7D2FE] bg-gradient-to-b from-[#EEF2FF]/90 via-[#F5F7FF] to-[#E0E7FF]/45 p-4">
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="text-[13px] font-semibold text-[#1E1B4B]">
-                      Supporting observations
-                    </h4>
-                    <span className="rounded-full border border-[#C7D2FE] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#4438E8]">
-                      {finding.reporting_period.timezone}
-                    </span>
-                  </div>
-                  <dl className="mt-3 grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2">
-                    {finding.evidence.observations.map((item, idx) => (
-                      <motion.div
-                        key={`${item.period}-${item.label}`}
-                        initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{
-                          duration: 0.28,
-                          delay: prefersReducedMotion ? 0 : idx * 0.045,
-                          ease: EASE_OUT_EXPO,
-                        }}
-                        whileHover={prefersReducedMotion ? undefined : { y: -2 }}
-                        className="relative min-w-0 overflow-hidden rounded-xl border border-[#D8DDF8] bg-white px-3.5 py-3 shadow-[0_2px_10px_-4px_rgba(68,56,232,0.12)] transition-colors duration-150 hover:border-[#818CF8]"
-                      >
-                        <div
-                          aria-hidden="true"
-                          className={cn(
-                            "absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r",
-                            isCritical
-                              ? "from-[#E11D48]/80 to-[#F97316]/60"
-                              : "from-[#4438E8]/80 to-[#7C3AED]/60",
-                          )}
-                        />
-                        <dt className="text-[11px] font-semibold text-[#4F46E5]">
-                          {item.label}
-                        </dt>
-                        <dd className="mt-1.5 break-words text-[1.0625rem] font-bold tracking-[-0.02em] text-[#1E1B4B] tabular-nums">
-                          {observationText(item)}
-                        </dd>
-                      </motion.div>
-                    ))}
-                  </dl>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-[#C7D2FE]/70 pt-3 text-[11px] font-medium text-[#4338CA] tabular-nums">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Calendar className="h-3 w-3 shrink-0 text-[#6366F1]" aria-hidden="true" />
-                    <span>
-                      {finding.reporting_period.kind.replaceAll("_", " ")} ·{" "}
-                      {finding.reporting_period.timezone}
-                    </span>
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Clock className="h-3 w-3 shrink-0 text-[#6366F1]" aria-hidden="true" />
-                    <span>Last verified {dateTime(finding.last_verified_at)}</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. Vibrant Indigo-Violet Recommended Next Step Callout */}
-            <div className="mt-5 rounded-xl border border-[#A5B4FC] border-l-[4px] border-l-[#4438E8] bg-gradient-to-r from-[#EEF2FF] via-[#F3E8FF]/70 to-[#E0E7FF]/80 p-4 sm:p-5">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <span
-                  aria-hidden="true"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#4438E8] to-[#7C3AED] text-white shadow-[0_4px_12px_-3px_rgba(68,56,232,0.5)]"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                </span>
-                <h4 className="text-[13px] font-semibold text-[#1E1B4B]">
-                  Recommended next step{" "}
-                  <span className="font-normal text-[#4338CA]">
-                    · merchant action, not executed by Revluma
-                  </span>
-                </h4>
-              </div>
-              {finding.recommendation.available ? (
-                <div className="mt-2.5 space-y-2.5">
-                  <p className="text-sm font-medium leading-6 text-[#1E1B4B]">
-                    {finding.recommendation.step}
-                  </p>
-                  {(finding.recommendation.rationale ||
-                    finding.recommendation.expected_result) && (
-                    <div className="grid gap-2.5 pt-0.5 sm:grid-cols-2">
-                      {finding.recommendation.rationale && (
-                        <p className="rounded-lg border border-[#C7D2FE] bg-white/85 px-3 py-2 text-xs leading-5 text-[#374151]">
-                          <span className="font-semibold text-[#3730A3]">Why it matters: </span>
-                          {finding.recommendation.rationale}
-                        </p>
-                      )}
-                      {finding.recommendation.expected_result && (
-                        <p className="rounded-lg border border-[#C7D2FE] bg-white/85 px-3 py-2 text-xs leading-5 text-[#374151]">
-                          <span className="font-semibold text-[#3730A3]">Look for: </span>
-                          {finding.recommendation.expected_result}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className={cn("mt-2", cc.metadata)}>
-                  {finding.recommendation.prerequisites.join(" ")}
+            {/* Informational callout */}
+            <div className="mt-6 flex items-start gap-3 rounded-xl border border-[#E7E9EF] bg-[#F8F9FC] p-4">
+              <Info
+                className="mt-0.5 h-4 w-4 shrink-0 text-[#4438E8]"
+                aria-hidden="true"
+              />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-[#17191F]">What this means</p>
+                <p className="mt-0.5 text-xs leading-5 text-[#4B5563]">
+                  {data.priority_selection.reason ||
+                    "Revluma has not established a sufficiently supported priority from the available evidence."}
                 </p>
-              )}
+              </div>
             </div>
 
-            {/* 4. Native Progressive Disclosure for Provenance & Uncertainty */}
-            <details className="group mt-4">
-              <summary
-                className={cn(
-                  "inline-flex list-none items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF]/70 px-3 py-1.5 transition-colors hover:border-[#818CF8] hover:bg-[#E0E7FF] [&::-webkit-details-marker]:hidden",
-                  cc.disclosure,
-                )}
-              >
-                <ChevronDown
-                  className="h-3.5 w-3.5 transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none"
+            {/* Compact factual evidence & freshness row — real values only */}
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="flex items-start gap-2.5 rounded-xl border border-[#E7E9EF] bg-white px-4 py-3">
+                <Database
+                  className="mt-0.5 h-4 w-4 shrink-0 text-[#707582]"
                   aria-hidden="true"
                 />
-                Inspect evidence, provenance and uncertainty
-              </summary>
-              <div className="mt-3 grid gap-5 rounded-xl border border-[#C7D2FE] bg-[#F5F7FF] p-4 sm:grid-cols-2">
-                <div>
-                  <h4 className="text-[13px] font-semibold text-[#1E1B4B]">
-                    Authoritative references
-                  </h4>
-                  <ul className={cn("mt-2 space-y-2 break-all", cc.metadata)}>
-                    {finding.evidence.references.map((ref) => (
-                      <li
-                        key={ref.id}
-                        className="rounded-lg border border-[#D8DDF8] bg-white px-3 py-2"
-                      >
-                        <span className="font-semibold text-[#1E1B4B]">{ref.source_type}</span>
-                        <br />
-                        <span className="font-mono text-[11px] text-[#4338CA]">
-                          {ref.source_record_id}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className={cn("mt-3 font-mono text-[11px]", cc.metadata)}>
-                    Method: {finding.priority.method_version}
-                  </p>
-                </div>
-                <div>
-                  <h4 className="text-[13px] font-semibold text-[#1E1B4B]">
-                    Lifecycle and unknowns
-                  </h4>
-                  <p className={cn("mt-2 tabular-nums", cc.metadata)}>
-                    {finding.lifecycle.state} ·{" "}
-                    {finding.lifecycle.current_validity.replaceAll("_", " ")}
-                    <br />
-                    Detected {dateTime(finding.detected_at)}
-                  </p>
-                  <ul className={cn("mt-2 space-y-1", cc.metadata)}>
-                    {finding.unknowns.map((item) => (
-                      <li key={item}>• {item}</li>
-                    ))}
-                  </ul>
-                  {finding.evidence.duplicate_finding_ids.length > 0 && (
-                    <p className={cn("mt-2", cc.metadata)}>
-                      Deduplicated records retained:{" "}
-                      {finding.evidence.duplicate_finding_ids.join(", ")}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </details>
-
-            {/* 5. Investigation Handoff Bar */}
-            <div className="mt-5 flex flex-col gap-3 border-t border-[#E0E7FF] pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs leading-5 text-[#4B5565]">
-                {finding.recommendation.validation_method ||
-                  "Further evidence is required before a current recommendation."}
-              </p>
-              <motion.button
-                type="button"
-                whileHover={prefersReducedMotion ? undefined : { y: -1.5 }}
-                whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
-                onClick={() => openRoute(finding.investigation.route)}
-                className={cn(
-                  cc.primary,
-                  "group/cta bg-gradient-to-r from-[#4438E8] via-[#4F46E5] to-[#6D28D9] shadow-[0_10px_24px_-8px_rgba(68,56,232,0.55)] transition-all duration-200 hover:shadow-[0_14px_28px_-8px_rgba(68,56,232,0.65)]",
-                )}
-              >
-                <span>Investigate in Rev Intelligence</span>
-                <ArrowRight
-                  className="h-3.5 w-3.5 transition-transform duration-200 group-hover/cta:translate-x-0.5 motion-reduce:transition-none"
-                  aria-hidden="true"
-                />
-              </motion.button>
-            </div>
-          </article>
-        ) : (
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-[#EEF2FF]/50 px-5 py-4 text-xs text-[#374151] sm:px-6">
-            <span>
-              Top priority (
-              <strong className="font-semibold text-[#1E1B4B]">#1 {finding.title}</strong>) is
-              hidden by the{" "}
-              <strong className="font-semibold capitalize text-[#4438E8]">
-                {severityFilter}
-              </strong>{" "}
-              filter.
-            </span>
-            <button
-              type="button"
-              onClick={() => setSeverityFilter("all")}
-              className="rounded-lg bg-[#4438E8] px-3 py-1 text-xs font-semibold text-white hover:bg-[#372DD1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8]"
-            >
-              Show all priorities
-            </button>
-          </div>
-        )
-      ) : (
-        /* Color-Rich Calm Monitoring Empty State */
-        <div className="relative overflow-hidden bg-gradient-to-b from-white via-[#FAF9FF] to-[#EEF2FF]/45">
-          {/* Tinted Architectural Dot-Matrix Backdrop */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 opacity-[0.4]"
-            style={{
-              backgroundImage: "radial-gradient(#A5B4FC 0.9px, transparent 0.9px)",
-              backgroundSize: "18px 18px",
-              maskImage:
-                "radial-gradient(ellipse 68% 95% at 88% 46%, black 0%, rgba(0,0,0,0.28) 55%, transparent 100%)",
-              WebkitMaskImage:
-                "radial-gradient(ellipse 68% 95% at 88% 46%, black 0%, rgba(0,0,0,0.28) 55%, transparent 100%)",
-            }}
-          />
-
-          {/* Color-Coded Priority Tier Summary Rail (Factual 0 Counts) */}
-          <div
-            aria-label="Priority tier summary"
-            className="relative grid grid-cols-1 divide-y divide-[#E0E7FF] border-b border-[#E0E7FF] sm:grid-cols-3 sm:divide-x sm:divide-y-0"
-          >
-            {[
-              {
-                key: "urgent",
-                label: "Critical & High",
-                caption: "Immediate revenue or operational impact",
-                Icon: Flame,
-                cellBg: "bg-gradient-to-r from-[#FFF1F2]/90 to-[#FFE4E6]/40",
-                iconClass:
-                  "bg-gradient-to-br from-[#E11D48] to-[#B42318] text-white shadow-[0_4px_10px_-3px_rgba(225,29,72,0.45)]",
-                countClass: "border-[#FDA4AF] bg-white text-[#9F1239]",
-                dotClass: "bg-[#E11D48]",
-              },
-              {
-                key: "medium",
-                label: "Medium",
-                caption: "Developing shifts meeting evidence rules",
-                Icon: Flag,
-                cellBg: "bg-gradient-to-r from-[#FFFBEB]/90 to-[#FEF3C7]/40",
-                iconClass:
-                  "bg-gradient-to-br from-[#F59E0B] to-[#D97706] text-white shadow-[0_4px_10px_-3px_rgba(217,119,6,0.45)]",
-                countClass: "border-[#FCD34D] bg-white text-[#92400E]",
-                dotClass: "bg-[#D97706]",
-              },
-              {
-                key: "watch",
-                label: "Low & Watch",
-                caption: "Early verified signals under observation",
-                Icon: CircleDot,
-                cellBg: "bg-gradient-to-r from-[#EEF2FF]/90 to-[#E0E7FF]/45",
-                iconClass:
-                  "bg-gradient-to-br from-[#4438E8] to-[#7C3AED] text-white shadow-[0_4px_10px_-3px_rgba(68,56,232,0.45)]",
-                countClass: "border-[#A5B4FC] bg-white text-[#3730A3]",
-                dotClass: "bg-[#4438E8]",
-              },
-            ].map((tier) => (
-              <div
-                key={tier.key}
-                className={cn(
-                  "flex items-center justify-between gap-3 px-5 py-3.5 sm:px-6",
-                  tier.cellBg,
-                )}
-              >
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
-                      tier.iconClass,
-                    )}
-                  >
-                    <tier.Icon className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-semibold text-[#1E1B4B]">{tier.label}</p>
-                    <p className="truncate text-[11px] text-[#4B5565]">{tier.caption}</p>
-                  </div>
-                </div>
-                <span
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold tabular-nums",
-                    tier.countClass,
-                  )}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={cn("h-1.5 w-1.5 rounded-full opacity-60", tier.dotClass)}
-                  />
-                  <span>0</span>
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Core Monitoring Empty Body */}
-          <div className="relative px-5 py-6 sm:px-6">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 max-w-2xl items-start gap-4">
-                <div
-                  aria-hidden="true"
-                  className="relative mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#4438E8] to-[#7C3AED] text-white shadow-[0_10px_24px_-6px_rgba(68,56,232,0.5)]"
-                >
-                  {!prefersReducedMotion && (
-                    <motion.span
-                      className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-[#6366F1]/50"
-                      animate={{ scale: [1, 1.32, 1.32], opacity: [0.55, 0, 0] }}
-                      transition={{
-                        duration: 3.2,
-                        repeat: Infinity,
-                        ease: "easeOut",
-                      }}
-                    />
-                  )}
-                  <ShieldCheck className="relative h-5 w-5" />
-                </div>
-
                 <div className="min-w-0">
-                  <p className="text-[15px] font-semibold tracking-[-0.015em] text-[#1E1B4B]">
-                    No verified priorities right now
-                  </p>
-                  <p className="mt-1 text-[13px] leading-5 text-[#4B5565]">
-                    No findings currently meet the evidence threshold. This doesn&apos;t mean there
-                    are no business problems. Further investigation may uncover issues.
-                  </p>
-                  {data.priority_selection.reason &&
-                    !data.priority_selection.reason
-                      .toLowerCase()
-                      .includes("no open verified findings are recorded") && (
-                      <p className="mt-1.5 text-xs leading-5 text-[#6366F1]">
-                        {data.priority_selection.reason}
-                      </p>
-                    )}
-
-                  {/* Colored Authoritative Monitoring Scope Chips */}
-                  <div className="mt-3.5 flex flex-wrap items-center gap-2 text-[11px] font-semibold">
-                    {availableResourceCount > 0 && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#C7D2FE] bg-[#EEF2FF] px-2.5 py-0.5 text-[#3730A3] tabular-nums">
-                        <Database className="h-3 w-3 text-[#4438E8]" aria-hidden="true" />
-                        <span>
-                          {availableResourceCount}{" "}
-                          {availableResourceCount === 1 ? "source" : "sources"} monitored
-                        </span>
+                  <p className="text-[11px] font-medium text-[#707582]">Evidence coverage</p>
+                  <p className="mt-0.5 text-xs font-semibold tabular-nums text-[#17191F]">
+                    {monitoredSourceCount > 0
+                      ? `${monitoredSourceCount} monitored ${monitoredSourceCount === 1 ? "source" : "sources"}`
+                      : "No sources connected"}
+                    {limitedSourceCount > 0 && (
+                      <span className="font-normal text-[#92400E]">
+                        {" "}
+                        · {limitedSourceCount} limited
                       </span>
                     )}
-                    {reportingPeriodLabel && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#A7F3D0] bg-[#ECFDF5] px-2.5 py-0.5 text-[#065F46]">
-                        <Calendar className="h-3 w-3 text-[#059669]" aria-hidden="true" />
-                        <span>{reportingPeriodLabel}</span>
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      aria-expanded={showTierGuide}
-                      onClick={() => setShowTierGuide((prev) => !prev)}
-                      className="inline-flex items-center gap-1 rounded-full border border-[#DDD6FE] bg-[#F5F3FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#6D28D9] transition-colors hover:border-[#A78BFA] hover:bg-[#EDE9FE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8]"
-                    >
-                      <Info className="h-3 w-3" aria-hidden="true" />
-                      <span>How priorities are ranked</span>
-                      <ChevronDown
-                        className={cn(
-                          "h-3 w-3 transition-transform duration-150 motion-reduce:transition-none",
-                          showTierGuide && "rotate-180",
-                        )}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </div>
+                  </p>
                 </div>
               </div>
 
-              <motion.button
-                type="button"
-                whileHover={prefersReducedMotion ? undefined : { y: -1.5 }}
-                whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
-                onClick={() => openRoute("/dashboard/rev-intell")}
-                className={cn(
-                  cc.primary,
-                  "group/explore self-start rounded-xl bg-gradient-to-r from-[#4438E8] via-[#4F46E5] to-[#7C3AED] px-4 py-2.5 shadow-[0_10px_24px_-8px_rgba(68,56,232,0.52)] transition-all duration-200 hover:shadow-[0_14px_28px_-8px_rgba(68,56,232,0.65)] sm:self-center",
-                )}
-              >
-                <Compass className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>Explore with Rev Intell</span>
-                <ArrowRight
-                  className="h-3.5 w-3.5 transition-transform duration-200 group-hover/explore:translate-x-0.5 motion-reduce:transition-none"
+              <div className="flex items-start gap-2.5 rounded-xl border border-[#E7E9EF] bg-white px-4 py-3">
+                <Clock
+                  className="mt-0.5 h-4 w-4 shrink-0 text-[#707582]"
                   aria-hidden="true"
                 />
-              </motion.button>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-[#707582]">Last updated</p>
+                  <p
+                    className="mt-0.5 text-xs font-semibold tabular-nums text-[#17191F]"
+                    title={dateTime(lastUpdatedIso)}
+                  >
+                    {relativeTime(lastUpdatedIso)}
+                  </p>
+                </div>
+              </div>
             </div>
 
-            {/* Progressive Disclosure: Ranking & Evidence-Gating Guide */}
-            <AnimatePresence initial={false}>
-              {showTierGuide && (
-                <motion.div
-                  initial={prefersReducedMotion ? false : { opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={prefersReducedMotion ? undefined : { opacity: 0, height: 0 }}
-                  transition={{ duration: 0.22, ease: EASE_OUT_EXPO }}
-                  className="overflow-hidden"
-                >
-                  <div className="mt-4 grid gap-3 rounded-xl border border-[#C7D2FE] bg-[#EEF2FF]/65 p-4 sm:grid-cols-3">
-                    <div className="rounded-lg border border-[#C7D2FE] bg-white p-3">
-                      <p className="text-xs font-semibold text-[#3730A3]">
-                        1. Evidence-threshold gated
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-[#4B5565]">
-                        Only findings backed by fresh, synchronized store records are promoted into
-                        your priority queue.
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-[#A7F3D0] bg-white p-3">
-                      <p className="text-xs font-semibold text-[#065F46]">
-                        2. Single #1 focus first
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-[#4B5565]">
-                        The highest-impact verified issue surfaces at the top with full rationale,
-                        observations, and limits.
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-[#DDD6FE] bg-white p-3">
-                      <p className="text-xs font-semibold text-[#6D28D9]">
-                        3. Progressive triage queue
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-[#4B5565]">
-                        Secondary findings stack in ranked order with severity signals, expandable
-                        details, and direct Rev handoff.
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Excluded Historical Findings (Compact Recessed List — Never Current Headings) */}
+            {/* Historical / excluded findings stay non-heading records */}
             {data.priority_selection.exclusions.length > 0 && (
-              <div className="relative mt-5 border-t border-[#E0E7FF] pt-4">
-                <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#4338CA]">
-                  <History className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Excluded historical findings</span>
+              <div className="mt-4 rounded-xl border border-[#E7E9EF] bg-[#FAFBFD] p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[#707582]">
+                  Excluded from current priorities
                 </p>
-                <ul
-                  className={cn("mt-2.5 space-y-2", cc.metadata)}
-                  aria-label="Findings excluded from current priority"
-                >
+                <ul className="mt-2 space-y-1.5 text-xs text-[#4B5563]">
                   {data.priority_selection.exclusions.map((item) => (
                     <li
                       key={item.finding_id}
-                      className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-[#E0E7FF] bg-white/85 px-3.5 py-2.5"
+                      className="flex flex-wrap items-baseline justify-between gap-2"
                     >
-                      <span>
-                        <span className="font-semibold text-[#1E1B4B]">{item.title}</span> — not
-                        current: {item.reason.replaceAll("_", " ")}. Historical evidence is not
-                        presented as a current condition.
+                      <span className="font-medium text-[#17191F]">{item.title}</span>
+                      <span className="text-[11px] text-[#707582]">
+                        not current: {item.reason.replaceAll("_", " ")}
                       </span>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-          </div>
-        </div>
-      )}
 
-      {/* Tier 2: Color-Coded, Reorderable, Expandable Ranked Priority Queue */}
-      {secondary.length > 0 && (
-        <div className="relative border-t border-[#D8DDF8] bg-gradient-to-b from-[#EEF2FC] to-[#F4F6FD] px-5 py-4 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <h3 className="text-xs font-bold uppercase tracking-[0.08em] text-[#3730A3]">
-                Other eligible findings
-              </h3>
-              <span className="rounded-full bg-[#4438E8] px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
-                {orderedSecondary.length}
-              </span>
-            </div>
-            {orderedSecondary.length > 1 && (
-              <span className="text-[11px] font-medium text-[#4F46E5]">
-                Drag or use arrows to arrange your review order
-              </span>
-            )}
-          </div>
-
-          {orderedSecondary.length === 0 ? (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-[#A5B4FC] bg-white px-4 py-3 text-xs text-[#4B5565]">
-              <span>
-                No secondary findings match the{" "}
-                <strong className="font-semibold capitalize text-[#1E1B4B]">
-                  {severityFilter}
-                </strong>{" "}
-                priority filter.
-              </span>
+            {/* Primary Rev Intelligence exploration CTA */}
+            <div className="mt-5">
               <button
                 type="button"
-                onClick={() => setSeverityFilter("all")}
-                className="font-semibold text-[#4438E8] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8]"
+                onClick={() => openRoute(revExploreRoute)}
+                className={cn(
+                  "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#D8D7FA] bg-white px-4 py-2.5 text-xs font-semibold text-[#4438E8] transition-colors hover:border-[#4438E8] hover:bg-[#F5F4FF]",
+                  cc.focus,
+                )}
               >
-                Show all
+                <Search className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>Explore with Rev Intelligence</span>
+                <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               </button>
             </div>
-          ) : (
-            <Reorder.Group
-              axis="y"
-              values={orderedSecondary}
-              onReorder={handleReorderSecondary}
-              aria-label="Other eligible priority findings"
-              className="mt-3 space-y-2.5"
-            >
-              {orderedSecondary.map((item, idx) => {
-                const itemVerified = isVerifiedFinding(item);
-                const visual = getSeverityVisual(item.severity);
-                const isExpanded = Boolean(expandedIds[item.id]);
-                const isReviewed = Boolean(reviewedIds[item.id]);
-                const authoritativeRank = authoritativeRankById.get(item.id) ?? idx + 2;
-
-                return (
-                  <Reorder.Item
-                    key={item.id}
-                    value={item}
-                    dragListener={orderedSecondary.length > 1 && !prefersReducedMotion}
-                    layout={prefersReducedMotion ? undefined : "position"}
-                    transition={{ duration: 0.22, ease: EASE_OUT_EXPO }}
-                    className="list-none"
-                  >
-                    <article
-                      className={cn(
-                        "rounded-xl border border-[#D8DDF8] border-l-[4px] bg-white shadow-[0_2px_10px_-4px_rgba(68,56,232,0.12)] transition-all duration-150",
-                        visual.borderLeftClass,
-                        visual.rowTintClass,
-                        isReviewed && "opacity-80",
-                      )}
-                    >
-                      {/* Core Scannable Decision Row */}
-                      <div
-                        className={cn(
-                          "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
-                          density === "compact" ? "px-3.5 py-2.5" : "px-4 py-3.5",
-                        )}
-                      >
-                        <div className="flex min-w-0 flex-1 items-start gap-2.5 sm:items-center">
-                          {orderedSecondary.length > 1 && (
-                            <span
-                              aria-hidden="true"
-                              title="Drag to reorder"
-                              className="mt-0.5 hidden shrink-0 cursor-grab text-[#94A3B8] transition-colors hover:text-[#4438E8] active:cursor-grabbing sm:mt-0 sm:inline-flex"
-                            >
-                              <GripVertical className="h-4 w-4" />
-                            </span>
-                          )}
-
-                          <button
-                            type="button"
-                            aria-pressed={isReviewed}
-                            aria-label={
-                              isReviewed
-                                ? `Unmark ${item.title} as reviewed`
-                                : `Mark ${item.title} as reviewed`
-                            }
-                            onClick={() => toggleReviewed(item.id)}
-                            className={cn(
-                              "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8] focus-visible:ring-offset-1 sm:mt-0",
-                              isReviewed
-                                ? "border-[#059669] bg-[#059669] text-white"
-                                : "border-[#A5B4FC] bg-white text-transparent hover:border-[#4438E8]",
-                            )}
-                          >
-                            <Check className="h-3 w-3" strokeWidth={3} aria-hidden="true" />
-                          </button>
-
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span
-                                className={cn(
-                                  "inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-bold tabular-nums",
-                                  visual.rankPillClass,
-                                )}
-                              >
-                                #{authoritativeRank}
-                              </span>
-
-                              <span
-                                className={cn(
-                                  "inline-flex items-center gap-1 rounded-full border px-2 py-px text-[11px] font-semibold",
-                                  visual.pillClass,
-                                )}
-                              >
-                                <visual.Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
-                                <span>{visual.label}</span>
-                              </span>
-
-                              <h4
-                                className={cn(
-                                  "text-sm font-semibold text-[#1E1B4B]",
-                                  isReviewed && "line-through decoration-[#94A3B8] text-[#64748B]",
-                                )}
-                              >
-                                {item.title}
-                              </h4>
-
-                              <span
-                                className={cn(
-                                  "inline-flex items-center rounded-full border px-2 py-px text-[11px] font-semibold",
-                                  itemVerified
-                                    ? "border-[#6EE7B7] bg-[#D1FAE5] text-[#065F46]"
-                                    : "border-[#FCD34D] bg-[#FEF3C7] text-[#92400E]",
-                                )}
-                              >
-                                {itemVerified ? "Verified" : "Hypothesis"}
-                              </span>
-                            </div>
-
-                            {density === "comfortable" && (
-                              <p className="mt-1 line-clamp-1 text-xs leading-5 text-[#4B5565]">
-                                {item.severity} ·{" "}
-                                {item.confidence.classification.replaceAll("_", " ")} confidence ·{" "}
-                                {item.evidence_freshness.state}
-                                {item.description ? ` — ${item.description}` : ""}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Row Quick Actions */}
-                        <div className="flex shrink-0 flex-wrap items-center gap-1.5 pl-7 sm:pl-0">
-                          {orderedSecondary.length > 1 && (
-                            <div className="inline-flex items-center rounded-lg border border-[#D8DDF8] bg-[#F5F7FF] p-0.5">
-                              <button
-                                type="button"
-                                disabled={idx === 0}
-                                aria-label={`Move ${item.title} up`}
-                                onClick={() => moveSecondaryItem(item.id, -1)}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#4338CA] transition-colors hover:bg-white hover:text-[#1E1B4B] disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8]"
-                              >
-                                <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
-                              </button>
-                              <button
-                                type="button"
-                                disabled={idx === orderedSecondary.length - 1}
-                                aria-label={`Move ${item.title} down`}
-                                onClick={() => moveSecondaryItem(item.id, 1)}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#4338CA] transition-colors hover:bg-white hover:text-[#1E1B4B] disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8]"
-                              >
-                                <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
-                              </button>
-                            </div>
-                          )}
-
-                          <button
-                            type="button"
-                            aria-expanded={isExpanded}
-                            aria-label={`${isExpanded ? "Hide" : "Show"} details for ${item.title}`}
-                            onClick={() => toggleExpanded(item.id)}
-                            className={cn(
-                              "inline-flex min-h-9 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8]",
-                              isExpanded
-                                ? "border-[#818CF8] bg-[#E0E7FF] text-[#3730A3]"
-                                : "border-[#D8DDF8] bg-white text-[#4338CA] hover:border-[#818CF8] hover:bg-[#EEF2FF]",
-                            )}
-                          >
-                            <span>Details</span>
-                            <ChevronDown
-                              className={cn(
-                                "h-3.5 w-3.5 transition-transform duration-150 motion-reduce:transition-none",
-                                isExpanded && "rotate-180",
-                              )}
-                              aria-hidden="true"
-                            />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => openRoute(item.investigation.route)}
-                            className={cn(
-                              cc.secondary,
-                              "group/sec border-[#A5B4FC] bg-[#EEF2FF] font-semibold text-[#4438E8] hover:border-[#4438E8] hover:bg-[#4438E8] hover:text-white",
-                            )}
-                          >
-                            <span>Investigate</span>
-                            <ArrowRight
-                              className="h-3.5 w-3.5 transition-transform duration-150 group-hover/sec:translate-x-0.5 motion-reduce:transition-none"
-                              aria-hidden="true"
-                            />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Progressive Disclosure Drawer */}
-                      <AnimatePresence initial={false}>
-                        {isExpanded && (
-                          <motion.div
-                            initial={prefersReducedMotion ? false : { opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={prefersReducedMotion ? undefined : { opacity: 0, height: 0 }}
-                            transition={{ duration: 0.22, ease: EASE_OUT_EXPO }}
-                            className="overflow-hidden"
-                          >
-                            <div className="grid gap-4 border-t border-[#E0E7FF] bg-gradient-to-br from-[#F5F7FF] to-[#EEF2FF]/50 px-4 py-4 sm:grid-cols-2">
-                              <div className="space-y-2.5">
-                                {item.description && (
-                                  <p className="text-xs leading-5 text-[#1E1B4B]">
-                                    {item.description}
-                                  </p>
-                                )}
-                                {item.priority.rationale.length > 0 && (
-                                  <div>
-                                    <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#4338CA]">
-                                      Priority rationale
-                                    </p>
-                                    <ul className="mt-1 space-y-1 text-xs leading-5 text-[#374151]">
-                                      {item.priority.rationale.map((reason) => (
-                                        <li key={reason} className="flex gap-1.5">
-                                          <span
-                                            aria-hidden="true"
-                                            className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#4438E8]"
-                                          />
-                                          <span>{reason}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="space-y-2.5">
-                                {item.evidence.observations.length > 0 && (
-                                  <dl className="grid grid-cols-2 gap-2">
-                                    {item.evidence.observations.slice(0, 4).map((obs) => (
-                                      <div
-                                        key={`${obs.period}-${obs.label}`}
-                                        className="rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-2"
-                                      >
-                                        <dt className="truncate text-[10px] font-semibold text-[#4F46E5]">
-                                          {obs.label}
-                                        </dt>
-                                        <dd className="mt-0.5 break-words text-sm font-bold text-[#1E1B4B] tabular-nums">
-                                          {observationText(obs)}
-                                        </dd>
-                                      </div>
-                                    ))}
-                                  </dl>
-                                )}
-                                {item.recommendation.available && item.recommendation.step && (
-                                  <div className="rounded-lg border border-[#A5B4FC] bg-gradient-to-r from-[#EEF2FF] to-[#F3E8FF]/65 px-3 py-2 text-xs leading-5 text-[#1E1B4B]">
-                                    <span className="font-semibold text-[#4438E8]">
-                                      Suggested next step:{" "}
-                                    </span>
-                                    {item.recommendation.step}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </article>
-                  </Reorder.Item>
-                );
-              })}
-            </Reorder.Group>
-          )}
+          </div>
         </div>
       )}
-    </motion.section>
+    </section>
   );
 }
+
+export default TopPrioritiesSection;
