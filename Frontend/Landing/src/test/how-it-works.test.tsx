@@ -21,7 +21,7 @@ describe("How it works (three steps)", () => {
     expect(within(el).getByText(HOW_IT_WORKS.description)).toBeInTheDocument();
   });
 
-  it("shows exactly three numbered steps, in order, each with its sphere label, headline and description", () => {
+  it("puts each step entirely inside its sphere: number on top, then name, bold subhead and description", () => {
     const el = section();
     const items = within(el).getAllByRole("listitem");
     expect(items).toHaveLength(3);
@@ -32,11 +32,13 @@ describe("How it works (three steps)", () => {
     ];
     items.forEach((item, i) => {
       const [num, label, title] = expected[i];
-      expect(item.querySelector(".hiw-orb__num")?.textContent).toBe(num);
-      expect(item.querySelector(".hiw-orb__label")?.textContent?.trim()).toBe(`Step ${i + 1}: ${label}`);
-      expect(within(item).getByRole("heading", { level: 3 }).textContent).toBe(title);
-      expect(within(item).getByText(HOW_IT_WORKS.steps[i].body)).toBeInTheDocument();
-      expect(item).toHaveAccessibleName(title);
+      const inner = item.querySelector(".hiw-orb .hiw-orb__inner") as HTMLElement;
+      expect([...inner.children].map((c) => c.className)).toEqual(["hiw-orb__num", "hiw-orb__label", "hiw-orb__title", "hiw-orb__body"]);
+      expect(inner.querySelector(".hiw-orb__num")?.textContent).toBe(num);
+      expect(within(inner).getByRole("heading", { level: 3 }).textContent).toBe(`Step ${i + 1}: ${label}`);
+      expect(inner.querySelector(".hiw-orb__title")?.textContent).toBe(title);
+      expect(within(inner).getByText(HOW_IT_WORKS.steps[i].body)).toBeInTheDocument();
+      expect(item).toHaveAccessibleName(`Step ${i + 1}: ${label}`);
     });
   });
 
