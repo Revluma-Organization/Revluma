@@ -1,6 +1,7 @@
 import { Hero } from "./components/Hero";
 import { Navbar } from "./components/Navbar";
 import { FeaturesSection } from "./components/features/FeaturesSection";
+import { HowItWorksSection } from "./components/how-it-works/HowItWorksSection";
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
       <main id="main">
         <Hero />
         <FeaturesSection id="platform" />
+        <HowItWorksSection id="how-it-works" />
       </main>
     </>
   );
