@@ -216,18 +216,43 @@
   }
   .hv-funnel__leak { display: inline; }
   .hv-funnel__leak-still { display: none; }
-  /* Balls escape in pairs: a leader and, a beat later, a follower that
-     lands a little short of it. One pair every 3.75s. */
+  /* Balls escape in pairs: a leader and, a beat later, a follower. One pair
+     every 3.75s. The first three pairs (six balls) bounce onto the plinth;
+     then the Revluma bucket slides in from the left (from behind the laptop)
+     and every pair after that drops into it. Each drop runs its "floor"
+     animation a set number of times, then hands over to the "into the bucket"
+     animation, timed so no ball reaches the rim before the bucket is there. */
   .hv-funnel__drop {
     opacity: 0;
     transform-box: fill-box;
     transform-origin: 50% 50%;
-    animation: hv-funnel-drop-a 7.5s infinite;
-    animation-delay: 3.4s;
   }
-  .hv-funnel__drop--1 { animation-name: hv-funnel-drop-b; animation-delay: 3.64s; }
-  .hv-funnel__drop--2 { animation-delay: 7.15s; }
-  .hv-funnel__drop--3 { animation-name: hv-funnel-drop-b; animation-delay: 7.39s; }
+  .hv-funnel__drop--0 { animation: hv-funnel-drop-a 7.5s 3.4s 2, hv-funnel-drop-in-a 7.5s 18.4s infinite; }
+  .hv-funnel__drop--1 { animation: hv-funnel-drop-b 7.5s 3.64s 2, hv-funnel-drop-in-b 7.5s 18.64s infinite; }
+  .hv-funnel__drop--2 { animation: hv-funnel-drop-a 7.5s 7.15s 1, hv-funnel-drop-in-a 7.5s 14.65s infinite; }
+  .hv-funnel__drop--3 { animation: hv-funnel-drop-b 7.5s 7.39s 1, hv-funnel-drop-in-b 7.5s 14.89s infinite; }
+  @keyframes hv-funnel-drop-in-a {
+    0% { opacity: 0; transform: translate(-8px, 0) scale(0.4); animation-timing-function: var(--ease-out-quart); }
+    8% { opacity: 1; transform: translate(6px, 4px) scale(1); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+    44% { opacity: 1; transform: translate(10px, 430px); }
+    45%, 100% { opacity: 0; transform: translate(10px, 430px); }
+  }
+  @keyframes hv-funnel-drop-in-b {
+    0% { opacity: 0; transform: translate(-8px, 0) scale(0.4); animation-timing-function: var(--ease-out-quart); }
+    8% { opacity: 1; transform: translate(3px, 6px) scale(1); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+    44% { opacity: 1; transform: translate(14px, 431px); }
+    45%, 100% { opacity: 0; transform: translate(14px, 431px); }
+  }
+  /* The bucket arrives once the sixth ball has landed (about 14.6s in). */
+  .hv-bucket {
+    animation: hv-bucket-in 1.9s var(--ease-spring) both;
+    animation-delay: 14.9s;
+  }
+  @keyframes hv-bucket-in {
+    from { opacity: 0; transform: translateX(-170px); }
+    35% { opacity: 1; }
+    to { opacity: 1; transform: translateX(0); }
+  }
   /* Squeezes out of the hole, falls under gravity, bounces once, rolls off. */
   @keyframes hv-funnel-drop-a {
     0% { opacity: 0; transform: translate(-8px, 0) scale(0.4); animation-timing-function: var(--ease-out-quart); }

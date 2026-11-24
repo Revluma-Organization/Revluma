@@ -113,6 +113,17 @@ describe("Landing hero", () => {
     expect(funnel!.querySelector(".hv-funnel__leak-still")).not.toBeNull();
   });
 
+  it("catches the leak in a bucket tagged with the Revluma name only", () => {
+    const { container } = render(<App />);
+    const funnel = container.querySelector(".hv-funnel")!;
+    // Back (behind the balls) and front (over them) halves of the bucket.
+    const halves = funnel.querySelectorAll(".hv-bucket");
+    expect(halves).toHaveLength(2);
+    expect(funnel.querySelector(".hv-bucket__name")?.textContent).toBe("Revluma");
+    // Name only: no logo image or icon on the bucket.
+    halves.forEach((half) => expect(half.querySelector("image, img, use")).toBeNull());
+  });
+
   it("contains none of the banned claims", () => {
     const { container } = render(<App />);
     const text = [container.textContent ?? "", HERO.sources.label, ...HERO.sources.items].join(" ");

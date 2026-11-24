@@ -64,6 +64,14 @@ const SPOUT_BALLS = [318, 344, 370, 396, 422];
  */
 const HOLE =
   "M197 192 L 212 181 L 222 191 L 236 181 L 247 197 L 240 209 L 252 222 L 243 239 L 227 236 L 217 249 L 201 236 L 205 220 L 192 207 Z";
+/**
+ * The Revluma bucket that slides in to catch the leak: centred under the
+ * falls, standing on the plinth, clear of the laptop lid on its left.
+ */
+const BX = 214;
+const BUCKET_TOP = 462;
+const BUCKET_RX = 75;
+
 /** Where escaping balls leave the hole, in viewBox coordinates. */
 const EXIT = { x: 238, y: 214 - LIFT };
 
@@ -138,6 +146,15 @@ export function LeakFunnel() {
           <stop offset="0.45" stopColor="#2b13cf" />
           <stop offset="1" stopColor="#170780" />
         </linearGradient>
+        <linearGradient id="lf-bucket" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0" stopColor="#4b33ef" />
+          <stop offset="0.45" stopColor="#2b13cf" />
+          <stop offset="1" stopColor="#170780" />
+        </linearGradient>
+        <radialGradient id="lf-bucket-inside" cx="0.5" cy="0.2" r="0.8">
+          <stop offset="0" stopColor="#0c0548" />
+          <stop offset="1" stopColor="#1f0a8c" />
+        </radialGradient>
         <clipPath id="lf-cone-clip">
           <path d={CONE} />
         </clipPath>
@@ -158,12 +175,12 @@ export function LeakFunnel() {
         </mask>
       </defs>
 
-      {/* Soft contact shadow on the plinth where the leaked balls land. */}
+      {/* Soft contact shadow under the balls that leaked onto the plinth. */}
       <ellipse
-        cx="236"
+        cx="138"
         cy={FLOOR_Y + 3}
-        rx="50"
-        ry="6"
+        rx="34"
+        ry="5"
         fill="#0c0a1d"
         opacity="0.08"
       />
@@ -333,15 +350,46 @@ export function LeakFunnel() {
         </g>
       </g>
 
-      {/* Revenue that has already leaked out and come to rest. */}
-      <Sphere x={204} y={FLOOR_Y - 11} />
-      <Sphere x={229} y={FLOOR_Y - 10} r={11.5} light />
+      {/* Revenue that leaked before the bucket arrived, resting on the plinth. */}
+      <Sphere x={126} y={FLOOR_Y - 11} />
+      <Sphere x={151} y={FLOOR_Y - 10} r={11.5} light />
+
+      {/* Back of the Revluma bucket: handle, dark inside, far rim. */}
+      <g className="hv-bucket">
+        <ellipse
+          cx={BX}
+          cy={FLOOR_Y + 3}
+          rx="80"
+          ry="7"
+          fill="#0c0a1d"
+          opacity="0.1"
+        />
+        <path
+          d={`M${BX - 71} ${BUCKET_TOP + 8} C ${BX - 64} ${BUCKET_TOP - 62}, ${BX + 64} ${BUCKET_TOP - 62}, ${BX + 71} ${BUCKET_TOP + 8}`}
+          stroke="#1a078f"
+          strokeWidth="4.5"
+          strokeLinecap="round"
+        />
+        <ellipse
+          cx={BX}
+          cy={BUCKET_TOP}
+          rx={BUCKET_RX}
+          ry="12"
+          fill="url(#lf-bucket-inside)"
+        />
+        <path
+          d={`M${BX - BUCKET_RX} ${BUCKET_TOP} Q ${BX} ${BUCKET_TOP - 24} ${BX + BUCKET_RX} ${BUCKET_TOP}`}
+          stroke="#5a44f2"
+          strokeWidth="5"
+          strokeLinecap="round"
+        />
+      </g>
 
       {/* Escaping balls. Frozen mid-fall without motion, animated otherwise. */}
       <g className="hv-funnel__leak-still">
         <Sphere x={EXIT.x + 2} y={EXIT.y + 2} r={11.5} />
-        <Sphere x={EXIT.x + 22} y={EXIT.y + 150} r={11.5} light />
-        <Sphere x={EXIT.x + 12} y={EXIT.y + 176} r={11} />
+        <Sphere x={EXIT.x + 6} y={EXIT.y + 196} r={11.5} light />
+        <Sphere x={EXIT.x + 9} y={BUCKET_TOP + 2} r={11} />
       </g>
       <g className="hv-funnel__leak">
         {[0, 1, 2, 3].map((i) => (
@@ -354,6 +402,46 @@ export function LeakFunnel() {
             />
           </g>
         ))}
+      </g>
+
+      {/* Front of the bucket, over the balls, with its "Revluma" name tag. */}
+      <g className="hv-bucket">
+        <path
+          d={`M${BX - BUCKET_RX} ${BUCKET_TOP} Q ${BX} ${BUCKET_TOP + 24} ${BX + BUCKET_RX} ${BUCKET_TOP} L ${BX + 62} ${FLOOR_Y - 6} Q ${BX} ${FLOOR_Y + 6} ${BX - 62} ${FLOOR_Y - 6} Z`}
+          fill="url(#lf-bucket)"
+        />
+        <path
+          d={`M${BX - 64} ${BUCKET_TOP + 16} L ${BX - 55} ${FLOOR_Y - 14}`}
+          stroke="#fff"
+          strokeWidth="5"
+          strokeLinecap="round"
+          opacity="0.3"
+        />
+        <path
+          d={`M${BX - BUCKET_RX} ${BUCKET_TOP} Q ${BX} ${BUCKET_TOP + 24} ${BX + BUCKET_RX} ${BUCKET_TOP}`}
+          stroke="#6a55f6"
+          strokeWidth="5.5"
+          strokeLinecap="round"
+        />
+        <rect
+          x={BX - 56}
+          y={BUCKET_TOP + 33}
+          width="112"
+          height="40"
+          rx="10"
+          fill="#fff"
+        />
+        <text
+          className="hv-bucket__name"
+          x={BX}
+          y={BUCKET_TOP + 61}
+          textAnchor="middle"
+          fill="#1f06ac"
+          fontSize="25"
+          fontWeight="700"
+        >
+          Revluma
+        </text>
       </g>
     </svg>
   );
