@@ -496,8 +496,23 @@ function webhookPersistentFailure(webhooks) {
   return webhooks.state === 'failed';
 }
 
-function webhookLimited(webhooks) {
-  return ['degraded', 'unknown', 'not_registered'].includes(webhooks.state);
+function webhookVerifiedQuiet(webhooks, capabilities) {
+  if (!webhooks || webhooks.state !== 'unknown') return false;
+  if (!Array.isArray(webhooks.active_topics) || !webhooks.active_topics.length) return false;
+  if (Array.isArray(webhooks.failed_topics) && webhooks.failed_topics.length) return false;
+  if ((webhooks.failures_last_7d || 0) > 0) return false;
+  const cap = (capabilities || []).find(item => item && item.id === 'webhooks');
+  return Boolean(
+    cap
+    && cap.sync_state === 'succeeded'
+    && (cap.freshness === 'fresh' || cap.freshness === 'aging'),
+  );
+}
+
+function webhookLimited(webhooks, capabilities = null) {
+  if (['degraded', 'not_registered'].includes(webhooks.state)) return true;
+  if (webhooks.state === 'unknown') return !webhookVerifiedQuiet(webhooks, capabilities);
+  return false;
 }
 
 // ── Overall state resolution (the precedence algorithm) ──────────────────────
@@ -540,7 +555,7 @@ function hasRestrictions(capabilities, coverageBlock, webhooks) {
     if (cap.authorization === 'missing_scope' && cap.app_requested) return true;
   }
   if (coverageBlock.status !== 'complete') return true;
-  if (webhookLimited(webhooks)) return true;
+  if (webhookLimited(webhooks, capabilities)) return true;
   return false;
 }
 

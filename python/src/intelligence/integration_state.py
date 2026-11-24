@@ -735,8 +735,39 @@ def _webhook_persistent_failure(webhooks: dict) -> bool:
     return webhooks.get("state") == "failed"
 
 
-def _webhook_limited(webhooks: dict) -> bool:
-    return webhooks.get("state") in ("degraded", "unknown", "not_registered")
+def _webhook_verified_quiet(webhooks: dict,
+                            capabilities: list[dict] | None) -> bool:
+    """True when webhooks have no deliveries in the last 7d (quiet/low-traffic
+    store) BUT active subscriptions are freshly reconciled with Shopify and
+    there are zero failing topics or delivery failures.
+
+    ``webhooks["state"]`` remains ``"unknown"`` (we never fabricate deliveries),
+    but a verified quiet store is not demoted to ``limited_access``."""
+    if webhooks.get("state") != "unknown":
+        return False
+    if not webhooks.get("active_topics"):
+        return False
+    if webhooks.get("failed_topics"):
+        return False
+    if (webhooks.get("failures_last_7d") or 0) > 0:
+        return False
+    for cap in capabilities or ():
+        if cap.get("id") == "webhooks":
+            return (
+                cap.get("sync_state") == "succeeded"
+                and cap.get("freshness") in ("fresh", "aging")
+            )
+    return False
+
+
+def _webhook_limited(webhooks: dict,
+                     capabilities: list[dict] | None = None) -> bool:
+    state = webhooks.get("state")
+    if state in ("degraded", "not_registered"):
+        return True
+    if state == "unknown":
+        return not _webhook_verified_quiet(webhooks, capabilities)
+    return False
 
 
 # ── Overall state resolution (the precedence algorithm) ──────────────────────
@@ -867,7 +898,7 @@ def _has_restrictions(capabilities: list[dict], coverage_block: dict,
             return True
     if coverage_block["status"] != "complete":
         return True
-    if _webhook_limited(webhooks):
+    if _webhook_limited(webhooks, capabilities):
         return True
     return False
 

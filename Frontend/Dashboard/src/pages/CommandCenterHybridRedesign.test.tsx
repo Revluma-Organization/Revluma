@@ -187,6 +187,43 @@ describe("Command Center — Premium Hybrid Redesign V1", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("shows All sources verified (not Partial coverage) on the evidence card when every source is verified, and explains quiet/unverified webhooks in Operational data health", async () => {
+    const webhookNote =
+      "Webhooks are registered but no event was observed in the last seven days; this can mean either a quiet store or that events are not arriving.";
+    await renderOverview(
+      ccFixture({
+        integration: {
+          overall_status: "limited_access",
+          status_reason: "limited_capabilities",
+          status_explanation:
+            "Store is connected with limited capabilities until webhook delivery is verified.",
+          authorization: { verified: true },
+          webhooks: {
+            state: "unknown",
+            note: webhookNote,
+          },
+        },
+        evidence: {
+          ...ccFixture().evidence,
+          resources: [
+            ccResource({ resource: "orders", label: "orders", availability: "available" }),
+            ccResource({ resource: "products", label: "products", availability: "available" }),
+          ] as CommandCenterData["evidence"]["resources"],
+        },
+      }),
+    );
+
+    const evidencePanel = document.getElementById("evidence-heading-panel");
+    expect(evidencePanel).toBeTruthy();
+    expect(evidencePanel?.textContent).toContain("2 of 2 sources verified");
+    expect(evidencePanel?.textContent).toContain("All sources verified");
+    expect(evidencePanel?.textContent).not.toContain("Partial coverage");
+
+    // Operational data health still honestly shows Limited access and the webhook explanation
+    expect(screen.getAllByText("Limited access").length).toBeGreaterThan(0);
+    expect(screen.getByText(webhookNote)).toBeInTheDocument();
+  });
+
   it("enforces the Premium Hybrid V1 palette, typography, and layout tokens", () => {
     expect(shell.sidebar).toContain("#111318");
     expect(shell.workspace).toContain("#F4F5F8");
