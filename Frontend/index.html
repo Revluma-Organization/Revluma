@@ -485,6 +485,7 @@
             width: 100%;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             padding-bottom: 8px;
+            gap: 12px;
         }
 
         .promo-arrow-line {
@@ -687,6 +688,25 @@
 
             .promo-item {
                 padding: 1.2rem 0 0.6rem;
+            }
+        }
+
+        /* ── Small phones: shorter connector so the labels never touch it ── */
+        @media (max-width: 400px) {
+            .promo-slash {
+                width: 52px;
+                height: 28px;
+                margin-left: 0;
+            }
+
+            .promo-label {
+                font-size: 0.85rem;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .promo-label {
+                font-size: 0.78rem;
             }
         }
 
@@ -1473,7 +1493,7 @@
 
                 <div class="promo-item" data-delay="0">
                     <div class="promo-row">
-                        <p class="promo-label">Recover More. <br>Convert Better.</p>
+                        <p class="promo-label">Spot Problems <br>Before They Grow.</p>
                         <div class="promo-arrow-line">
                             <svg class="promo-slash" viewBox="0 0 140 40" fill="none">
                                 <path class="slash-path" d="M0 38 L60 38 L100 10 L140 10" stroke="white"
@@ -1491,7 +1511,7 @@
 
                 <div class="promo-item" data-delay="200">
                     <div class="promo-row">
-                        <p class="promo-label">Turn Traffic Into <br>Recurring Revenue.</p>
+                        <p class="promo-label">Understand What&rsquo;s <br>Behind the Numbers.</p>
                         <div class="promo-arrow-line">
                             <svg class="promo-slash" viewBox="0 0 140 40" fill="none">
                                 <path class="slash-path" d="M0 38 L50 38 L90 10 L140 10" stroke="white"
@@ -1509,7 +1529,7 @@
 
                 <div class="promo-item" data-delay="400">
                     <div class="promo-row">
-                        <p class="promo-label">Data-Driven <br>Real Results.</p>
+                        <p class="promo-label">Know What <br>Deserves Attention First.</p>
                         <div class="promo-arrow-line">
                             <svg class="promo-slash" viewBox="0 0 140 40" fill="none">
                                 <path class="slash-path" d="M0 10 L60 10 L100 38 L140 38" stroke="white"
