@@ -36,7 +36,7 @@ export function Hero() {
         <div ref={copyRef} className="m-scroll-copy max-w-[38rem]">
           <h1
             id="hero-title"
-            className="text-[clamp(2.4rem,9.6vw,4.6rem)] sm:text-[clamp(2.6rem,7.4vw,4.6rem)] lg:text-[clamp(2.5rem,min(5.1vw,8.4svh),4.6rem)] font-semibold leading-[1.02] tracking-display text-ink"
+            className="text-[clamp(1.9rem,9.4vw,4.6rem)] sm:text-[clamp(2.6rem,7.4vw,4.6rem)] lg:text-[clamp(2.2rem,min(4.4vw,7.6svh),4rem)] font-headline font-black leading-[1.06] tracking-[-0.03em] text-ink [font-synthesis:none]"
           >
             {HEADLINE.map((line) => (
               <span key={line.words.join(" ")} className={`block ${line.accent ? "text-indigo-deep" : ""}`}>
