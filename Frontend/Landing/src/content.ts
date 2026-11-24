@@ -21,10 +21,12 @@ export const CTA = {
 } as const;
 
 export const HERO = {
-  headline: { lead: ["Know where", "your store is"], accent: "losing revenue." },
+  headline: {
+    lead: ["Know where", "your store is"],
+    accent: "losing revenue.",
+  },
   subline: "Understand why. Know what deserves attention.",
-  body:
-    "Revluma investigates your Shopify store data to uncover potential revenue leaks, explain the evidence behind them, and help you decide what to address first.",
+  body: "Revluma investigates your Shopify store data to uncover potential revenue leaks, explain the evidence behind them, and help you decide what to address first.",
   // The data hub under the CTAs: what Revluma reads from Shopify. Only data the
   // store sync actually reads (Backend/src/services/shopifySync.js), and no
   // other integrations: Revluma is Shopify only.
@@ -34,30 +36,45 @@ export const HERO = {
   },
 } as const;
 
-// Section 3: the problem, before the solution. Worded so it never claims that
-// every Shopify merchant has these problems; it is the problem Revluma is
-// designed to address. The mini illustrations use labels only, no figures.
-export const PROBLEM = {
-  eyebrow: "The problem",
-  headline: { lead: "Your store generates data.", accent: "But does it explain what's going wrong?" },
-  intro:
-    "Orders, products, inventory and customer activity are all there to look at. Working out what they mean together, and what to do about it, is a different job.",
+// Features ("What Revluma does"): four capabilities framed as the merchant
+// problems they address. Revluma is read-only: it detects, investigates,
+// prioritises and recommends; it never changes the store, runs campaigns or
+// promises recovered revenue. The product visuals are labelled samples built
+// from the app's own Command Center and Rev Intelligence patterns, with no
+// money figures.
+export const FEATURES = {
+  eyebrow: "What Revluma does",
+  headline: {
+    lead: "Everything affecting your revenue.",
+    accent: "Finally, understood.",
+  },
+  description:
+    "Your store generates signals every day. Revluma connects the dots, uncovers what's going wrong, and shows you where to focus before more opportunities slip away.",
   items: [
     {
-      id: "answers",
-      title: "Information without answers",
-      body: "You can see orders, products, inventory and customer activity, and still struggle to understand what is driving a problem.",
+      id: "detect",
+      step: "Detect",
+      title: "Catch revenue problems before they become bigger losses.",
+      body: "Revluma examines your store's operational and commerce data to surface unusual patterns, missed opportunities, and potential revenue leaks that deserve your attention.",
     },
     {
-      id: "evidence",
-      title: "Disconnected evidence",
-      body: "Important clues can sit across different areas of the store, which makes it hard to investigate a problem in context.",
+      id: "investigate",
+      step: "Investigate",
+      title: "Don't just see what's wrong. Understand why.",
+      body: "Revluma investigates underlying evidence, connects related signals, and explains the factors that might be contributing to a business problem.",
     },
     {
-      id: "priorities",
-      title: "Unclear priorities",
-      body: "You may notice several issues at once, without a clear way to decide which one deserves attention first.",
+      id: "prioritize",
+      step: "Prioritize",
+      title: "Know what deserves your attention first.",
+      body: "Not every problem has the same impact. Revluma evaluates identified issues against their potential business impact, urgency, and available evidence so you can focus on what matters most.",
+    },
+    {
+      id: "advise",
+      step: "Advise & Monitor",
+      title: "Turn business insights into measurable next steps.",
+      body: "Revluma recommends practical actions based on its findings, explains why they matter, and helps merchants monitor relevant signals to understand whether things are improving.",
+      note: "Review only. Revluma never changes your store.",
     },
   ],
-  closing: "This is the problem Revluma is designed to address.",
 } as const;
