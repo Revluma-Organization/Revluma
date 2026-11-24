@@ -21,6 +21,33 @@ describe("What Revluma does (features section)", () => {
     expect(within(el).getByText(FEATURES.description)).toBeInTheDocument();
   });
 
+  it("plays a decorative, muted background video behind the intro, with a poster and a lighter mobile source", () => {
+    const video = section().querySelector(".fx-hero video") as HTMLVideoElement;
+    expect(video).not.toBeNull();
+    expect(video.closest("[aria-hidden='true']")).not.toBeNull();
+    expect(video.muted).toBe(true);
+    expect(video.loop).toBe(true);
+    expect(video.getAttribute("playsinline")).not.toBeNull();
+    expect(video.getAttribute("preload")).toBe("none");
+    expect(video.getAttribute("poster")).toBeTruthy();
+    // Without IntersectionObserver (jsdom) the video is never started.
+    expect(video.paused).toBe(true);
+    const sources = [...video.querySelectorAll("source")];
+    expect(sources.map((s) => s.getAttribute("media"))).toEqual(["(max-width: 767px)", null]);
+    expect(sources.map((s) => s.getAttribute("type"))).toEqual(["video/mp4", "video/mp4"]);
+    expect(sources[0].getAttribute("src")).toMatch(/features-signals-sm/);
+  });
+
+  it("offers jump links to the four showcases and keeps the floating signals decorative and figure-free", () => {
+    const el = section();
+    const steps = within(el.querySelector(".fx-hero__steps") as HTMLElement).getAllByRole("button");
+    expect(steps.map((b) => b.textContent)).toEqual(FEATURES.items.map((item, i) => `${String(i + 1).padStart(2, "0")}${item.step}`));
+    const signals = el.querySelector(".fx-hero__signals") as HTMLElement;
+    expect(signals).toHaveAttribute("aria-hidden", "true");
+    expect(signals.querySelectorAll("li")).toHaveLength(4);
+    expect(signals.textContent).not.toMatch(/\d/);
+  });
+
   it("shows exactly four showcases, in order, each with a numbered step, benefit headline, description and visual", () => {
     const el = section();
     const titles = within(el)
