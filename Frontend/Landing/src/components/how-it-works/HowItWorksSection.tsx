@@ -4,10 +4,11 @@ import { HOW_IT_WORKS } from "@/content";
 import { useReveal } from "@/useReveal";
 
 /**
- * "How it works": an infographic of three steps. White raised circles carry a
- * line icon each; a gradient path weaves around them (over the first, under
- * the second, over the third) and ends in an arrow, with dashed outlines
- * closing the open sides. Each step's copy sits beneath its circle.
+ * "How it works": an infographic of three steps. Small white raised circles
+ * carry a line icon each; a gradient path weaves around them (over the first,
+ * under the second, over the third) and ends in an arrow, with dashed outlines
+ * closing the open sides. Each step's copy sits beneath its circle, left
+ * aligned.
  *
  * From 900px the circles and path are one scalable SVG-backed diagram; below
  * that the same steps become a vertical timeline. The intro reuses the
@@ -24,30 +25,40 @@ const ICONS: Record<StepId, LucideIcon> = {
 };
 
 /* Diagram geometry, in viewBox units. Circle centres sit at the middle of three
-   equal columns; each path arc has radius D/2, so neighbouring arcs meet
-   tangentially between the circles and the line flows as one S-curve. */
+   equal columns (D apart). The path hugs each circle on an arc of radius RA and
+   crosses between neighbours on their internal common tangent, so it weaves
+   over circle 1, under circle 2 and over circle 3 as one smooth line. */
 const W = 1200;
-const H = 420;
-const CY = 210;
+const H = 240;
+const CY = 120;
 const CX = [200, 600, 1000] as const;
-const RA = 200;
-const NODE = 192; // circle diameter
+const D = CX[1] - CX[0];
+const RA = 100;
+const NODE = 115; // circle diameter
+const PHI = (Math.acos((2 * RA) / D) * 180) / Math.PI; // tangent angle (60deg here)
 
 const pt = (cx: number, deg: number) => {
   const a = (deg * Math.PI) / 180;
   return [cx + RA * Math.cos(a), CY + RA * Math.sin(a)] as const;
 };
 const f = (n: number) => +n.toFixed(1);
+const xy = (p: readonly [number, number]) => `${f(p[0])} ${f(p[1])}`;
 
 // Angles are measured clockwise from 3 o'clock (SVG y points down).
 const START = pt(CX[0], 84); // just right of the bottom of circle 1
-const END_DEG = 286; // past the top of circle 3
+const T1 = pt(CX[0], 360 - PHI); // leaves circle 1 at its upper right...
+const T2 = pt(CX[1], 180 - PHI); // ...and meets circle 2 at its lower left
+const T3 = pt(CX[1], PHI); // leaves circle 2 at its lower right...
+const T4 = pt(CX[2], 180 + PHI); // ...and meets circle 3 at its upper left
+const END_DEG = 296; // just past the top of circle 3
 const END = pt(CX[2], END_DEG);
 const MAIN = [
-  `M ${f(START[0])} ${f(START[1])}`,
-  `A ${RA} ${RA} 0 1 1 ${CX[0] + RA} ${CY}`, // around the left of circle 1 and over it
-  `A ${RA} ${RA} 0 0 0 ${CX[1] + RA} ${CY}`, // under circle 2
-  `A ${RA} ${RA} 0 0 1 ${f(END[0])} ${f(END[1])}`, // up and over circle 3
+  `M ${xy(START)}`,
+  `A ${RA} ${RA} 0 1 1 ${xy(T1)}`, // around the left of circle 1 and over it
+  `L ${xy(T2)}`,
+  `A ${RA} ${RA} 0 0 0 ${xy(T3)}`, // under circle 2
+  `L ${xy(T4)}`,
+  `A ${RA} ${RA} 0 0 1 ${xy(END)}`, // up and over circle 3
 ].join(" ");
 
 // Arrowhead at the end of the path, along its tangent.
@@ -62,9 +73,8 @@ const ARROW = (() => {
 })();
 
 // Dashed outlines on the sides the path leaves open.
-const D2 = `M ${CX[0] + RA} ${CY} A ${RA} ${RA} 0 0 1 ${CX[1] + RA} ${CY}`; // over circle 2
-const D3_START = pt(CX[2], END_DEG + 30);
-const D3 = `M ${f(D3_START[0])} ${f(D3_START[1])} A ${RA} ${RA} 0 1 1 ${CX[1] + RA} ${CY}`; // rest of circle 3
+const D2 = `M ${xy(T2)} A ${RA} ${RA} 0 1 1 ${xy(T3)}`; // rest of circle 2
+const D3 = `M ${xy(pt(CX[2], END_DEG + 28))} A ${RA} ${RA} 0 1 1 ${xy(T4)}`; // rest of circle 3
 
 const vars = (v: Record<string, string | number>) => v as CSSProperties;
 const pct = (n: number, of: number) => `${(n / of) * 100}%`;
