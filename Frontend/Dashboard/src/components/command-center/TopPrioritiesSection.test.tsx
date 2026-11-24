@@ -247,10 +247,164 @@ describe("TopPrioritiesSection — Premium Hybrid Redesign", () => {
     expect(screen.getByText(/1 limited/)).toBeInTheDocument();
   });
 
-  it("passes automated axe-core accessibility checks across populated, empty, loading, and error states", async () => {
+  it("renders the distinct incomplete store assessment state when zero findings exist and significant signals failed or were not evaluated", () => {
+    const incompleteData = ccFixture({
+      signal_evaluation: {
+        contract_version: "signal-evaluation-coverage-v1",
+        evaluated_at: "2026-11-24T12:00:00.000Z",
+        period_days: 7,
+        complete: false,
+        incomplete: true,
+        summary: {
+          total_signals: 6,
+          evaluated_count: 4,
+          verified_findings_count: 0,
+          not_detected_count: 4,
+          not_evaluated_count: 1,
+          failed_count: 1,
+          stale_count: 0,
+        },
+        signals: [
+          { id: "storefront_readiness", label: "Storefront readiness", category: "storefront_readiness", state: "not_detected", finding_types: [], source: "store_profiles", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Custom domain active." },
+          { id: "traffic_acquisition", label: "Traffic & acquisition", category: "traffic_acquisition", state: "evaluation_failed", finding_types: [], source: "analytics.reports", last_evaluated_at: null, reason: "Shopify Analytics retrieval failed (SHOPIFY_GRAPHQL_ERROR); missing analytics access is never treated as zero traffic." },
+          { id: "sales_revenue", label: "Sales & revenue", category: "sales_revenue", state: "not_detected", finding_types: [], source: "orders", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Certified order history evaluated." },
+          { id: "conversion_purchasing", label: "Conversion & purchasing", category: "conversion_purchasing", state: "not_evaluated", finding_types: [], source: "abandoned_checkouts", last_evaluated_at: null, reason: "Abandoned checkout records have not yet been synchronized." },
+          { id: "product_inventory", label: "Product & inventory", category: "product_inventory", state: "not_detected", finding_types: [], source: "inventory_levels", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Inventory levels evaluated." },
+          { id: "customer_fulfillment", label: "Customer & fulfillment", category: "customer_fulfillment", state: "not_detected", finding_types: [], source: "fulfillments", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Fulfillment records evaluated." },
+        ],
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <TopPrioritiesSection data={incompleteData} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("heading", { name: "Your store assessment is incomplete", level: 3 })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "No verified priorities right now" })).not.toBeInTheDocument();
+    expect(screen.getByText("4/6 signals evaluated")).toBeInTheDocument();
+    expect(screen.getByText("Evaluation failed")).toBeInTheDocument();
+    expect(screen.getByText("Not evaluated")).toBeInTheDocument();
+    expect(screen.getByText(/missing analytics access is never treated as zero traffic/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Review data coverage/i }));
+    expect(navigate).toHaveBeenCalledWith("/dashboard/integrations");
+  });
+
+  it("renders complete signal evaluation coverage in the legitimate empty state without conflating raw source counts", () => {
+    const completeEmpty = ccFixture({
+      signal_evaluation: {
+        contract_version: "signal-evaluation-coverage-v1",
+        evaluated_at: "2026-11-24T12:00:00.000Z",
+        period_days: 7,
+        complete: true,
+        incomplete: false,
+        summary: {
+          total_signals: 6,
+          evaluated_count: 6,
+          verified_findings_count: 0,
+          not_detected_count: 6,
+          not_evaluated_count: 0,
+          failed_count: 0,
+          stale_count: 0,
+        },
+        signals: [
+          { id: "storefront_readiness", label: "Storefront readiness", category: "storefront_readiness", state: "not_detected", finding_types: [], source: "store_profiles", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "No issues detected." },
+          { id: "traffic_acquisition", label: "Traffic & acquisition", category: "traffic_acquisition", state: "not_detected", finding_types: [], source: "analytics.reports", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Active sessions recorded." },
+          { id: "sales_revenue", label: "Sales & revenue", category: "sales_revenue", state: "not_detected", finding_types: [], source: "orders", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Order history evaluated." },
+          { id: "conversion_purchasing", label: "Conversion & purchasing", category: "conversion_purchasing", state: "not_detected", finding_types: [], source: "abandoned_checkouts", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Checkout records evaluated." },
+          { id: "product_inventory", label: "Product & inventory", category: "product_inventory", state: "not_detected", finding_types: [], source: "inventory_levels", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Inventory evaluated." },
+          { id: "customer_fulfillment", label: "Customer & fulfillment", category: "customer_fulfillment", state: "not_detected", finding_types: [], source: "fulfillments", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Fulfillment evaluated." },
+        ],
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <TopPrioritiesSection data={completeEmpty} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("heading", { name: "No verified priorities right now", level: 3 })).toBeInTheDocument();
+    expect(screen.getByText("6/6 signals evaluated")).toBeInTheDocument();
+    expect(screen.getByText("6 of 6 signals evaluated")).toBeInTheDocument();
+    expect(screen.queryByText(/monitored sources/i)).not.toBeInTheDocument();
+  });
+
+  it("renders partial evaluation coverage panel alongside populated findings in Scenario 7", () => {
+    const partialPopulated: CommandCenterData = {
+      ...multiPriorityFixture(),
+      signal_evaluation: {
+        contract_version: "signal-evaluation-coverage-v1",
+        evaluated_at: "2026-11-24T12:00:00.000Z",
+        period_days: 7,
+        complete: false,
+        incomplete: true,
+        summary: {
+          total_signals: 6,
+          evaluated_count: 5,
+          verified_findings_count: 3,
+          not_detected_count: 2,
+          not_evaluated_count: 0,
+          failed_count: 1,
+          stale_count: 0,
+        },
+        signals: [
+          { id: "storefront_readiness", label: "Storefront readiness", category: "storefront_readiness", state: "verified", finding_types: ["storefront_domain_unconfigured"], source: "store_profiles", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Default .myshopify.com domain detected." },
+          { id: "traffic_acquisition", label: "Traffic & acquisition", category: "traffic_acquisition", state: "evaluation_failed", finding_types: [], source: "analytics.reports", last_evaluated_at: null, reason: "Analytics query failed." },
+          { id: "sales_revenue", label: "Sales & revenue", category: "sales_revenue", state: "verified", finding_types: ["no_recent_orders"], source: "orders", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "No recent orders." },
+          { id: "conversion_purchasing", label: "Conversion & purchasing", category: "conversion_purchasing", state: "verified", finding_types: ["abandoned_checkouts_open"], source: "abandoned_carts", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Open abandoned checkouts." },
+          { id: "product_inventory", label: "Product & inventory", category: "product_inventory", state: "not_detected", finding_types: [], source: "inventory_levels", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Stock levels normal." },
+          { id: "customer_fulfillment", label: "Customer & fulfillment", category: "customer_fulfillment", state: "not_detected", finding_types: [], source: "fulfillments", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Fulfillments normal." },
+        ],
+      },
+    };
+
+    render(
+      <MemoryRouter>
+        <TopPrioritiesSection data={partialPopulated} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("heading", { name: "Checkout conversion dropped sharply", level: 3 })).toBeInTheDocument();
+    expect(screen.getByText("Signal evaluation coverage")).toBeInTheDocument();
+    expect(screen.getByText("5/6 signals evaluated")).toBeInTheDocument();
+    expect(screen.getByText("Evaluation failed")).toBeInTheDocument();
+  });
+
+  it("passes automated axe-core accessibility checks across populated, empty, incomplete, loading, and error states", async () => {
+    const incompleteCase = ccFixture({
+      signal_evaluation: {
+        contract_version: "signal-evaluation-coverage-v1",
+        evaluated_at: "2026-11-24T12:00:00.000Z",
+        period_days: 7,
+        complete: false,
+        incomplete: true,
+        summary: {
+          total_signals: 6,
+          evaluated_count: 5,
+          verified_findings_count: 0,
+          not_detected_count: 5,
+          not_evaluated_count: 0,
+          failed_count: 1,
+          stale_count: 0,
+        },
+        signals: [
+          { id: "storefront_readiness", label: "Storefront readiness", category: "storefront_readiness", state: "not_detected", finding_types: [], source: "store_profiles", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Evaluated." },
+          { id: "traffic_acquisition", label: "Traffic & acquisition", category: "traffic_acquisition", state: "evaluation_failed", finding_types: [], source: "analytics.reports", last_evaluated_at: null, reason: "Failed." },
+          { id: "sales_revenue", label: "Sales & revenue", category: "sales_revenue", state: "not_detected", finding_types: [], source: "orders", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Evaluated." },
+          { id: "conversion_purchasing", label: "Conversion & purchasing", category: "conversion_purchasing", state: "not_detected", finding_types: [], source: "abandoned_carts", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Evaluated." },
+          { id: "product_inventory", label: "Product & inventory", category: "product_inventory", state: "not_detected", finding_types: [], source: "inventory_levels", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Evaluated." },
+          { id: "customer_fulfillment", label: "Customer & fulfillment", category: "customer_fulfillment", state: "not_detected", finding_types: [], source: "fulfillments", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Evaluated." },
+        ],
+      },
+    });
+
     const cases = [
       <TopPrioritiesSection key="pop" data={multiPriorityFixture()} />,
       <TopPrioritiesSection key="empty" data={ccFixture()} />,
+      <TopPrioritiesSection key="incomplete" data={incompleteCase} />,
       <TopPrioritiesSection key="load" data={null} loading />,
       <TopPrioritiesSection key="err" data={null} error="Network error" onRetry={() => {}} />,
     ];

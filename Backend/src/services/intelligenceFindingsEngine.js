@@ -1,11 +1,12 @@
 'use strict';
 
 /**
- * Phase 3 finding rules. Pure, deterministic and side-effect free.
+ * Deterministic commerce signal and finding rules. Pure and side-effect free.
  * Inputs MUST be computed from verified, organization-scoped source records.
- * No finding is emitted for missing, stale, or insufficient evidence.
+ * No finding is emitted for missing, stale, failed, or insufficient evidence.
  */
 const { narrativeGuardrailErrors } = require('./revClaimGuardrails');
+
 const TYPES = Object.freeze({
   INTEGRATION_FAILURE: 'integration_failure',
   REVENUE_CHANGE: 'revenue_change',
@@ -14,10 +15,32 @@ const TYPES = Object.freeze({
   REFUND_INCREASE: 'refund_increase',
   NO_RECENT_ORDERS: 'no_recent_orders',
   STOREFRONT_DOMAIN_UNCONFIGURED: 'storefront_domain_unconfigured',
+  PRODUCTS_UNPUBLISHED_OR_UNAVAILABLE: 'products_unpublished_or_unavailable',
+  NO_RECORDED_TRAFFIC: 'no_recorded_traffic',
+  TRAFFIC_WITHOUT_ORDERS: 'traffic_without_orders',
   ABANDONED_CHECKOUTS_OPEN: 'abandoned_checkouts_open',
   INVENTORY_STOCKOUTS: 'inventory_stockouts',
+  UNFULFILLED_ORDERS_BACKLOG: 'unfulfilled_orders_backlog',
   NO_STOREFRONT_EVENTS: 'no_storefront_events',
 });
+
+const EVALUATION_STATES = Object.freeze({
+  VERIFIED: 'verified',
+  NOT_DETECTED: 'not_detected',
+  NOT_EVALUATED: 'not_evaluated',
+  EVALUATION_FAILED: 'evaluation_failed',
+  STALE: 'stale',
+});
+
+const SIGNAL_CATEGORIES = Object.freeze({
+  STOREFRONT_READINESS: 'storefront_readiness',
+  TRAFFIC_ACQUISITION: 'traffic_acquisition',
+  SALES_REVENUE: 'sales_revenue',
+  CONVERSION_PURCHASING: 'conversion_purchasing',
+  PRODUCT_INVENTORY: 'product_inventory',
+  CUSTOMER_FULFILLMENT: 'customer_fulfillment',
+});
+
 const SEVERITIES = Object.freeze({ critical: 4, high: 3, medium: 2, low: 1 });
 const validNumber = value => typeof value === 'number' && Number.isFinite(value);
 const iso = value => { const date = new Date(value); return Number.isFinite(date.getTime()) ? date.toISOString() : null; };
@@ -33,11 +56,13 @@ const evidenceReady = (evidence, minCount = 1) =>
   new Date(evidence.previousEnd) <= new Date(evidence.currentStart) &&
   (new Date(evidence.currentEnd) - new Date(evidence.currentStart)) ===
     (new Date(evidence.previousEnd) - new Date(evidence.previousStart));
+
 const finding = (type, scope, severity, title, description, evidence, action) => {
   const unsafe = narrativeGuardrailErrors(`${title} ${description} ${action?.guidance || ''}`);
   if (unsafe.length) throw new Error(`Unsafe finding language: ${unsafe.join(', ')}`);
   return {
     type, scope, severity, title, description, evidence,
+    evaluation_state: EVALUATION_STATES.VERIFIED,
     action: action ? { ...action, action_state: 'recommended', executed: false,
       execution_status: 'not_requested', merchant_confirmation: 'not_confirmed',
       independent_verification: 'unverified' } : action,
@@ -45,6 +70,7 @@ const finding = (type, scope, severity, title, description, evidence, action) =>
     dedupe_key: [type, scope.storeId, scope.segment || 'all', evidence.currentStart || 'current', evidence.currentEnd || 'current'].join(':'),
   };
 };
+
 function detectIntegrationFailure({ scope, store, now = new Date(), maxSyncAgeMinutes = 120 }) {
   if (!scope?.organizationId || !scope?.storeId || !store || store.id !== scope.storeId) return null;
   const setupFailed = store.setup_status === 'failed' || store.sync_status === 'failed';
@@ -62,6 +88,7 @@ function detectIntegrationFailure({ scope, store, now = new Date(), maxSyncAgeMi
       verified: true, stale: Boolean(stale) },
     { label: 'Review integration', route: '/dashboard/integrations' });
 }
+
 function detectRevenueChange({ scope, evidence, minimumOrders = 10, minimumRelativeChange = 0.25 }) {
   if (!scope?.organizationId || !scope?.storeId || !evidenceReady(evidence, minimumOrders)) return null;
   if (!validNumber(evidence.currentRevenue) || !validNumber(evidence.previousRevenue) ||
@@ -75,6 +102,7 @@ function detectRevenueChange({ scope, evidence, minimumOrders = 10, minimumRelat
     { ...evidence, delta_pct: Number((delta * 100).toFixed(2)), source: 'orders' },
     { label: 'Investigate in Command Center', route: '/dashboard', guidance: 'Compare order count and average order value across the two periods. Check product availability and checkout activity where independently verified. Do not assume a cause from revenue movement alone.', measurement: 'Compare order count, recorded revenue, and average order value over a subsequent equal-length period in the same currency.' });
 }
+
 function detectOrderVolumeChange({ scope, evidence, minimumOrders = 10, minimumRelativeChange = 0.25 }) {
   if (!scope?.organizationId || !scope?.storeId || !evidenceReady(evidence, minimumOrders)) return null;
   if (!Number.isInteger(evidence.currentCount) || !Number.isInteger(evidence.previousCount) ||
@@ -90,6 +118,7 @@ function detectOrderVolumeChange({ scope, evidence, minimumOrders = 10, minimumR
       guidance: 'Compare product-level orders, recorded revenue and availability. Investigate checkout activity only where independently verified.',
       measurement: 'Compare completed-order counts across the next equivalent period.' });
 }
+
 function detectReturningCustomerChange({ scope, evidence, minimumCustomers = 20, minimumPointChange = 10 }) {
   if (!scope?.organizationId || !scope?.storeId || !evidenceReady(evidence, minimumCustomers)) return null;
   if (![evidence.currentReturning, evidence.previousReturning].every(validNumber) ||
@@ -109,6 +138,7 @@ function detectReturningCustomerChange({ scope, evidence, minimumCustomers = 20,
       change_percentage_points: Number(pointChange.toFixed(2)), source: 'orders' },
     { label: 'Investigate in Command Center', route: '/dashboard', guidance: 'Compare returning-buyer counts and prior purchase history for both periods. Do not infer why buyers did not return.', measurement: 'Compare verified returning-buyer purchase share over the next equivalent period.' });
 }
+
 function detectRefundIncrease({ scope, evidence, minimumTransactions = 1, minimumRelativeChange = 0.25 }) {
   if (!scope?.organizationId || !scope?.storeId || !evidenceReady(evidence, minimumTransactions) ||
       evidence.source !== 'order_transactions' || evidence.refund_coverage_complete !== true) return null;
@@ -124,6 +154,7 @@ function detectRefundIncrease({ scope, evidence, minimumTransactions = 1, minimu
       guidance: "Review the refund transactions in the current period. Compare affected orders, products and recorded refund reasons with the previous period to determine whether the increase is concentrated in a particular product or issue.",
       measurement: 'Compare successful refund transaction value using the same transaction-date attribution and currency in the next equivalent period.' });
 }
+
 function detectNoRecentOrders({ scope, evidence }) {
   if (!scope?.organizationId || !scope?.storeId || !evidence ||
       evidence.verified !== true || evidence.complete !== true ||
@@ -134,18 +165,22 @@ function detectNoRecentOrders({ scope, evidence }) {
   const zeroBothWindows = evidence.previousCount === 0;
   const periodDays = Number.isInteger(evidence.periodDays) && evidence.periodDays > 0 ? evidence.periodDays : 7;
   const totalWindowDays = zeroBothWindows ? periodDays * 2 : periodDays;
-  const severity = zeroBothWindows ? 'critical' : 'high';
+  const droppedFromActiveSales = evidence.previousCount >= 3;
+  const severity = droppedFromActiveSales ? 'critical' : 'high';
+  const trafficNote = evidence.trafficEvaluated === true && evidence.verifiedSessions === 0
+    ? ' Verified analytics also recorded zero sessions during this period, so this cannot be treated as a proven checkout conversion issue.'
+    : ' Traffic data was not independently verified for this period, so this observation does not establish whether acquisition or conversion explains the absence of sales.';
   const item = finding(
     TYPES.NO_RECENT_ORDERS,
     scope,
     severity,
-    `No verified orders recorded in the last ${totalWindowDays} days`,
-    `Certified Shopify order history records zero completed live orders across the verified ${totalWindowDays}-day window. This observation records the absence of completed sales and does not establish whether traffic, merchandising, or checkout setup explains the zero-order period.`,
-    { ...evidence, source: 'orders' },
+    'No recorded sales during the evaluated period',
+    `Certified Shopify order history records 0 completed live orders across the verified ${totalWindowDays}-day evaluation window.${trafficNote}`,
+    { ...evidence, totalWindowDays, source: 'orders' },
     {
       label: 'Investigate in Rev Intelligence',
       route: '/dashboard/rev-intell',
-      guidance: 'Verify storefront availability, run a live test checkout on an active product, and inspect acquisition channels in Shopify Admin to confirm shoppers can reach and purchase products.',
+      guidance: 'Confirm storefront availability and run a live test checkout on an active product, then verify whether acquisition channels are sending visitors to the store.',
       measurement: 'Track verified completed-order counts across the next equivalent period.',
     }
   );
@@ -160,13 +195,14 @@ function detectStorefrontDomainUnconfigured({ scope, evidence }) {
       !/\.myshopify\.com$/i.test(evidence.primaryDomainHost.trim()) ||
       evidence.customDomainCount !== 0 ||
       !iso(evidence.observed_at)) return null;
+  const host = evidence.primaryDomainHost.trim();
   const item = finding(
     TYPES.STOREFRONT_DOMAIN_UNCONFIGURED,
     scope,
-    'high',
-    'Storefront still uses a .myshopify.com primary domain',
-    `Synchronized Shopify store records show ${evidence.primaryDomainHost.trim()} as the primary domain with zero custom domains connected. This reflects current domain configuration only and does not establish traffic or conversion impact.`,
-    { ...evidence, source: 'store_profiles', storeId: scope.storeId },
+    'medium',
+    'Your storefront still uses a Shopify subdomain',
+    `Your primary storefront domain is currently ${host} with 0 custom domains connected in synchronized Shopify domain records. This reflects domain configuration only and does not establish traffic or conversion impact.`,
+    { ...evidence, primaryDomainHost: host, source: 'store_profiles', storeId: scope.storeId },
     {
       label: 'Configure custom domain',
       route: '/dashboard/rev-intell',
@@ -175,6 +211,97 @@ function detectStorefrontDomainUnconfigured({ scope, evidence }) {
     }
   );
   item.dedupe_key = `${TYPES.STOREFRONT_DOMAIN_UNCONFIGURED}:${scope.storeId}:current`;
+  return item;
+}
+
+function detectProductsUnpublishedOrUnavailable({ scope, evidence }) {
+  if (!scope?.organizationId || !scope?.storeId || !evidence ||
+      evidence.verified !== true || evidence.complete !== true ||
+      !Number.isInteger(evidence.totalProductsCount) || evidence.totalProductsCount < 1 ||
+      !Number.isInteger(evidence.activeProductsCount) || evidence.activeProductsCount < 0 ||
+      !Number.isInteger(evidence.inactiveProductsCount) || evidence.inactiveProductsCount < 0 ||
+      !iso(evidence.observed_at)) return null;
+  const zeroActive = evidence.activeProductsCount === 0;
+  const inactiveShare = evidence.inactiveProductsCount / evidence.totalProductsCount;
+  if (!zeroActive && (evidence.inactiveProductsCount < 3 || inactiveShare < 0.5)) return null;
+  const severity = zeroActive ? 'high' : 'medium';
+  const title = zeroActive
+    ? 'No catalog products are currently active for storefront purchase'
+    : `${evidence.inactiveProductsCount} of ${evidence.totalProductsCount} catalog products are not active`;
+  const description = zeroActive
+    ? `Synchronized Shopify product records show ${evidence.totalProductsCount} catalog items with 0 active listings. Shoppers cannot purchase unpublished or draft listings.`
+    : `Synchronized Shopify product records show ${evidence.inactiveProductsCount} of ${evidence.totalProductsCount} catalog listings are draft, archived, or non-active. This reflects current catalog status only and does not estimate demand.`;
+  const item = finding(
+    TYPES.PRODUCTS_UNPUBLISHED_OR_UNAVAILABLE,
+    scope,
+    severity,
+    title,
+    description,
+    { ...evidence, source: 'products', storeId: scope.storeId },
+    {
+      label: 'Review product publishing status',
+      route: '/dashboard/rev-intell',
+      guidance: 'Review product status and Online Store sales channel publishing in Shopify Admin (Products) to verify intended items are active and discoverable.',
+      measurement: 'Confirm active published product counts update after the next catalog sync.',
+    }
+  );
+  item.dedupe_key = `${TYPES.PRODUCTS_UNPUBLISHED_OR_UNAVAILABLE}:${scope.storeId}:current`;
+  return item;
+}
+
+function detectNoRecordedTraffic({ scope, evidence }) {
+  if (!scope?.organizationId || !scope?.storeId || !evidence ||
+      evidence.verified !== true || evidence.complete !== true ||
+      evidence.analyticsAccessVerified !== true ||
+      evidence.verifiedSessions !== 0 ||
+      !iso(evidence.currentStart) || !iso(evidence.currentEnd) ||
+      !iso(evidence.observed_at)) return null;
+  const windowDays = Number.isInteger(evidence.windowDays) && evidence.windowDays > 0 ? evidence.windowDays : 7;
+  const item = finding(
+    TYPES.NO_RECORDED_TRAFFIC,
+    scope,
+    'high',
+    'No recorded storefront traffic',
+    `Verified analytics recorded 0 storefront sessions during the ${windowDays}-day evaluation period (${evidence.currentStart.slice(0, 10)} to ${evidence.currentEnd.slice(0, 10)}). This reflects recorded analytics telemetry and does not establish why acquisition channels produced no sessions.`,
+    { ...evidence, source: evidence.source || 'analytics', storeId: scope.storeId },
+    {
+      label: 'Investigate acquisition and storefront reach',
+      route: '/dashboard/rev-intell',
+      guidance: 'Verify the storefront is publicly accessible without password protection, inspect acquisition channels and marketing links, and confirm storefront analytics tracking is firing on live pages.',
+      measurement: 'Monitor verified storefront session counts across the next equivalent period.',
+    }
+  );
+  item.dedupe_key = `${TYPES.NO_RECORDED_TRAFFIC}:${scope.storeId}:current`;
+  return item;
+}
+
+function detectTrafficWithoutOrders({ scope, evidence }) {
+  if (!scope?.organizationId || !scope?.storeId || !evidence ||
+      evidence.verified !== true || evidence.complete !== true ||
+      evidence.analyticsAccessVerified !== true ||
+      !Number.isInteger(evidence.verifiedSessions) || evidence.verifiedSessions < 1 ||
+      evidence.currentOrdersCount !== 0 ||
+      !iso(evidence.currentStart) || !iso(evidence.currentEnd) ||
+      !iso(evidence.observed_at)) return null;
+  const windowDays = Number.isInteger(evidence.windowDays) && evidence.windowDays > 0 ? evidence.windowDays : 7;
+  const checkoutContext = Number.isInteger(evidence.openAbandonedCount) && evidence.openAbandonedCount > 0
+    ? ` Synchronized checkout records also show ${evidence.openAbandonedCount} open abandoned ${evidence.openAbandonedCount === 1 ? 'checkout' : 'checkouts'} in the recent window.`
+    : '';
+  const item = finding(
+    TYPES.TRAFFIC_WITHOUT_ORDERS,
+    scope,
+    'high',
+    'Storefront traffic recorded with zero completed orders',
+    `Verified analytics recorded ${evidence.verifiedSessions} storefront ${evidence.verifiedSessions === 1 ? 'session' : 'sessions'} alongside 0 completed live orders across the ${windowDays}-day evaluation period.${checkoutContext} This indicates a potential conversion concern to investigate, but does not establish a specific technical or merchandising root cause.`,
+    { ...evidence, source: evidence.source || 'analytics', storeId: scope.storeId },
+    {
+      label: 'Investigate purchasing funnel',
+      route: '/dashboard/rev-intell',
+      guidance: 'Inspect product pages, cart additions, shipping rates, and payment checkout steps in Shopify Admin and run a live checkout verification to isolate where shoppers exit.',
+      measurement: 'Compare verified sessions against completed live orders over the next equivalent period.',
+    }
+  );
+  item.dedupe_key = `${TYPES.TRAFFIC_WITHOUT_ORDERS}:${scope.storeId}:current`;
   return item;
 }
 
@@ -233,6 +360,32 @@ function detectInventoryStockouts({ scope, evidence }) {
   return item;
 }
 
+function detectUnfulfilledOrdersBacklog({ scope, evidence }) {
+  if (!scope?.organizationId || !scope?.storeId || !evidence ||
+      evidence.verified !== true || evidence.complete !== true ||
+      !Number.isInteger(evidence.unfulfilledOrdersCount) || evidence.unfulfilledOrdersCount < 1 ||
+      !iso(evidence.observed_at)) return null;
+  const count = evidence.unfulfilledOrdersCount;
+  const ageHours = Number.isInteger(evidence.ageThresholdHours) && evidence.ageThresholdHours > 0 ? evidence.ageThresholdHours : 48;
+  const severity = count >= 5 ? 'high' : 'medium';
+  const item = finding(
+    TYPES.UNFULFILLED_ORDERS_BACKLOG,
+    scope,
+    severity,
+    `${count} live ${count === 1 ? 'order remains' : 'orders remain'} unfulfilled past ${ageHours} hours`,
+    `Synchronized order and fulfillment records show ${count} non-cancelled ${count === 1 ? 'order' : 'orders'} still marked unfulfilled or partially fulfilled more than ${ageHours} hours after order placement. This records current fulfillment status and does not assert carrier or warehouse root cause.`,
+    { ...evidence, ageThresholdHours: ageHours, source: 'orders', storeId: scope.storeId },
+    {
+      label: 'Review unfulfilled orders',
+      route: '/dashboard/rev-intell',
+      guidance: 'Review open unfulfilled orders in Shopify Admin (Orders -> Unfulfilled) to verify picking, shipping labels, and fulfillment location assignments.',
+      measurement: 'Confirm aged unfulfilled order counts decrease after fulfillment updates synchronize.',
+    }
+  );
+  item.dedupe_key = `${TYPES.UNFULFILLED_ORDERS_BACKLOG}:${scope.storeId}:current`;
+  return item;
+}
+
 function detectNoStorefrontEvents({ scope, evidence }) {
   if (!scope?.organizationId || !scope?.storeId || !evidence ||
       evidence.verified !== true || evidence.complete !== true ||
@@ -258,21 +411,30 @@ function detectNoStorefrontEvents({ scope, evidence }) {
 }
 
 function prioritizeFindings(findings) {
-  return findings.filter(Boolean).sort((a, b) =>
+  return [...findings].filter(Boolean).sort((a, b) =>
     (SEVERITIES[b.severity] || 0) - (SEVERITIES[a.severity] || 0) ||
-    a.dedupe_key.localeCompare(b.dedupe_key));
+    String(a.type).localeCompare(String(b.type)) ||
+    String(a.dedupe_key).localeCompare(String(b.dedupe_key)));
 }
+
 module.exports = {
   TYPES,
+  EVALUATION_STATES,
+  SIGNAL_CATEGORIES,
+  SEVERITIES,
   detectIntegrationFailure,
   detectRevenueChange,
-  detectReturningCustomerChange,
   detectOrderVolumeChange,
+  detectReturningCustomerChange,
   detectRefundIncrease,
   detectNoRecentOrders,
   detectStorefrontDomainUnconfigured,
+  detectProductsUnpublishedOrUnavailable,
+  detectNoRecordedTraffic,
+  detectTrafficWithoutOrders,
   detectOpenAbandonedCheckouts,
   detectInventoryStockouts,
+  detectUnfulfilledOrdersBacklog,
   detectNoStorefrontEvents,
   prioritizeFindings,
 };

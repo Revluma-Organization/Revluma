@@ -89,13 +89,11 @@ const LOCK_TTL_SECONDS = intSetting('SCHEDULER_LOCK_TTL_SECONDS', '300', 30);
 
 const BUSINESS_STATE_LOCK_TTL_SECONDS = intSetting('BUSINESS_STATE_LOCK_TTL_SECONDS', '600', 60);
 
-// Findings are evaluated over 7-day windows, so this pass does not need the
-// minute-level cadence of the Business State rebuild. It is scheduled at all
-// because previously the only way to evaluate findings was a merchant pressing
-// refresh, which meant qualifying conditions were never detected on their own.
+// Refresh store intelligence findings every 15 minutes so storefront,
+// catalog, order, and fulfillment signals remain fresh alongside post-sync runs.
 const INTELLIGENCE_FINDINGS_INTERVAL_MS = intSetting(
     'INTELLIGENCE_FINDINGS_INTERVAL_MS',
-    String(60 * 60 * 1000),
+    String(15 * 60 * 1000),
     60000
 );
 
