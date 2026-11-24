@@ -1,28 +1,18 @@
-/* Meet Rev (section 6): a dark band holding a dark Rev window. Compact: the
+/* Meet Rev (section 6): a dark Rev window on the light landing canvas. Compact: the
  * window splits into investigation and answer on wide screens. Static styles
  * first; every movement is in the reduced-motion block at the end, so with
  * reduced motion the finished conversation is simply shown. */
 
 .mr-section {
-  background: #0c0a1d;
-  color: #fff;
+  background: #fbfaf8;
+  color: #0c0a1d;
 }
+/* A soft indigo halo behind the window so it lifts off the light canvas. */
 .mr-glow {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(50rem 24rem at 50% -6rem, rgba(76, 52, 255, 0.3), transparent 70%),
-    radial-gradient(34rem 22rem at 92% 80%, rgba(168, 85, 247, 0.14), transparent 70%),
-    radial-gradient(30rem 20rem at 4% 90%, rgba(43, 19, 207, 0.2), transparent 70%);
-}
-.mr-glow::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
-  background-size: 22px 22px;
-  mask-image: linear-gradient(to bottom, #000, transparent 60%);
+  background: radial-gradient(46rem 26rem at 50% 68%, rgba(91, 70, 255, 0.12), transparent 70%);
 }
 
 .mr-eyebrow {
@@ -30,17 +20,17 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.25rem 0.8rem 0.25rem 0.3rem;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(31, 6, 172, 0.16);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
+  background: #fff;
   font-size: 0.74rem;
-  font-weight: 650;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.86);
+  color: #1f06ac;
 }
 .mr-accent {
-  background: linear-gradient(92deg, #a99bff 0%, #c4b5fd 45%, #f0abfc 100%);
+  background: linear-gradient(92deg, #1f06ac 0%, #4c34ff 50%, #8b3dff 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -90,10 +80,10 @@
   align-items: center;
   gap: 0.45rem;
   padding: 0.3rem 0.75rem 0.3rem 0.3rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid #e4e2ee;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.82);
+  background: #fff;
+  color: #3f3d4e;
   font: inherit;
   font-size: 0.8rem;
   font-weight: 600;
@@ -106,12 +96,12 @@
 }
 .mr-guide__item:hover,
 .mr-guide__item[data-active] {
-  border-color: rgba(169, 155, 255, 0.55);
-  background: rgba(124, 108, 255, 0.16);
-  color: #fff;
+  border-color: rgba(31, 6, 172, 0.4);
+  background: #f3f1ff;
+  color: #1f06ac;
 }
 .mr-guide__item:focus-visible {
-  outline: 2px solid #a99bff;
+  outline: 2px solid #1f06ac;
   outline-offset: 2px;
 }
 .mr-guide__no {
@@ -120,14 +110,14 @@
   width: 1.3rem;
   height: 1.3rem;
   border-radius: 50%;
-  background: rgba(169, 155, 255, 0.18);
-  color: #c4b5fd;
+  background: #efedff;
+  color: #1f06ac;
   font-size: 0.68rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .mr-guide__item[data-active] .mr-guide__no {
-  background: #7c6cff;
+  background: #1f06ac;
   color: #fff;
 }
 
@@ -141,8 +131,9 @@
   background: linear-gradient(180deg, #17142f 0%, #110f24 100%);
   color: rgba(255, 255, 255, 0.86);
   box-shadow:
-    0 40px 90px -30px rgba(0, 0, 0, 0.8),
-    0 0 110px -30px rgba(91, 70, 255, 0.55);
+    0 1px 2px rgba(12, 10, 29, 0.08),
+    0 30px 70px -28px rgba(12, 10, 29, 0.5),
+    0 0 90px -30px rgba(91, 70, 255, 0.45);
 }
 .mr-window__bar {
   display: flex;

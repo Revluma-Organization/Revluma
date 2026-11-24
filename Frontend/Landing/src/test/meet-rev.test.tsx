@@ -90,7 +90,7 @@ describe("Meet Rev (the intelligence interface)", () => {
   });
 
   it("replaces the old stats section on the homepage", () => {
-    expect(homepage).toContain('<div id="meet-rev" class="revluma-section revluma-section--dark" data-pending>');
+    expect(homepage).toContain('<div id="meet-rev" class="revluma-section" data-pending>');
     expect(homepage).not.toMatch(/Brands Active|Avg\. Revenue Lift|Revenue Recovered|Avg\. Setup Time|class="[^"]*counter/);
     expect(homepage.indexOf('id="how-it-works"')).toBeLessThan(homepage.indexOf('id="meet-rev"'));
   });
