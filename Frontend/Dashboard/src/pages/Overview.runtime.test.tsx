@@ -112,10 +112,10 @@ describe("Command Center runtime states (Task 220)", () => {
     // The failed resource is flagged...
     expect(screen.getByRole("alert")).toHaveTextContent("The briefing service had a problem");
     // ...but every unaffected section remains accessible.
+    expect(screen.getByRole("heading", { name: "Top priorities" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Your latest synchronized business picture" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Business health" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Top priority" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Data readiness & limitations" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Supporting intelligence" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Evidence & data coverage" })).toBeInTheDocument();
   });
 
   it("SC-RUN-08: a background refresh outcome is announced once in a polite live region", () => {
@@ -145,7 +145,7 @@ describe("Command Center runtime states (Task 220)", () => {
     expect(screen.getByText("Refreshing…")).toBeInTheDocument();
     const refresh = screen.getByRole("button", { name: /refreshing/i });
     expect(refresh).toBeDisabled();
-    expect(screen.getByRole("heading", { name: "Business health" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Supporting intelligence" })).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: /loading operational briefing/i })).not.toBeInTheDocument();
   });
 

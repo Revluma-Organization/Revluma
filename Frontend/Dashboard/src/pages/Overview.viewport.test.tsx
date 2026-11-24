@@ -81,10 +81,11 @@ describe("Viewport matrix (Task 220) — JS-driven contract; CSS layout verified
   it.each(WIDTHS)("%ipx: the full Command Center content is present (no information removed for the viewport)", (width) => {
     window.innerWidth = width;
     renderShell();
+    expect(screen.getByRole("heading", { name: "Top priorities" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Your latest synchronized business picture" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Business health" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Top priority" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Data readiness & limitations" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Evidence & data coverage" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Operational data health" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Supporting intelligence" })).toBeInTheDocument();
     expect(screen.getByText("revluma-test-store-v1.myshopify.com")).toBeInTheDocument();
   });
 

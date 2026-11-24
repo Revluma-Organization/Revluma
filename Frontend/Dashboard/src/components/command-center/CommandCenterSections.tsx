@@ -2,7 +2,7 @@ import {
   AlertCircle, ArrowRight, CheckCircle2, CircleDollarSign, Clock3,
   PackageCheck, PlugZap, ShoppingBag, ShoppingCart,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useInRouterContext, useNavigate } from "react-router-dom";
 import { investigationRoute } from "@/lib/workspaceNavigation";
 import { useEffect, useRef, useState } from "react";
 import { INTEGRATION_STATE_LABELS } from "@/lib/integrationState";
@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { BusinessOverviewHeader } from "./BusinessOverviewHeader";
 import { CommandCenterWelcomeSection } from "./CommandCenterWelcomeSection";
 import { OperationalBriefingSection } from "./OperationalBriefingSection";
+import { TopPrioritiesSection } from "./TopPrioritiesSection";
 import { cc } from "./tokens";
 import type { BusinessMetric, CommandCenterData, EvidenceResource } from "./types";
 
@@ -22,11 +23,18 @@ export {
   CommandCenterWelcomeSection as CommandCenterHeader,
   OperationalBriefingSection,
   OperationalBriefingSection as OperationalBriefing,
+  TopPrioritiesSection,
+  TopPrioritiesSection as PriorityFindings,
 };
 
 function useWorkspaceNavigation() {
+  const inRouter = useInRouterContext();
   const navigate = useNavigate();
   return (route: string) => {
+    if (!inRouter) {
+      window.location.assign(route);
+      return;
+    }
     if (!route.startsWith("/dashboard/rev-intell")) return navigate(route);
     const current = new URL(window.location.href);
     const finding = new URL(route, current.origin).searchParams.get("finding");
@@ -55,16 +63,31 @@ const availabilityLabel: Record<string, string> = {
 };
 
 function SectionHeader({ id, title, description, aside }: { id: string; title: string; description: string; aside?: React.ReactNode }) {
-  return <div className={cn("flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4", cc.divider)}>
-    <div><h2 id={id} className={cc.sectionTitle}>{title}</h2><p className={cn("mt-1", cc.metadata)}>{description}</p></div>{aside}
+  return <div className={cn("flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4 sm:px-6", cc.divider)}>
+    <div className="min-w-0">
+      <h2 id={id} className={cc.sectionTitle}>{title}</h2>
+      <p className="mt-0.5 text-[13px] leading-5 text-[#707582]">{description}</p>
+    </div>
+    {aside}
   </div>;
 }
 
 function Availability({ value }: { value: string }) {
   const positive = value === "available" || value === "fresh" || value === "connected" || value === "healthy";
   const negative = value === "retrieval_failed" || value === "failed" || value === "critical";
+  const warning = ["stale", "partial", "attention", "deteriorating"].includes(value);
   const Icon = positive ? CheckCircle2 : AlertCircle;
-  return <span className={cn("inline-flex items-center gap-1.5 text-[11px] font-medium", positive ? cc.positive : negative ? cc.negative : ["stale", "partial", "attention", "deteriorating"].includes(value) ? cc.warning : cc.muted)}><Icon className="h-3.5 w-3.5" aria-hidden="true" />{availabilityLabel[value] || value.replaceAll("_", " ")}</span>;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 text-[11px] font-medium",
+        positive ? cc.positive : negative ? cc.negative : warning ? cc.warning : cc.muted,
+      )}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      {availabilityLabel[value] || value.replaceAll("_", " ")}
+    </span>
+  );
 }
 
 function MetricValue({ metric }: { metric: BusinessMetric }) {
@@ -73,271 +96,6 @@ function MetricValue({ metric }: { metric: BusinessMetric }) {
   if (metric.unit === "money") return money(metric.value!, metric.currency!);
   if (metric.unit === "percent") return `${metric.value! > 0 ? "+" : ""}${metric.value!.toFixed(1)}%`;
   return metric.value!.toLocaleString();
-}
-
-function observationText(item: CommandCenterData["findings"][number]["evidence"]["observations"][number]) {
-  if (item.value === null || item.availability !== "available") return "Unavailable";
-  if (item.unit === "money" && typeof item.value === "number" && item.currency) return money(item.value, item.currency);
-  return `${item.value}${item.unit === "count" ? "" : ` ${item.unit}`}`;
-}
-
-export function PriorityFindings({ data }: { data: CommandCenterData }) {
-  const openRoute = useWorkspaceNavigation();
-  const selected = data.priority_finding;
-  // The API owns eligibility and ranking. Keep its selected finding first and
-  // preserve the returned order for the remaining eligible findings.
-  const priorities = selected
-    ? [selected, ...data.findings.filter(item => item.id !== selected.id)].slice(0, 3)
-    : [];
-  const eligibleCount = data.priority_selection.eligible_count;
-  const hiddenCount = Math.max(0, eligibleCount - priorities.length);
-
-  return (
-    <section
-      id="priority-finding"
-      aria-labelledby="priority-findings-heading"
-      className={cn(cc.intelligence, "scroll-mt-24 overflow-hidden")}
-    >
-      <SectionHeader
-        id="priority-findings-heading"
-        title="Top priorities"
-        description="The issues Revluma believes deserve attention first, based on current eligible evidence"
-        aside={
-          <span className="inline-flex items-center gap-2 rounded-full border border-[#DCE3F2] bg-[#F7F8FC] px-3 py-1.5 text-[11px] font-semibold text-[#475467]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#1F06AC]" aria-hidden="true" />
-            {priorities.length > 0 ? priorities.length + " shown" : "No ranked priorities"}
-          </span>
-        }
-      />
-
-      {priorities.length > 0 ? (
-        <div className="divide-y divide-[#E8ECF3]">
-          {priorities.map((item, index) => {
-            const urgent = item.severity === "critical" || item.severity === "high";
-            const severityClass = urgent
-              ? "border-[#F3C7C3] bg-[#FFF5F4] text-[#A12A22]"
-              : item.severity === "medium"
-                ? "border-[#F2DDB8] bg-[#FFFAF0] text-[#925B13]"
-                : "border-[#E3E7EF] bg-[#F8F9FB] text-[#475467]";
-            const confidenceLabel = item.confidence.classification.replaceAll("_", " ");
-            const freshnessLabel = item.evidence_freshness.state.replaceAll("_", " ");
-            const coverageLabel = item.coverage.state.replaceAll("_", " ");
-
-            return (
-              <article
-                key={item.id}
-                aria-labelledby={"priority-title-" + item.id}
-                className={cn(
-                  "relative grid gap-5 p-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_minmax(250px,0.42fr)] xl:gap-7",
-                  index === 0 ? "bg-[linear-gradient(105deg,#F7F8FF_0%,#FFFFFF_62%)]" : "bg-white",
-                )}
-              >
-                <div className="flex min-w-0 gap-4">
-                  <div className="flex shrink-0 flex-col items-center gap-2">
-                    <span className={cn(
-                      "flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold tabular-nums",
-                      index === 0 ? "bg-[#1E2B61] text-white shadow-[0_4px_12px_rgba(30,43,97,0.18)]" : "border border-[#E1E6F0] bg-[#F8F9FC] text-[#667085]",
-                    )}>
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    {index === 0 && <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#4655A4]">First</span>}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em]", severityClass)}>
-                        {item.severity} priority
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E4E7EC] bg-white px-2.5 py-1 text-[10px] font-semibold capitalize text-[#475467]">
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#667085]" aria-hidden="true" />
-                        {confidenceLabel} confidence
-                      </span>
-                      <span className="text-[10px] font-medium capitalize text-[#667085]">
-                        {freshnessLabel} evidence · {coverageLabel} coverage
-                      </span>
-                    </div>
-
-                    <h3 id={"priority-title-" + item.id} className="mt-3 text-[17px] font-semibold leading-6 tracking-[-0.025em] text-[#172033] sm:text-lg">
-                      {item.title}
-                    </h3>
-                    <p className="mt-2 max-w-3xl text-[13px] leading-6 text-[#596579]">
-                      {item.description}
-                    </p>
-
-                    {item.priority.rationale.length > 0 && (
-                      <div className="mt-4 rounded-xl border border-[#E7EAF3] bg-white/85 px-4 py-3">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#667085]">Why this is ranked here</p>
-                        <ul className="mt-2 space-y-1.5 text-xs leading-5 text-[#475467]">
-                          {item.priority.rationale.slice(0, 2).map(reason => (
-                            <li key={reason} className="flex gap-2">
-                              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#4655A4]" aria-hidden="true" />
-                              <span>{reason}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    <div className="mt-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#667085]">Evidence snapshot</h4>
-                        <span className="text-[10px] text-[#98A2B3]">{item.evidence.observations.length} observations</span>
-                      </div>
-                      {item.evidence.observations.length > 0 ? (
-                        <dl className="mt-2 grid gap-2 min-[480px]:grid-cols-2">
-                          {item.evidence.observations.slice(0, 4).map(observation => (
-                            <div key={observation.period + "-" + observation.label} className="min-w-0 rounded-lg border border-[#E8ECF3] bg-white px-3 py-2.5">
-                              <dt className="truncate text-[10px] font-medium text-[#667085]" title={observation.label}>{observation.label}</dt>
-                              <dd className="mt-1 break-words text-sm font-semibold tabular-nums text-[#172033]">{observationText(observation)}</dd>
-                              <dd className="mt-0.5 truncate text-[10px] text-[#98A2B3]" title={observation.period}>{observation.period.replaceAll("_", " ")}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      ) : (
-                        <p className="mt-2 rounded-lg border border-dashed border-[#D9DFEA] px-3 py-3 text-xs text-[#667085]">
-                          No supporting observations are available to display in this summary.
-                        </p>
-                      )}
-                    </div>
-
-                    <p className="mt-3 text-[10px] leading-5 text-[#7A8495]">
-                      {item.reporting_period.kind.replaceAll("_", " ")} · {item.reporting_period.timezone} · Last verified {dateTime(item.last_verified_at)}
-                    </p>
-                  </div>
-                </div>
-
-                <aside className="flex min-w-0 flex-col rounded-xl border border-[#E2E7F0] bg-white p-4 shadow-[0_2px_8px_rgba(16,24,40,0.025)]">
-                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#4655A4]">
-                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    Recommended next step
-                  </div>
-                  {item.recommendation.available && item.recommendation.step ? (
-                    <>
-                      <p className="mt-3 text-[13px] font-semibold leading-5 text-[#172033]">{item.recommendation.step}</p>
-                      {item.recommendation.rationale && (
-                        <p className="mt-2 text-xs leading-5 text-[#667085]">{item.recommendation.rationale}</p>
-                      )}
-                      {item.recommendation.expected_result && (
-                        <p className="mt-3 border-t border-[#EEF0F4] pt-3 text-[11px] leading-5 text-[#667085]">
-                          <span className="font-semibold text-[#475467]">What to verify: </span>
-                          {item.recommendation.expected_result}
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <p className="mt-3 text-xs leading-5 text-[#667085]">
-                      {item.recommendation.prerequisites.length > 0
-                        ? item.recommendation.prerequisites.join(" ")
-                        : "More evidence is needed before Revluma can recommend a specific next step."}
-                    </p>
-                  )}
-
-                  <div className="mt-auto pt-5">
-                    <button
-                      type="button"
-                      onClick={() => openRoute(item.investigation.route)}
-                      className={cn(
-                        "inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors",
-                        index === 0
-                          ? "bg-[#1E2B61] text-white hover:bg-[#293B7A]"
-                          : "border border-[#DCE2EC] bg-white text-[#344054] hover:bg-[#F8F9FC]",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F06AC] focus-visible:ring-offset-2",
-                      )}
-                    >
-                      Investigate in Rev Intelligence
-                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
-                    <p className="mt-2 text-center text-[10px] text-[#98A2B3]">Review only · Revluma will not change your store</p>
-                  </div>
-                </aside>
-
-                <div className="xl:col-span-2">
-                  <details className="group border-t border-[#E9ECF2] pt-3">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[11px] font-semibold text-[#667085] transition-colors hover:text-[#344054] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F06AC] focus-visible:ring-offset-2">
-                      <span>Evidence, limitations and ranking details</span>
-                      <span className="text-[#98A2B3] transition-transform group-open:rotate-180" aria-hidden="true">⌄</span>
-                    </summary>
-                    <div className="mt-4 grid gap-5 rounded-xl border border-[#E8ECF3] bg-[#F8F9FC] p-4 sm:grid-cols-2">
-                      <div>
-                        <h4 className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#667085]">Confidence and limitations</h4>
-                        <p className="mt-2 text-xs leading-5 text-[#475467]">{item.confidence.rationale.join(" ") || "No additional confidence explanation is available."}</p>
-                        {item.limitations.length > 0 && (
-                          <ul className="mt-3 space-y-1.5 text-xs leading-5 text-[#667085]">
-                            {item.limitations.map(limit => <li key={limit}>• {limit}</li>)}
-                          </ul>
-                        )}
-                        {item.unknowns.length > 0 && (
-                          <div className="mt-3">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#667085]">Still unknown</p>
-                            <ul className="mt-1 space-y-1 text-xs leading-5 text-[#667085]">
-                              {item.unknowns.map(unknown => <li key={unknown}>• {unknown}</li>)}
-                            </ul>
-                          </div>
-                        )}
-                        {item.priority.tie && <p className="mt-3 text-xs leading-5 text-[#667085]">{item.priority.tie.statement}</p>}
-                      </div>
-                      <div>
-                        <h4 className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#667085]">Source references</h4>
-                        {item.evidence.references.length > 0 ? (
-                          <ul className="mt-2 space-y-2 text-xs text-[#475467]">
-                            {item.evidence.references.map(reference => (
-                              <li key={reference.id} className="break-all rounded-lg border border-[#E5E9F1] bg-white p-2.5">
-                                <span className="font-semibold">{reference.source_type}</span>
-                                <span className="mt-0.5 block font-mono text-[10px] text-[#7A8495]">{reference.source_record_id}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : <p className="mt-2 text-xs text-[#667085]">No source references were attached to this finding.</p>}
-                        <p className="mt-3 text-[10px] leading-5 text-[#667085]">
-                          {item.lifecycle.state.replaceAll("_", " ")} · {item.lifecycle.current_validity.replaceAll("_", " ")} · Detected {dateTime(item.detected_at)}
-                        </p>
-                      </div>
-                    </div>
-                  </details>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="bg-[linear-gradient(115deg,#F8F9FC_0%,#FFFFFF_70%)] p-6 sm:p-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-[#E2E7F0] bg-white text-[#667085] shadow-sm">
-              <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <p className="mt-4 text-base font-semibold tracking-[-0.02em] text-[#172033]">
-              No priority currently meets Revluma’s evidence threshold
-            </p>
-            <p className="mx-auto mt-2 max-w-xl text-xs leading-6 text-[#667085]">
-              {data.priority_selection.reason || "There is not enough current, valid evidence to rank a finding as a priority."}
-              {" "}This does not mean the store has no problems; it means Revluma cannot responsibly rank one from the evidence currently available.
-            </p>
-            {data.priority_selection.exclusions.length > 0 && (
-              <details className="mt-5 text-left">
-                <summary className="cursor-pointer text-xs font-semibold text-[#4655A4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F06AC] focus-visible:ring-offset-2">
-                  Why {data.priority_selection.exclusions.length} finding(s) were not ranked
-                </summary>
-                <ul className="mt-3 space-y-2">
-                  {data.priority_selection.exclusions.map(item => (
-                    <li key={item.finding_id} className="rounded-lg border border-[#E8ECF3] bg-white p-3 text-xs leading-5 text-[#667085]">
-                      <span className="font-semibold text-[#344054]">{item.title}</span>
-                      <span className="block">Not current: {item.reason.replaceAll("_", " ")}. Historical evidence is not presented as a current condition.</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </div>
-        </div>
-      )}
-
-      {hiddenCount > 0 && (
-        <p className="border-t border-[#E8ECF3] bg-[#F8F9FC] px-5 py-3 text-[11px] text-[#667085]">
-          Showing the 3 highest-ranked priorities from {eligibleCount} eligible findings. Open Rev Intelligence to review the broader finding set.
-        </p>
-      )}
-    </section>
-  );
 }
 
 type HealthItem = { id: string; label: string; value: React.ReactNode; availability: string; detail: string; freshness: string; icon: React.ElementType };
@@ -352,21 +110,28 @@ function canonicalValue(indicator: BusinessIndicator) {
   if (indicator.category === "product_availability") return `${indicator.value.toLocaleString()} available`;
   return INTEGRATION_STATE_LABELS[indicator.value as keyof typeof INTEGRATION_STATE_LABELS] || String(indicator.value).replaceAll("_", " ");
 }
+
 function CanonicalHealthIndicators({ data }: { data: CommandCenterData }) {
   const health = data.business_health!;
   const reporting = resolveReportingContext(data);
   return <section aria-labelledby="business-health-heading" className={cc.surface}>
-    <SectionHeader id="business-health-heading" title="Business health" description={`Five operational domains · ${reporting.periodLabel} · ${reporting.timezone.label}`} />
-    <p className={cn("border-b px-5 py-3", cc.divider, cc.metadata)}>{health.business_status_explanation} Business severity and data quality are independent.</p>
+    <SectionHeader
+      id="business-health-heading"
+      title="Supporting intelligence"
+      description={`Verified operational indicators · ${reporting.periodLabel} · ${reporting.timezone.label}`}
+    />
+    <p className={cn("border-b bg-[#FAFBFD] px-5 py-2.5 sm:px-6", cc.divider, cc.metadata)}>
+      {health.business_status_explanation} Business severity and data quality are independent.
+    </p>
     <dl className={cn("grid divide-y sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5", cc.divider)}>{health.indicators.map(indicator => {
       const Icon = canonicalIcons[indicator.category];
       return <div key={indicator.id} data-health-domain={indicator.category === "product_availability" ? "product-availability" : indicator.category} className={cn("min-w-0 border-b p-5 last:border-b-0 sm:border-r xl:border-b-0 xl:last:border-r-0", cc.divider)}>
-        <dt className="flex items-center gap-2 text-xs font-medium text-[#475467]"><Icon className="h-4 w-4 shrink-0 text-[#667085]" aria-hidden="true" />{indicator.title}</dt>
-        <dd className="mt-3 break-words text-lg font-semibold leading-6 tracking-[-0.02em] text-[#172033]">{canonicalValue(indicator)}</dd>
+        <dt className="flex items-center gap-2 text-xs font-medium text-[#707582]"><Icon className="h-4 w-4 shrink-0 text-[#707582]" aria-hidden="true" />{indicator.title}</dt>
+        <dd className="mt-3 break-words text-lg font-semibold leading-6 tracking-[-0.02em] text-[#17191F] tabular-nums">{canonicalValue(indicator)}</dd>
         <dd className="mt-2 flex flex-wrap items-center gap-2"><Availability value={indicator.status} /><span className={cc.metadata}>{DATA_QUALITY_LABEL[indicator.data_quality]}</span></dd>
-        {indicator.change_pct !== null && <dd className={cn("mt-2", cc.metadata)}>{indicator.change_pct > 0 ? "+" : ""}{indicator.change_pct}% vs previous period</dd>}
+        {indicator.change_pct !== null && <dd className={cn("mt-2 tabular-nums", cc.metadata)}>{indicator.change_pct > 0 ? "+" : ""}{indicator.change_pct}% vs previous period</dd>}
         <dd className={cn("mt-2", cc.metadata)}>{indicator.explanation}</dd>
-        <dd className="mt-3"><details><summary className={cc.disclosure}>Metric & coverage</summary><div className={cn("mt-2 space-y-2", cc.metadata)}><p>{indicator.metric_definition || "Metric definition unavailable."}</p><p>{indicator.coverage.reason}</p>{indicator.limitations.map(item => <p key={item}>• {item}</p>)}{indicator.next_step && <p><span className="font-semibold">Next step: </span>{indicator.next_step}</p>}<p>Last verified {dateTime(indicator.last_verified_at)}</p></div></details></dd>
+        <dd className="mt-3"><details><summary className={cc.disclosure}>Metric &amp; coverage</summary><div className={cn("mt-2 space-y-2", cc.metadata)}><p>{indicator.metric_definition || "Metric definition unavailable."}</p><p>{indicator.coverage.reason}</p>{indicator.limitations.map(item => <p key={item}>• {item}</p>)}{indicator.next_step && <p><span className="font-semibold text-[#17191F]">Next step: </span>{indicator.next_step}</p>}<p className="tabular-nums">Last verified {dateTime(indicator.last_verified_at)}</p></div></details></dd>
       </div>;
     })}</dl>
   </section>;
@@ -387,23 +152,28 @@ export function HealthIndicators({ data }: { data: CommandCenterData }) {
     { id: "integration", label: "Integration", icon: PlugZap, value: data.integration ? INTEGRATION_STATE_LABELS[data.integration.overall_status] : "Not connected", availability: data.integration?.overall_status || "unknown", detail: data.integration?.status_explanation || "No verified integration state is available", freshness: data.evidence.last_successful_sync_at ? `Last sync ${relative(data.evidence.last_successful_sync_at)}` : "No successful sync recorded" },
   ];
   return <section aria-labelledby="business-health-heading" className={cc.surface}>
-    <SectionHeader id="business-health-heading" title="Business health" description={`Five operational domains · Current and previous UTC day · ${data.context.currency || "currency not verified"}`} />
+    <SectionHeader
+      id="business-health-heading"
+      title="Supporting intelligence"
+      description={`Verified operational indicators · Current and previous UTC day · ${data.context.currency || "currency not verified"}`}
+    />
     <dl className={cn("grid divide-y sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5", cc.divider)}>{items.map(item => {
       const Icon = item.icon;
       return <div key={item.id} data-health-domain={item.id} className={cn("min-w-0 border-b p-5 last:border-b-0 sm:border-r xl:border-b-0 xl:last:border-r-0", cc.divider)}>
-        <dt className="flex items-center gap-2 text-xs font-medium text-[#475467]"><Icon className="h-4 w-4 shrink-0 text-[#667085]" aria-hidden="true" />{item.label}</dt>
-        <dd className="mt-3 break-words text-lg font-semibold leading-6 tracking-[-0.02em] text-[#172033]">{item.value}</dd>
+        <dt className="flex items-center gap-2 text-xs font-medium text-[#707582]"><Icon className="h-4 w-4 shrink-0 text-[#707582]" aria-hidden="true" />{item.label}</dt>
+        <dd className="mt-3 break-words text-lg font-semibold leading-6 tracking-[-0.02em] text-[#17191F] tabular-nums">{item.value}</dd>
         {(item.id === "revenue" && revenue || item.id === "checkouts" && checkout) && <dd className="sr-only">{item.id === "revenue" ? revenue?.definition : checkout?.definition}</dd>}
         <dd className="mt-2"><Availability value={item.availability} /></dd>
         <dd className={cn("mt-2 min-h-10", cc.metadata)}>{item.detail}</dd>
-        <dd className={cn("mt-2 inline-flex items-start gap-1.5", cc.metadata)}><Clock3 className="mt-1 h-3 w-3 shrink-0" aria-hidden="true" />{item.freshness}</dd>
+        <dd className={cn("mt-2 inline-flex items-start gap-1.5 tabular-nums", cc.metadata)}><Clock3 className="mt-1 h-3 w-3 shrink-0" aria-hidden="true" />{item.freshness}</dd>
       </div>;
     })}</dl>
   </section>;
 }
 
-// Backwards-compatible export name; there is only one business-health presentation.
+// Backwards-compatible export names; single canonical supporting intelligence view.
 export const BusinessOverview = HealthIndicators;
+export const SupportingIntelligence = HealthIndicators;
 
 function CanonicalOperationalActivity({ data }: { data: CommandCenterData }) {
   const openRoute = useWorkspaceNavigation();
@@ -441,14 +211,14 @@ function CanonicalOperationalActivity({ data }: { data: CommandCenterData }) {
     finally { if (generation === generationRef.current) setPending(false); }
   };
   return <section aria-labelledby="operational-activity-heading" className={cc.surface}>
-    <SectionHeader id="operational-activity-heading" title="Operational activity" description={`Recorded findings, integration, webhook and sync events · last ${contract.window_days} days`} aside={<span className={cc.metadata}>{total} recorded</span>} />
+    <SectionHeader id="operational-activity-heading" title="Operational activity" description={`Recorded findings, integration, webhook and sync events · last ${contract.window_days} days`} aside={<span className={cn(cc.metadata, "tabular-nums")}>{total} recorded</span>} />
     {items.length ? <ul className={cn("divide-y", cc.divider)}>{items.map(item => {
       const investigate = item.type === "finding" && item.finding_id;
       const integrations = item.link === "/integrations";
-      return <li key={item.event_id} className="flex gap-3 p-5"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.severity === "critical" ? "bg-[#b42318]" : item.severity === "warning" || item.severity === "attention" ? "bg-[#b54708]" : item.type === "finding" ? "bg-[#1F06AC]" : "bg-[#98a2b3]")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold">{item.title}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.type.replaceAll("_", " ")} · {item.severity}</span></div>{item.detail && <p className={cn("mt-1 break-words", cc.metadata)}>{item.detail}</p>}<p className={cn("mt-1", cc.metadata)}>Occurred {dateTime(item.occurred_at)}{new Date(item.received_at).getTime() - new Date(item.occurred_at).getTime() > 300_000 ? ` · recorded ${relative(item.received_at)}` : ""}</p>{investigate && <button type="button" onClick={() => openRoute(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}{integrations && <button type="button" onClick={() => openRoute("/dashboard/integrations")} className={cn("mt-2 min-h-9", cc.disclosure)}>Review integration <ArrowRight className="inline h-3 w-3" /></button>}</div></li>;
-    })}</ul> : <div className="p-5"><p className="text-xs font-semibold">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No activity could be confirmed for this {contract.window_days}-day window. An empty feed may mean no matching records or unavailable source evidence; it does not prove that nothing happened.</p></div>}
-    {failed && <p role="alert" className={cn("px-5 pb-3", cc.warning)}>More activity could not be loaded. The events already shown are unchanged.</p>}
-    {hasMore && cursor && <div className="p-5 pt-0"><button type="button" onClick={() => void loadMore()} disabled={pending} className={cc.secondary}>{pending ? "Loading…" : `Load more (${Math.max(0, total - items.length)} remaining)`}</button></div>}
+      return <li key={item.event_id} className="flex gap-3 px-5 py-4 sm:px-6"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.severity === "critical" ? "bg-[#B42318]" : item.severity === "warning" || item.severity === "attention" ? "bg-[#D97706]" : item.type === "finding" ? "bg-[#4438E8]" : "bg-[#98A2B3]")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold text-[#17191F]">{item.title}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.type.replaceAll("_", " ")} · {item.severity}</span></div>{item.detail && <p className={cn("mt-1 break-words", cc.metadata)}>{item.detail}</p>}<p className={cn("mt-1 tabular-nums", cc.metadata)}>Occurred {dateTime(item.occurred_at)}{new Date(item.received_at).getTime() - new Date(item.occurred_at).getTime() > 300_000 ? ` · recorded ${relative(item.received_at)}` : ""}</p>{investigate && <button type="button" onClick={() => openRoute(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}{integrations && <button type="button" onClick={() => openRoute("/dashboard/integrations")} className={cn("mt-2 min-h-9", cc.disclosure)}>Review integration <ArrowRight className="inline h-3 w-3" /></button>}</div></li>;
+    })}</ul> : <div className="px-5 py-4 sm:px-6"><p className="text-xs font-semibold text-[#17191F]">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No activity could be confirmed for this {contract.window_days}-day window. An empty feed may mean no matching records or unavailable source evidence; it does not prove that nothing happened.</p></div>}
+    {failed && <p role="alert" className={cn("px-5 pb-3 sm:px-6", cc.warning)}>More activity could not be loaded. The events already shown are unchanged.</p>}
+    {hasMore && cursor && <div className="px-5 pb-5 pt-2 sm:px-6"><button type="button" onClick={() => void loadMore()} disabled={pending} className={cc.secondary}>{pending ? "Loading…" : `Load more (${Math.max(0, total - items.length)} remaining)`}</button></div>}
   </section>;
 }
 
@@ -457,14 +227,14 @@ export function OperationalActivity({ data }: { data: CommandCenterData }) {
   if (data.operational_activity) return <CanonicalOperationalActivity data={data} />;
   return <section aria-labelledby="operational-activity-heading" className={cc.surface}>
     <SectionHeader id="operational-activity-heading" title="Operational activity" description="Verified findings and system events, in chronological order" />
-    {data.activity.length ? <ul className={cn("divide-y", cc.divider)}>{data.activity.map(item => <li key={item.id} className="flex gap-3 p-5"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.kind === "business" ? "bg-[#1F06AC]" : "bg-[#98a2b3]")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold">{item.label}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.kind}</span></div><p className={cn("mt-1", cc.metadata)}>{dateTime(item.occurred_at)} · {item.note}</p>{item.kind === "business" && item.finding_id && <button type="button" onClick={() => openRoute(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}</div></li>)}</ul> : <div className="p-5"><p className="text-xs font-semibold">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No verified operational activity is recorded for this view. No placeholder events are inserted.</p></div>}
+    {data.activity.length ? <ul className={cn("divide-y", cc.divider)}>{data.activity.map(item => <li key={item.id} className="flex gap-3 px-5 py-4 sm:px-6"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.kind === "business" ? "bg-[#4438E8]" : "bg-[#98A2B3]")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold text-[#17191F]">{item.label}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.kind}</span></div><p className={cn("mt-1 tabular-nums", cc.metadata)}>{dateTime(item.occurred_at)} · {item.note}</p>{item.kind === "business" && item.finding_id && <button type="button" onClick={() => openRoute(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}</div></li>)}</ul> : <div className="px-5 py-4 sm:px-6"><p className="text-xs font-semibold text-[#17191F]">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No verified operational activity is recorded for this view. No placeholder events are inserted.</p></div>}
   </section>;
 }
 
 function EvidenceRow({ resource }: { resource: EvidenceResource }) {
   return <div className={cn("grid gap-2 border-b py-3 last:border-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-4", cc.divider)}>
-    <div className="min-w-0"><p className="text-xs font-semibold capitalize">{resource.label}</p><p className={cn("mt-1", cc.metadata)}>{resource.reason || `${resource.freshness} evidence · coverage ${resource.coverage.replaceAll("_", " ")}`}</p></div>
-    <div className="text-left sm:text-right"><Availability value={resource.availability} /><p className={cn("mt-1", cc.metadata)} title={dateTime(resource.last_success_at)}>Last success {relative(resource.last_success_at)}</p></div>
+    <div className="min-w-0"><p className="text-xs font-semibold capitalize text-[#17191F]">{resource.label}</p><p className={cn("mt-1", cc.metadata)}>{resource.reason || `${resource.freshness} evidence · coverage ${resource.coverage.replaceAll("_", " ")}`}</p></div>
+    <div className="text-left sm:text-right"><Availability value={resource.availability} /><p className={cn("mt-1 tabular-nums", cc.metadata)} title={dateTime(resource.last_success_at)}>Last success {relative(resource.last_success_at)}</p></div>
   </div>;
 }
 
@@ -472,8 +242,8 @@ export function EvidenceFreshness({ data }: { data: CommandCenterData }) {
   const limited = data.evidence.resources.filter(item => item.availability !== "available");
   return <section aria-labelledby="evidence-heading" className={cc.surface}>
     <SectionHeader id="evidence-heading" title="Data readiness & limitations" description="Source-specific freshness and coverage; no overall health score is inferred" aside={<span className={cc.metadata}>{limited.length} limited</span>} />
-    <div className="p-5">
-      {limited.length > 0 && <ul className={cn("mb-4 space-y-2", cc.metadata)}>{limited.slice(0, 3).map(resource => <li key={`${resource.store_id}-${resource.resource}-limit`}><span className="font-semibold text-[#344054]">{resource.label}: </span>{resource.reason || availabilityLabel[resource.availability]}</li>)}</ul>}
+    <div className="p-5 sm:px-6">
+      {limited.length > 0 && <ul className={cn("mb-4 space-y-2", cc.metadata)}>{limited.slice(0, 3).map(resource => <li key={`${resource.store_id}-${resource.resource}-limit`}><span className="font-semibold text-[#17191F]">{resource.label}: </span>{resource.reason || availabilityLabel[resource.availability]}</li>)}</ul>}
       <details>
         <summary className={cc.disclosure}>Review resource freshness and coverage</summary>
         <div className="mt-4">{data.evidence.resources.map(resource => <EvidenceRow key={`${resource.store_id}-${resource.resource}`} resource={resource} />)}</div>

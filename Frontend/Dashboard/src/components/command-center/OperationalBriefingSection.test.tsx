@@ -129,11 +129,12 @@ function renderBriefing(
 }
 
 describe("Operational Briefing Rebuild", () => {
-  it("1. renders all four editorial areas with authoritative briefing generation timestamp distinct from sync time", () => {
-    renderBriefing(baseBriefingData());
+  it("1. renders all hybrid editorial and supporting panels with authoritative briefing generation timestamp distinct from sync time", () => {
+    const { container } = renderBriefing(baseBriefingData());
 
+    expect(container.querySelector('[data-briefing-layout="hybrid"]')).toBeTruthy();
     expect(screen.getByText("Operational briefing")).toBeInTheDocument();
-    expect(screen.getByText("Your latest business intelligence briefing")).toBeInTheDocument();
+    expect(screen.getByText(/Business overview · Last 7 days/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
       "Your latest synchronized business picture",
     );
@@ -141,9 +142,17 @@ describe("Operational Briefing Rebuild", () => {
     expect(screen.getByText("Briefing updated 5 minutes ago")).toBeInTheDocument();
     expect(screen.getByText("No major issue established")).toBeInTheDocument();
     expect(screen.getByText("Evidence verified")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "A closer look", level: 3 })).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Recent developments", level: 3 }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Areas worth investigating", level: 3 }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Evidence & data coverage", level: 3 }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Operational data health", level: 3 }),
     ).toBeInTheDocument();
     expect(screen.getByText("How this briefing was prepared")).toBeInTheDocument();
   });
@@ -214,7 +223,9 @@ describe("Operational Briefing Rebuild", () => {
   it("3. preserves the mandatory Featured Intelligence empty state when no new qualifying discovery exists", () => {
     const { container } = renderBriefing(baseBriefingData());
 
-    expect(screen.getByRole("heading", { name: "A closer look", level: 3 })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Areas worth investigating", level: 3 }),
+    ).toBeInTheDocument();
     expect(container.querySelector('[data-featured-empty-state="no_new_findings"]')).toBeTruthy();
     expect(screen.getByText("No new findings")).toBeInTheDocument();
     expect(
