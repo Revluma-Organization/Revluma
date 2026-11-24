@@ -1090,9 +1090,15 @@ exports.getIntelligenceFinding = async (req, res, next) => {
     const ownedStore = await prisma.stores.findFirst({ where: { id: finding.store_id, organization_id: org.id }, select: { id: true } });
     if (!ownedStore) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
     let resource = null;
-    if (finding.type !== 'integration_failure') {
+    const syncDomain = finding.type === 'refund_increase' ? 'refunds'
+      : finding.type === 'storefront_domain_unconfigured' ? 'store_domains'
+      : finding.type === 'abandoned_checkouts_open' ? 'abandoned_checkouts'
+      : finding.type === 'inventory_stockouts' ? 'inventory'
+      : (finding.type === 'integration_failure' || finding.type === 'no_storefront_events') ? null
+      : 'orders';
+    if (syncDomain) {
       const sync = await prisma.store_sync_domain_states.findFirst({
-        where: { store_id: finding.store_id, domain: finding.type === 'refund_increase' ? 'refunds' : 'orders' },
+        where: { store_id: finding.store_id, domain: syncDomain },
         select: { status: true, last_succeeded_at: true, error_code: true },
       });
       const age = sync?.last_succeeded_at ? Date.now() - new Date(sync.last_succeeded_at).getTime() : Number.POSITIVE_INFINITY;

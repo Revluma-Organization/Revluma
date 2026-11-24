@@ -42,6 +42,18 @@ _SCALAR_KEYS = {
     "refund_coverage_complete", "refund_sync_run_id", "currentReturning", "previousReturning",
     "currentStart", "currentEnd", "previousStart", "previousEnd",
     "coverage_source", "coverage_run_id", "failed_webhook_registrations",
+    "primaryDomainHost", "customDomainCount", "totalDomainsCount",
+    "openAbandonedCount", "openAbandonedValue", "completedAfterCheckoutCount", "windowDays",
+    "zeroStockCount", "totalLevelsCount", "inStockCount",
+    "recordedEventsCount", "activeProductsCount", "lastOrderAt", "observed_at",
+}
+
+_POINT_OBSERVATION_TYPES = {
+    "integration_failure",
+    "storefront_domain_unconfigured",
+    "abandoned_checkouts_open",
+    "inventory_stockouts",
+    "no_storefront_events",
 }
 
 
@@ -183,7 +195,7 @@ def retrieve_finding_evidence(organization_id: str, db, *, now: datetime | None 
                             "refunded_total": str(_get(record, "refunded_total")) if _get(record, "refunded_total") is not None else None,
                             "currency": _get(record, "currency"), "lifecycle": _get(record, "recovery_status"),
                         })
-        elif _get(row, "type") != "integration_failure":
+        elif _get(row, "type") not in _POINT_OBSERVATION_TYPES:
             warnings.append(f"finding_measurement_period_unavailable:{finding_id}")
         # An invalid recorded period must degrade, not crash: the fallback
         # is a minimal one-second window ending at the detection time (or
