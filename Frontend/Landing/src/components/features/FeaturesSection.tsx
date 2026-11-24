@@ -4,7 +4,6 @@ import { FEATURES } from "@/content";
 import { useReveal } from "@/useReveal";
 import { AdviseVisual, DetectVisual, InvestigateVisual, PrioritizeVisual } from "./visuals";
 import { vars } from "./primitives";
-import { FeaturesIntro } from "./FeaturesIntro";
 
 /**
  * "What Revluma does": four large editorial showcases (Detect, Investigate,
@@ -45,9 +44,27 @@ function Revealed({ className, children }: { className: string; children: ReactN
 
 export function FeaturesSection({ id }: { id?: string }) {
   return (
-    <section id={id} aria-labelledby="features-title" className="fx-section relative overflow-x-clip bg-canvas pb-20 pt-10 sm:pb-28 sm:pt-14 lg:pb-36 lg:pt-16">
-      <div className="mx-auto max-w-page px-4 sm:px-8">
-        <FeaturesIntro />
+    <section id={id} aria-labelledby="features-title" className="fx-section relative overflow-x-clip bg-canvas py-20 sm:py-28 lg:py-36">
+      <div className="mx-auto max-w-page px-5 sm:px-8">
+        <Revealed className="fx-intro mx-auto max-w-[52rem] text-center">
+          <p className="fx-intro__eyebrow fx-up" style={vars({ "--i": 0 })}>
+            {FEATURES.eyebrow}
+          </p>
+          <h2
+            id="features-title"
+            className="fx-up mt-5 font-headline text-[clamp(1.85rem,7vw,2.75rem)] font-black leading-[1.07] tracking-[-0.03em] text-ink [font-synthesis:none] [text-wrap:balance] sm:text-[clamp(2.3rem,5.2vw,3.9rem)]"
+            style={vars({ "--i": 1 })}
+          >
+            <span className="block">{FEATURES.headline.lead}</span>
+            <span className="block text-indigo-deep">{FEATURES.headline.accent}</span>
+          </h2>
+          <p
+            className="fx-up mx-auto mt-6 max-w-[40rem] text-[1.02rem] leading-relaxed text-ink-muted [text-wrap:pretty] sm:text-[1.1rem]"
+            style={vars({ "--i": 2 })}
+          >
+            {FEATURES.description}
+          </p>
+        </Revealed>
 
         <ol className="mt-16 space-y-20 sm:mt-20 sm:space-y-24 lg:mt-28 lg:space-y-36">
           {FEATURES.items.map((item, i) => {
