@@ -1,5 +1,7 @@
-/* Hero scene styles are bundled here so the embed can inline one stylesheet. */
+/* Section styles are bundled here so the embed can inline one stylesheet. */
 @import "./components/HeroVisual.css";
+@import "./components/SourceHub.css";
+@import "./components/features/features.css";
 @import "./motion.css";
 
 @tailwind base;

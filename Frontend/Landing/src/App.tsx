@@ -1,5 +1,6 @@
 import { Hero } from "./components/Hero";
 import { Navbar } from "./components/Navbar";
+import { FeaturesSection } from "./components/features/FeaturesSection";
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
       <Navbar />
       <main id="main">
         <Hero />
+        <FeaturesSection id="platform" />
       </main>
     </>
   );

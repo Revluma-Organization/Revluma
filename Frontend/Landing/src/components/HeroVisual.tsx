@@ -1,7 +1,7 @@
 import { useRef, type CSSProperties } from "react";
 import { Check, ShieldCheck, Scale } from "lucide-react";
-import plant from "@/assets/plant.webp";
 import { useScrollProgress, useStartWhenVisible } from "@/useHeroMotion";
+import { LeakFunnel } from "./LeakFunnel";
 import { RevScreen } from "./RevScreen";
 
 /** Parallax depth for a scene layer: how far it follows the pointer (in cqw). */
@@ -9,7 +9,8 @@ const depth = (value: number) => ({ "--depth": value }) as CSSProperties;
 
 /**
  * Hero composition from the approved reference: an accent circle, a laptop
- * on a concrete plinth, two floating cards, a hand-drawn arrow and a plant.
+ * on a concrete plinth, two floating cards, a hand-drawn arrow and a leaking glass funnel (the
+ * headline's "losing revenue", in place of the reference's plant).
  * Every measurement is in container-query units, so the whole scene scales
  * as one piece from phones to wide desktops.
  *
@@ -26,14 +27,14 @@ export function HeroVisual() {
       ref={ref}
       className="hero-visual"
       role="img"
-      aria-label="Illustration: Rev Intelligence on a laptop, showing a sample investigation that separates verified facts, hypotheses and unknowns."
+      aria-label="Illustration: a cracked glass funnel leaking revenue beside Rev Intelligence on a laptop, showing a sample investigation that separates verified facts, hypotheses and unknowns."
     >
       <div className="hero-visual__scene" aria-hidden="true">
         <div className="hv-layer hv-layer--circle" style={depth(-0.8)}>
           <div className="hv-circle" />
         </div>
-        <div className="hv-layer hv-layer--plant" style={depth(1.4)}>
-          <img className="hv-plant" src={plant} alt="" width={467} height={996} loading="eager" decoding="async" />
+        <div className="hv-layer hv-layer--funnel" style={depth(1.4)}>
+          <LeakFunnel />
         </div>
 
         <div className="hv-layer hv-layer--plinth" style={depth(0.3)}>

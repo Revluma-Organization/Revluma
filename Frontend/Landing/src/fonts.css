@@ -1,2 +1,5 @@
 /* Brand font. Loaded at document level: @font-face rules do not apply from inside a shadow root. */
 @import "@fontsource-variable/instrument-sans/index.css";
+/* Headline fallback for devices without Arial Black (iOS, Android, Linux): an
+   open-licence lookalike. It is only downloaded when Arial Black is missing. */
+@import "@fontsource/archivo-black/latin-400.css";

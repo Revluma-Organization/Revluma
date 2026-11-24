@@ -86,9 +86,47 @@ describe("Landing hero", () => {
     expect(document.body).toHaveTextContent("Sample investigation");
   });
 
+  it("replaces the facts row with the Shopify data hub", () => {
+    const { container } = render(<App />);
+    expect(container.querySelector("dl")).toBeNull();
+    const hub = screen.getByRole("img", { name: HERO.sources.label });
+    expect(hub.querySelector(".source-hub__core")).not.toBeNull();
+    const tiles = [...hub.querySelectorAll(".source-hub__tile")].map((tile) => tile.getAttribute("title"));
+    expect(tiles).toEqual([...HERO.sources.items]);
+    // Shopify only: the hub must not suggest any other integration.
+    expect(tiles.filter((name) => /shopify/i.test(name ?? ""))).toEqual(["Shopify"]);
+    expect(HERO.sources.label).toMatch(/read-only/i);
+  });
+
+  it("shows the leaking funnel instead of the reference's plant", () => {
+    const { container } = render(<App />);
+    const visual = screen.getByRole("img", { name: /illustration/i });
+    expect(visual.getAttribute("aria-label")).toMatch(/funnel leaking revenue/i);
+    expect(container.querySelector(".hv-plant")).toBeNull();
+    const funnel = container.querySelector(".hv-funnel");
+    expect(funnel).not.toBeNull();
+    // Balls in the funnel, a crack, and escaping balls (frozen and animated).
+    expect(funnel!.querySelectorAll(".hv-funnel__ball").length).toBeGreaterThan(20);
+    expect(funnel!.querySelector(".hv-funnel__crack")).not.toBeNull();
+    // Balls escape in pairs: two pairs of drops.
+    expect(funnel!.querySelectorAll(".hv-funnel__drop")).toHaveLength(4);
+    expect(funnel!.querySelector(".hv-funnel__leak-still")).not.toBeNull();
+  });
+
+  it("catches the leak in a bucket tagged with the Revluma name only", () => {
+    const { container } = render(<App />);
+    const funnel = container.querySelector(".hv-funnel")!;
+    // Back (behind the balls) and front (over them) halves of the bucket.
+    const halves = funnel.querySelectorAll(".hv-bucket");
+    expect(halves).toHaveLength(2);
+    expect(funnel.querySelector(".hv-bucket__name")?.textContent).toBe("Revluma");
+    // Name only: no logo image or icon on the bucket.
+    halves.forEach((half) => expect(half.querySelector("image, img, use")).toBeNull());
+  });
+
   it("contains none of the banned claims", () => {
     const { container } = render(<App />);
-    const text = container.textContent ?? "";
+    const text = [container.textContent ?? "", HERO.sources.label, ...HERO.sources.items].join(" ");
     for (const pattern of BANNED) {
       expect(text).not.toMatch(pattern);
     }

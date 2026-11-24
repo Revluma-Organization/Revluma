@@ -36,17 +36,22 @@
   box-shadow: inset -3cqw -4cqw 8cqw rgba(8, 3, 46, 0.45);
 }
 
-/* ---- Plant (behind the laptop) -------------------------------------- */
-.hv-plant {
+/* ---- Leaking funnel (behind the laptop) ----------------------------- */
+/* Sized by width W (cqw): height = 2.4W (viewBox 300 x 720), and the top is
+   placed so the floor line (viewBox y 572) meets the plinth top at 55cqw:
+   top = 55 - 2.3067W. The left edge keeps the spout (viewBox x 128) just right
+   of the laptop lid (about 90.5cqw) and the rim inside the page margin. */
+.hv-funnel {
   position: absolute;
-  left: 73cqw;
-  top: -9cqw;
-  width: 32cqw;
-  height: auto;
-  transform: rotate(6deg);
-  transform-origin: 50% 100%;
-  filter: drop-shadow(1cqw 1.6cqw 1.6cqw rgba(12, 10, 29, 0.12));
+  left: 80.5cqw;
+  top: -7.28cqw;
+  width: 27cqw;
+  height: 64.8cqw;
+  overflow: visible;
+  filter: drop-shadow(1cqw 1.6cqw 1.4cqw rgba(12, 10, 29, 0.1));
 }
+/* The escaping balls only exist as motion; reduced motion shows them frozen. */
+.hv-funnel__leak { display: none; }
 
 /* ---- Concrete plinth ------------------------------------------------ */
 .hv-plinth {
@@ -191,7 +196,7 @@
 }
 .hv-card__check svg { width: 2cqw; height: 2cqw; stroke-width: 3; }
 
-.hv-card--evidence { left: 63cqw; top: 9cqw; }
+.hv-card--evidence { left: 53cqw; top: 9cqw; }
 
 .hv-card--facts {
   left: -7cqw;
@@ -374,7 +379,10 @@
   .hv-card__check svg { width: 2.7cqw; height: 2.7cqw; }
   .hv-card__legend { gap: 1.2cqw; }
   .hv-card__legend i { font-size: 2.3cqw; padding: 0.7cqw 1.5cqw; }
-  .hv-card--evidence { left: auto; right: -1cqw; top: 6cqw; }
+  .hv-card--evidence { left: 34cqw; right: auto; top: 3cqw; }
+  /* Smaller funnel, kept inside the frame; its floor still meets the plinth
+     (top + 572/300 x width = 55cqw). */
+  .hv-funnel { left: 82.6cqw; top: 4.25cqw; width: 22cqw; height: 52.8cqw; }
   .hv-card--facts { left: -1cqw; top: 31cqw; gap: 1.8cqw; }
   .hv-arrow { left: 6cqw; top: 11cqw; }
 }

@@ -7,6 +7,8 @@ export default {
     extend: {
       fontFamily: {
         sans: ['"Instrument Sans Variable"', "system-ui", "sans-serif"],
+        // Hero headline: Arial Black, with Archivo Black where it is not installed.
+        headline: ['"Arial Black"', '"Archivo Black"', '"Arial Bold"', "Gadget", '"Helvetica Neue"', "Arial", "sans-serif"],
       },
       colors: {
         canvas: "#FBFAF8",

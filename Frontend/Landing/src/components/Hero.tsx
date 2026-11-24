@@ -1,18 +1,11 @@
-import { useRef, type CSSProperties } from "react";
+import { useRef } from "react";
 import { ArrowUpRight, UserPlus } from "lucide-react";
 import { CTA, HERO } from "@/content";
 import { useLandingConfig } from "@/config";
+import { at } from "@/motionTiming";
 import { usePointerParallax, useScrollProgress } from "@/useHeroMotion";
 import { HeroVisual } from "./HeroVisual";
-
-/**
- * Entrance pace. The delays below are the original (PR #436) timings; TEMPO
- * stretches them to match the slower durations in motion.css.
- */
-const TEMPO = 1.6;
-
-/** Entrance delay for one element (see motion.css). */
-const at = (ms: number) => ({ "--d": `${Math.round(ms * TEMPO)}ms` }) as CSSProperties;
+import { SourceHub } from "./SourceHub";
 
 // Headline words enter one after another, 60ms apart (before TEMPO).
 const WORD_START = 150;
@@ -36,7 +29,7 @@ export function Hero() {
         <div ref={copyRef} className="m-scroll-copy max-w-[38rem]">
           <h1
             id="hero-title"
-            className="text-[clamp(2.4rem,9.6vw,4.6rem)] sm:text-[clamp(2.6rem,7.4vw,4.6rem)] lg:text-[clamp(2.5rem,min(5.1vw,8.4svh),4.6rem)] font-semibold leading-[1.02] tracking-display text-ink"
+            className="text-[clamp(1.9rem,9.4vw,4.6rem)] sm:text-[clamp(2.6rem,7.4vw,4.6rem)] lg:text-[clamp(2.2rem,min(4.4vw,7.6svh),4rem)] font-headline font-black leading-[1.06] tracking-[-0.03em] text-ink [font-synthesis:none]"
           >
             {HEADLINE.map((line) => (
               <span key={line.words.join(" ")} className={`block ${line.accent ? "text-indigo-deep" : ""}`}>
@@ -59,12 +52,12 @@ export function Hero() {
             {HERO.body}
           </p>
 
-          <div className="mt-9 lg:mt-[clamp(1.1rem,4svh,2.25rem)] flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3.5">
+          <div className="mt-9 lg:mt-[clamp(1.1rem,4svh,2.25rem)] flex flex-row flex-nowrap items-center gap-3 sm:gap-x-3.5">
             <a
               href={joinHref}
               onClick={onJoin}
               style={at(820)}
-              className="m-pop m-shine group relative isolate overflow-hidden inline-flex min-h-[2.275rem] items-center gap-[0.7rem] self-start whitespace-nowrap rounded-full text-left bg-ink py-[0.2625rem] pl-[1.05rem] pr-[0.2625rem] text-[0.665rem] font-semibold text-white transition-colors hover:bg-indigo-deep"
+              className="m-pop m-shine group relative isolate overflow-hidden inline-flex min-h-[2.275rem] shrink-0 items-center gap-[0.7rem] whitespace-nowrap rounded-full text-left bg-ink py-[0.2625rem] pl-[1.05rem] pr-[0.2625rem] text-[0.665rem] font-semibold text-white transition-colors hover:bg-indigo-deep"
             >
               {CTA.primary.label}
               {/* Arrow swap on hover: one arrow leaves top-right as the next arrives. */}
@@ -73,7 +66,7 @@ export function Hero() {
                 <ArrowUpRight size={13} aria-hidden="true" className="absolute -translate-x-[180%] translate-y-[180%] transition-transform duration-300 ease-out group-hover:translate-x-0 group-hover:translate-y-0" />
               </span>
             </a>
-            <a href={signUpHref} style={at(900)} className="m-pop group inline-flex min-h-12 items-center gap-3 self-start whitespace-nowrap text-[0.95rem] font-semibold text-ink sm:self-auto">
+            <a href={signUpHref} style={at(900)} className="m-pop group inline-flex min-h-12 shrink-0 items-center gap-3 whitespace-nowrap text-[0.95rem] font-semibold text-ink">
               <span className="grid h-11 w-11 place-items-center rounded-full border border-line bg-white shadow-[0_6px_18px_-8px_rgba(12,10,29,0.25)] transition-[transform,background-color,color,border-color,box-shadow] duration-300 ease-out group-hover:-translate-y-0.5 group-hover:border-ink group-hover:bg-ink group-hover:text-white group-hover:shadow-[0_10px_22px_-10px_rgba(12,10,29,0.55)]">
                 <UserPlus size={18} aria-hidden="true" />
               </span>
@@ -81,15 +74,7 @@ export function Hero() {
             </a>
           </div>
 
-          <dl className="relative mt-12 grid grid-cols-3 pt-6 sm:max-w-[33rem] lg:mt-[clamp(1.1rem,4.4svh,3rem)] lg:pt-[clamp(0.85rem,2.6svh,1.5rem)]">
-            <span className="m-rule absolute inset-x-0 top-0 h-px bg-line" style={at(980)} aria-hidden="true" />
-            {HERO.facts.map((fact, index) => (
-              <div key={fact.title} style={at(1060 + index * 80)} className={`m-fade flex flex-col-reverse justify-end gap-1 ${index > 0 ? "border-l border-line pl-4 sm:pl-6" : "pr-4"}`}>
-                <dt className="text-[0.78rem] leading-snug text-ink-muted">{fact.label}</dt>
-                <dd className="text-[1.15rem] font-semibold tracking-[-0.02em] text-ink sm:text-[1.3rem]">{fact.title}</dd>
-              </div>
-            ))}
-          </dl>
+          <SourceHub />
         </div>
 
         <div className="mx-auto w-full max-w-[40rem] lg:max-w-[calc((100svh_-_clamp(4rem,9svh,5rem))_*_0.9)]">

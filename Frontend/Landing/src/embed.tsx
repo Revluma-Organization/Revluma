@@ -1,26 +1,31 @@
 /**
- * Embed build of the landing hero for the current homepage (Frontend/index.html).
+ * Embed build of the rebuilt landing sections for the current homepage
+ * (Frontend/index.html): the nav + hero, and the features section ("What
+ * Revluma does").
  *
- * The homepage still runs on the Tailwind CDN with a dark global theme, so the
- * hero renders inside a shadow root: page styles cannot restyle the hero and
- * the hero's Tailwind reset cannot leak into the rest of the page.
+ * The homepage still runs on the Tailwind CDN with a dark global theme, so each
+ * section renders inside its own shadow root on its host element: page styles
+ * cannot restyle the sections and their Tailwind reset cannot leak into the
+ * rest of the page. Hosts keep their ids, so in-page links (#platform) work.
  *
  * Built by `npm run build:embed` into Frontend/landing-hero/ (see vercel.json).
  */
 import { StrictMode } from "react";
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import fontCss from "./fonts.css?inline";
 import appCss from "./index.css?inline";
 import { LandingConfigProvider, type LandingConfig } from "./config";
 import { Hero } from "./components/Hero";
 import { Navbar } from "./components/Navbar";
+import { FeaturesSection } from "./components/features/FeaturesSection";
 
 // Only sections that exist on the current homepage. "Why Revluma" and "FAQ"
-// return once those sections are rebuilt.
+// return once those sections are rebuilt. "Platform" leads to the features
+// section (what Revluma does).
 export const EMBED_CONFIG: LandingConfig = {
   navLinks: [
-    { label: "Platform", href: "#features" },
+    { label: "Platform", href: "#platform" },
     { label: "How It Works", href: "#how-it-works" },
   ],
   signInHref: "/login",
@@ -33,17 +38,20 @@ export const EMBED_CONFIG: LandingConfig = {
   },
 };
 
-function mount() {
-  const host = document.getElementById("revluma-hero");
-  if (!host || host.shadowRoot) return;
+/** Host element id -> what renders in its shadow root. */
+export const SECTIONS: Record<string, () => ReactNode> = {
+  "revluma-hero": () => (
+    <>
+      <Navbar />
+      <Hero />
+    </>
+  ),
+  platform: () => <FeaturesSection />,
+};
 
-  // @font-face only takes effect at document level.
-  if (!document.querySelector("style[data-revluma-fonts]")) {
-    const fonts = document.createElement("style");
-    fonts.dataset.revlumaFonts = "";
-    fonts.textContent = fontCss;
-    document.head.appendChild(fonts);
-  }
+function mountSection(hostId: string, render: () => ReactNode) {
+  const host = document.getElementById(hostId);
+  if (!host || host.shadowRoot) return;
 
   const shadow = host.attachShadow({ mode: "open" });
   const styles = document.createElement("style");
@@ -54,13 +62,21 @@ function mount() {
 
   createRoot(root).render(
     <StrictMode>
-      <LandingConfigProvider value={EMBED_CONFIG}>
-        <Navbar />
-        <Hero />
-      </LandingConfigProvider>
+      <LandingConfigProvider value={EMBED_CONFIG}>{render()}</LandingConfigProvider>
     </StrictMode>,
   );
   host.removeAttribute("data-pending");
+}
+
+function mount() {
+  // @font-face only takes effect at document level.
+  if (!document.querySelector("style[data-revluma-fonts]")) {
+    const fonts = document.createElement("style");
+    fonts.dataset.revlumaFonts = "";
+    fonts.textContent = fontCss;
+    document.head.appendChild(fonts);
+  }
+  for (const [hostId, render] of Object.entries(SECTIONS)) mountSection(hostId, render);
 }
 
 mount();

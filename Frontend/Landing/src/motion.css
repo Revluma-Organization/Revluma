@@ -177,20 +177,121 @@
     to { opacity: 1; transform: none; }
   }
 
-  /* The plant unfurls into place, then sways gently. */
-  .hv-plant {
-    animation:
-      hv-plant-in 2.24s var(--ease-spring) both,
-      hv-sway 8.75s ease-in-out infinite alternate;
-    animation-delay: 830ms, 3.04s;
+  /* The funnel drops into place and hovers; revenue flows down the spout,
+     and every couple of seconds a ball escapes the crack and falls. */
+  .hv-funnel {
+    animation: hv-funnel-in 2.24s var(--ease-spring) both;
+    animation-delay: 830ms;
   }
-  @keyframes hv-plant-in {
-    from { opacity: 0; transform: rotate(16deg) scale(0.86); }
-    to { opacity: 1; transform: rotate(6deg); }
+  @keyframes hv-funnel-in {
+    from { opacity: 0; transform: translateY(-5cqw) rotate(-4deg) scale(0.9); }
+    to { opacity: 1; transform: none; }
   }
-  @keyframes hv-sway {
-    from { rotate: -1.6deg; }
-    to { rotate: 1.4deg; }
+  .hv-funnel__body {
+    animation: hv-funnel-hover 7.5s ease-in-out infinite alternate;
+    animation-delay: 3.04s;
+  }
+  @keyframes hv-funnel-hover {
+    from { transform: translateY(0); }
+    to { transform: translateY(-6px); }
+  }
+  .hv-funnel__stream {
+    animation: hv-funnel-stream 1.5s linear infinite;
+    animation-delay: 2.6s;
+  }
+  @keyframes hv-funnel-stream {
+    from { transform: translateY(0); }
+    to { transform: translateY(26px); }
+  }
+  /* The pile settles: each ball shifts a hair, out of step with its neighbours. */
+  .hv-funnel__ball {
+    animation: hv-funnel-jiggle 3.2s ease-in-out infinite alternate;
+  }
+  .hv-funnel__ball--1 { animation-delay: -0.8s; animation-duration: 3.7s; }
+  .hv-funnel__ball--2 { animation-delay: -1.9s; animation-duration: 2.9s; }
+  .hv-funnel__ball--3 { animation-delay: -2.6s; animation-duration: 4.1s; }
+  @keyframes hv-funnel-jiggle {
+    from { transform: translate(0, 0); }
+    to { transform: translate(0.6px, 1.4px); }
+  }
+  .hv-funnel__leak { display: inline; }
+  .hv-funnel__leak-still { display: none; }
+  /* Balls escape in pairs: a leader and, a beat later, a follower. One pair
+     every 3.75s. The first three pairs (six balls) bounce onto the plinth;
+     then the Revluma bucket slides in from the left (from behind the laptop)
+     and every pair after that drops into it. Each drop runs its "floor"
+     animation a set number of times, then hands over to the "into the bucket"
+     animation, timed so no ball reaches the rim before the bucket is there. */
+  .hv-funnel__drop {
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+  }
+  .hv-funnel__drop--0 { animation: hv-funnel-drop-a 7.5s 3.4s 2, hv-funnel-drop-in-a 7.5s 18.4s infinite; }
+  .hv-funnel__drop--1 { animation: hv-funnel-drop-b 7.5s 3.64s 2, hv-funnel-drop-in-b 7.5s 18.64s infinite; }
+  .hv-funnel__drop--2 { animation: hv-funnel-drop-a 7.5s 7.15s 1, hv-funnel-drop-in-a 7.5s 14.65s infinite; }
+  .hv-funnel__drop--3 { animation: hv-funnel-drop-b 7.5s 7.39s 1, hv-funnel-drop-in-b 7.5s 14.89s infinite; }
+  @keyframes hv-funnel-drop-in-a {
+    0% { opacity: 0; transform: translate(-8px, 0) scale(0.4); animation-timing-function: var(--ease-out-quart); }
+    8% { opacity: 1; transform: translate(6px, 4px) scale(1); animation-timing-function: linear; }
+    14% { opacity: 1; transform: translate(12.7px, 15.8px); animation-timing-function: linear; }
+    20% { opacity: 1; transform: translate(19.3px, 51.3px); animation-timing-function: linear; }
+    26% { opacity: 1; transform: translate(26.0px, 110.5px); animation-timing-function: linear; }
+    32% { opacity: 1; transform: translate(32.7px, 193.3px); animation-timing-function: linear; }
+    38% { opacity: 1; transform: translate(39.3px, 299.8px); animation-timing-function: linear; }
+    44% { opacity: 1; transform: translate(46px, 430px); }
+    45%, 100% { opacity: 0; transform: translate(46px, 430px); }
+  }
+  @keyframes hv-funnel-drop-in-b {
+    0% { opacity: 0; transform: translate(-8px, 0) scale(0.4); animation-timing-function: var(--ease-out-quart); }
+    8% { opacity: 1; transform: translate(3px, 6px) scale(1); animation-timing-function: linear; }
+    14% { opacity: 1; transform: translate(10.8px, 17.8px); animation-timing-function: linear; }
+    20% { opacity: 1; transform: translate(18.7px, 53.2px); animation-timing-function: linear; }
+    26% { opacity: 1; transform: translate(26.5px, 112.2px); animation-timing-function: linear; }
+    32% { opacity: 1; transform: translate(34.3px, 194.9px); animation-timing-function: linear; }
+    38% { opacity: 1; transform: translate(42.2px, 301.1px); animation-timing-function: linear; }
+    44% { opacity: 1; transform: translate(50px, 431px); }
+    45%, 100% { opacity: 0; transform: translate(50px, 431px); }
+  }
+  /* The bucket arrives once the sixth ball has landed (about 14.6s in). */
+  .hv-bucket {
+    animation: hv-bucket-in 1.9s var(--ease-spring) both;
+    animation-delay: 14.9s;
+  }
+  @keyframes hv-bucket-in {
+    from { opacity: 0; transform: translateX(-170px); }
+    35% { opacity: 1; }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  /* Squeezes out of the hole and arcs away from the funnel under gravity
+     (sideways speed constant, fall accelerating), bounces once, rolls off. */
+  @keyframes hv-funnel-drop-a {
+    0% { opacity: 0; transform: translate(-8px, 0) scale(0.4); animation-timing-function: var(--ease-out-quart); }
+    8% { opacity: 1; transform: translate(6px, 4px) scale(1); animation-timing-function: linear; }
+    14.3% { opacity: 1; transform: translate(11.0px, 16.6px); animation-timing-function: linear; }
+    20.7% { opacity: 1; transform: translate(16.0px, 54.4px); animation-timing-function: linear; }
+    27% { opacity: 1; transform: translate(21.0px, 117.5px); animation-timing-function: linear; }
+    33.3% { opacity: 1; transform: translate(26.0px, 205.8px); animation-timing-function: linear; }
+    39.7% { opacity: 1; transform: translate(31.0px, 319.3px); animation-timing-function: linear; }
+    46% { opacity: 1; transform: translate(36px, 458px); animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1); }
+    53% { transform: translate(41px, 436px); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4); }
+    60% { transform: translate(45px, 458px); animation-timing-function: var(--ease-out-quart); }
+    82% { opacity: 1; transform: translate(58px, 458px); }
+    94%, 100% { opacity: 0; transform: translate(62px, 458px); }
+  }
+  @keyframes hv-funnel-drop-b {
+    0% { opacity: 0; transform: translate(-8px, 0) scale(0.4); animation-timing-function: var(--ease-out-quart); }
+    8% { opacity: 1; transform: translate(3px, 6px) scale(1); animation-timing-function: linear; }
+    14.3% { opacity: 1; transform: translate(7.2px, 18.6px); animation-timing-function: linear; }
+    20.7% { opacity: 1; transform: translate(11.3px, 56.3px); animation-timing-function: linear; }
+    27% { opacity: 1; transform: translate(15.5px, 119.2px); animation-timing-function: linear; }
+    33.3% { opacity: 1; transform: translate(19.7px, 207.3px); animation-timing-function: linear; }
+    39.7% { opacity: 1; transform: translate(23.8px, 320.6px); animation-timing-function: linear; }
+    46% { opacity: 1; transform: translate(28px, 459px); animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1); }
+    52% { transform: translate(31px, 443px); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4); }
+    58% { transform: translate(34px, 459px); animation-timing-function: var(--ease-out-quart); }
+    80% { opacity: 1; transform: translate(48px, 459px); }
+    92%, 100% { opacity: 0; transform: translate(52px, 459px); }
   }
 
   /* The laptop lifts onto the plinth and its lid opens. */
@@ -389,6 +490,85 @@
     to { stroke-dashoffset: 0; }
   }
 
+  /* ---------- Source hub (under the CTAs) --------------------------------- */
+
+  /* Lines draw outward from the centre, the Revluma tile springs in, then the
+     source tiles pop onto the lines. Afterwards small pulses travel along a
+     few lines into the centre (data flowing in) and the tiles drift. */
+  .source-hub__line {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: sh-draw 1.6s var(--ease-in-out) forwards;
+    animation-delay: var(--d, 0ms);
+  }
+  @keyframes sh-draw {
+    to { stroke-dashoffset: 0; }
+  }
+  .source-hub__pulse {
+    display: block;
+    stroke: #7460ff;
+    stroke-width: 2.6;
+    stroke-linecap: round;
+    stroke-dasharray: 0.07 0.93;
+    stroke-dashoffset: -0.93;
+    opacity: 0;
+    animation: sh-pulse 3.2s cubic-bezier(0.45, 0, 0.75, 1) infinite;
+  }
+  @keyframes sh-pulse {
+    0% { stroke-dashoffset: -0.93; opacity: 0; }
+    15% { opacity: 1; }
+    88% { opacity: 1; }
+    100% { stroke-dashoffset: 0.07; opacity: 0; }
+  }
+  .source-hub__core {
+    animation:
+      sh-core-in 1.28s var(--ease-spring) both,
+      sh-glow 4.4s ease-in-out infinite alternate;
+    animation-delay: var(--d, 0ms), calc(var(--d, 0ms) + 1.4s);
+  }
+  @keyframes sh-core-in {
+    from { opacity: 0; transform: scale(0.5); filter: blur(4px); }
+    to { opacity: 1; transform: none; filter: blur(0); }
+  }
+  @keyframes sh-glow {
+    from {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.35),
+        0 0 0 1px rgba(31, 6, 172, 0.18),
+        0 12px 26px -8px rgba(43, 19, 207, 0.65),
+        0 0 36px -4px rgba(116, 96, 255, 0.45);
+    }
+    to {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.35),
+        0 0 0 1px rgba(31, 6, 172, 0.18),
+        0 14px 30px -8px rgba(43, 19, 207, 0.75),
+        0 0 52px 0 rgba(116, 96, 255, 0.6);
+    }
+  }
+  .source-hub__tile {
+    animation:
+      sh-tile-in 1.12s var(--ease-spring) both,
+      sh-float-a 6.4s ease-in-out infinite alternate;
+    animation-delay: var(--d, 0ms), calc(var(--d, 0ms) + 1.2s);
+  }
+  .source-hub__tile--float-b {
+    animation-name: sh-tile-in, sh-float-b;
+    animation-duration: 1.12s, 5.6s;
+  }
+  @keyframes sh-tile-in {
+    from { opacity: 0; transform: scale(0.6); filter: blur(3px); }
+    to { opacity: 1; transform: none; filter: blur(0); }
+  }
+  @keyframes sh-float-a {
+    from { translate: 0 0; }
+    to { translate: 0 -3px; }
+  }
+  @keyframes sh-float-b {
+    from { translate: 0 0; }
+    to { translate: 0 3px; }
+  }
+
   /* ---------- Scroll ------------------------------------------------------- */
 
   /* As the hero scrolls away, its parts move at different speeds so the page
@@ -404,14 +584,14 @@
   .m-scroll-copy h1 {
     translate: 0 calc(var(--sp, 0) * -2.5rem);
   }
-  .m-scroll-copy dl {
+  .m-scroll-copy .source-hub {
     translate: 0 calc(var(--sp, 0) * 2rem);
   }
   .hero-visual__scene {
     --spc: min(1, var(--sp, 0));
   }
   .hv-layer--circle { translate: 0 calc(var(--spc) * 12cqw); scale: calc(1 + var(--spc) * 0.12); }
-  .hv-layer--plant { translate: calc(var(--spc) * 5cqw) calc(var(--spc) * -4cqw); rotate: calc(var(--spc) * 5deg); }
+  .hv-layer--funnel { translate: calc(var(--spc) * 5cqw) calc(var(--spc) * -4cqw); rotate: calc(var(--spc) * 5deg); }
   /* The laptop stays seated on its plinth; everything else moves around it. */
   .hv-layer--evidence { translate: calc(var(--spc) * 6cqw) calc(var(--spc) * -22cqw); }
   .hv-layer--facts { translate: calc(var(--spc) * -6cqw) calc(var(--spc) * -14cqw); }
