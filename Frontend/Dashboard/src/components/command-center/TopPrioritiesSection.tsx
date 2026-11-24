@@ -1,10 +1,9 @@
-import { type MouseEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
-  ChevronRight,
   Clock,
   Database,
   Info,
@@ -20,13 +19,13 @@ import {
 import { useInRouterContext, useNavigate } from "react-router-dom";
 import { investigationRoute } from "@/lib/workspaceNavigation";
 import { cn } from "@/lib/utils";
+import { PriorityFindingCard } from "./PriorityFindingCard";
 import { SeveritySummaryDeck, type SeverityFilterTier } from "./SeveritySummaryDeck";
-import { StateBadge, type CommandCenterAppState } from "./StateBadge";
+import { StateBadge } from "./StateBadge";
 import { cc } from "./tokens";
 import type {
   CommandCenterData,
   Finding,
-  SignalCategoryId,
   SignalEvaluationCoverage,
   SignalEvaluationItem,
   SignalEvaluationState,
@@ -48,23 +47,6 @@ const TIER_LABELS: Record<Exclude<SeverityTier, "all">, string> = {
   low: "Low & Watch",
 };
 
-const SIGNAL_CATEGORY_LABELS: Record<SignalCategoryId, string> = {
-  storefront_readiness: "Storefront readiness",
-  traffic_acquisition: "Traffic & acquisition",
-  sales_revenue: "Sales & revenue",
-  conversion_purchasing: "Conversion & purchasing",
-  product_inventory: "Product & inventory",
-  customer_fulfillment: "Customer & fulfillment",
-};
-
-const money = (value: number, currency: string) => {
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value);
-  } catch {
-    return `${value} ${currency}`;
-  }
-};
-
 const dateTime = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(
@@ -83,71 +65,10 @@ const relativeTime = (value: string | null) => {
   return `${Math.floor(minutes / 1440)}d ago`;
 };
 
-function observationText(item: Finding["evidence"]["observations"][number]): string {
-  if (item.value === null || item.availability !== "available") return "Unavailable";
-  if (item.unit === "money" && typeof item.value === "number" && item.currency) {
-    return money(item.value, item.currency);
-  }
-  if (item.unit === "count" || item.unit === "status") {
-    return `${item.value}`;
-  }
-  if (item.unit === "percent" && typeof item.value === "number") {
-    return `${item.value}%`;
-  }
-  return `${item.value} ${item.unit}`;
-}
-
-function isVerifiedFinding(finding: Finding): boolean {
-  return (
-    finding.evidence?.classification === "verified_observation" &&
-    ["high", "moderate"].includes(finding.confidence?.classification)
-  );
-}
-
-function findingEvidenceAppState(finding: Finding): CommandCenterAppState {
-  if (finding.evidence_freshness.state === "stale") return "stale";
-  if (finding.coverage.state === "partial" || finding.coverage.state === "incomplete") {
-    return "partial";
-  }
-  if (finding.evidence_freshness.state === "fresh" && finding.coverage.complete) {
-    return "current";
-  }
-  return "unavailable";
-}
-
 function matchesSeverityTier(severity: Finding["severity"], tier: SeverityTier): boolean {
   if (tier === "all") return true;
   if (tier === "critical_high") return severity === "critical" || severity === "high";
   return severity === tier;
-}
-
-function getSeverityBadge(severity: Finding["severity"]) {
-  if (severity === "critical") {
-    return {
-      label: "Critical",
-      pillClass: "bg-[#E5484D] text-white",
-      accentBorderClass: "border-l-[3px] border-l-[#E5484D]",
-    };
-  }
-  if (severity === "high") {
-    return {
-      label: "High",
-      pillClass: "border border-[#FBC4A3] bg-[#FFF4EC] text-[#B54708]",
-      accentBorderClass: "border-l-[3px] border-l-[#F07832]",
-    };
-  }
-  if (severity === "medium") {
-    return {
-      label: "Medium",
-      pillClass: "border border-[#F5D68B] bg-[#FFFBEB] text-[#92400E]",
-      accentBorderClass: "border-l-[3px] border-l-[#E5A126]",
-    };
-  }
-  return {
-    label: "Low",
-    pillClass: "border border-[#C9C7FA] bg-[#F0EDFF] text-[#3525B8]",
-    accentBorderClass: "border-l-[3px] border-l-[#6475E8]",
-  };
 }
 
 function getSignalStateMeta(state: SignalEvaluationState) {
@@ -343,374 +264,33 @@ function PriorityCardSkeleton() {
         ))}
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-3.5">
         {Array.from({ length: 2 }, (_, idx) => (
           <div
             key={idx}
-            className="grid animate-pulse rounded-xl border border-[#E4E6F0] bg-white motion-reduce:animate-none lg:grid-cols-[128px_minmax(0,1fr)_256px]"
+            className="grid animate-pulse overflow-hidden rounded-2xl border border-[#E6E5EE] bg-white motion-reduce:animate-none lg:grid-cols-[minmax(0,1fr)_316px]"
           >
-            <div className="p-5">
-              <div className="h-5 w-16 rounded-md bg-[#E3E1FA]" />
+            <div className="space-y-3 p-5 sm:p-6">
+              <div className="flex items-center gap-2.5">
+                <div className="h-3.5 w-8 rounded bg-[#ECEBF3]" />
+                <div className="h-3.5 w-16 rounded bg-[#E3E1FA]" />
+                <div className="h-3.5 w-24 rounded bg-[#ECEBF3]" />
+              </div>
+              <div className="h-5 w-64 rounded bg-[#E3E1FA]" />
+              <div className="h-14 w-full rounded-xl bg-[#FAF9FC]" />
+              <div className="h-3.5 w-full max-w-lg rounded bg-[#EEF0F6]" />
             </div>
-            <div className="space-y-2.5 px-5 pb-5 lg:py-5">
-              <div className="h-4 w-56 rounded bg-[#E3E1FA]" />
-              <div className="h-3.5 w-full max-w-md rounded bg-[#EEF0F6]" />
-              <div className="h-3 w-48 rounded bg-[#F4F5FA]" />
-            </div>
-            <div className="border-t border-[#E4E6F0] p-5 lg:border-l lg:border-t-0">
-              <div className="h-3 w-16 rounded bg-[#EEF0F6]" />
-              <div className="mt-2.5 h-3.5 w-40 rounded bg-[#E3E1FA]" />
-              <div className="mt-4 h-4 w-28 rounded bg-[#E3E1FA]" />
+            <div className="border-t border-[#ECEBF3] bg-[#FAF9FC] p-5 sm:p-6 lg:border-l lg:border-t-0">
+              <div className="h-3 w-16 rounded bg-[#E3E1FA]" />
+              <div className="mt-3 h-4 w-48 rounded bg-[#E3E1FA]" />
+              <div className="mt-2 h-3.5 w-40 rounded bg-[#EEF0F6]" />
+              <div className="mt-6 h-10 w-full rounded-xl bg-[#E3E1FA]" />
             </div>
           </div>
         ))}
       </div>
       <span className="sr-only">Loading verified priority findings.</span>
     </div>
-  );
-}
-
-interface PriorityCardProps {
-  finding: Finding;
-  rank: number;
-  isPrimary: boolean;
-  onInvestigate: (route: string) => void;
-}
-
-function PriorityItemCard({ finding, rank, isPrimary, onInvestigate }: PriorityCardProps) {
-  const severity = getSeverityBadge(finding.severity);
-  const verified = isVerifiedFinding(finding);
-  const evidenceState = findingEvidenceAppState(finding);
-  const availableObservations = finding.evidence.observations.filter(
-    (obs) => obs.value !== null && obs.availability === "available",
-  );
-  const refCount = finding.evidence.references.length;
-  const confidenceText = `${finding.confidence.classification.replaceAll("_", " ")} confidence`;
-  const updatedIso = finding.last_verified_at || finding.detected_at;
-  const periodLabel = `${finding.reporting_period.kind.replaceAll("_", " ")} · ${finding.reporting_period.timezone}`;
-  const categoryLabel = finding.signal_category
-    ? SIGNAL_CATEGORY_LABELS[finding.signal_category]
-    : null;
-
-  const handleCardClick = (event: MouseEvent<HTMLElement>) => {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest("button, a, summary, details, input")) return;
-    onInvestigate(finding.investigation.route);
-  };
-
-  return (
-    <article
-      onClick={handleCardClick}
-      className={cn(
-        "group min-w-0 cursor-pointer overflow-hidden rounded-xl border bg-white transition-all",
-        isPrimary
-          ? "border-[#D8D7FA] shadow-[0_1px_2px_rgba(53,37,184,0.05)] hover:border-[#B8B4F8]"
-          : "border-[#E4E6F0] hover:border-[#C9C7FA]",
-        severity.accentBorderClass,
-      )}
-    >
-      <div className="grid min-w-0 lg:grid-cols-[132px_minmax(0,1fr)_264px]">
-        {/* Column 1: Compact Severity, Rank & Verification Pill */}
-        <div className="flex flex-wrap items-center gap-2 px-5 pt-4 lg:flex-col lg:items-start lg:gap-2 lg:py-5 lg:pl-5 lg:pr-3">
-          <span
-            className={cn(
-              "inline-flex items-center rounded-md px-2.5 py-0.5 text-[11px] font-semibold leading-4 tracking-[0.01em]",
-              severity.pillClass,
-            )}
-          >
-            {severity.label}
-          </span>
-          <span className="text-[11px] font-semibold tabular-nums text-[#707582]">
-            #{rank}
-          </span>
-          {isPrimary && (
-            <span className="inline-flex items-center rounded-md border border-[#D8D7FA] bg-[#F0EDFF] px-2 py-0.5 text-[11px] font-medium text-[#3525B8]">
-              {verified ? "Verified finding" : "Evidence-limited"}
-            </span>
-          )}
-        </div>
-
-        {/* Column 2: Title, Verified Observations, Explanation, Evidence & Provenance */}
-        <div className="min-w-0 px-5 pb-4 pt-2.5 lg:px-4 lg:py-5">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0 space-y-1">
-              {categoryLabel && (
-                <span className="inline-flex items-center rounded-full bg-[#EDF4FF] px-2.5 py-0.5 text-[10.5px] font-semibold text-[#2B59C3]">
-                  {categoryLabel}
-                </span>
-              )}
-              {isPrimary ? (
-                <h3 className="text-[15px] font-semibold leading-snug tracking-[-0.01em] text-[#17191F]">
-                  {finding.title}
-                </h3>
-              ) : (
-                <h4 className="text-[14.5px] font-semibold leading-snug tracking-[-0.01em] text-[#17191F]">
-                  {finding.title}
-                </h4>
-              )}
-            </div>
-            {(evidenceState === "stale" || evidenceState === "partial") && (
-              <StateBadge state={evidenceState} />
-            )}
-          </div>
-
-          {/* Verified observed figures (never invented revenue impact) */}
-          {availableObservations.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-[13px] leading-5">
-              {availableObservations.map((obs, idx) => (
-                <span key={`${obs.label}-${idx}`} className="inline-flex items-baseline gap-1">
-                  <span className="text-[#707582]">{obs.label}:</span>
-                  <span className="font-semibold tabular-nums text-[#17191F]">
-                    {observationText(obs)}
-                  </span>
-                  {idx < availableObservations.length - 1 && (
-                    <span className="ml-1.5 text-[#D1D5DB]" aria-hidden="true">
-                      ·
-                    </span>
-                  )}
-                </span>
-              ))}
-              <span className="text-[12px] text-[#707582]">({periodLabel})</span>
-            </div>
-          )}
-
-          {/* Concise factual description */}
-          <p className="mt-2 text-[13.5px] leading-6 text-[#4B5563]">
-            {finding.description}
-          </p>
-
-          {/* Deterministic tie statement, when present */}
-          {finding.priority.tie?.statement && (
-            <p className="mt-2 rounded-lg border border-[#D8D7FA] bg-[#F0EDFF]/45 px-3 py-2 text-xs leading-5 text-[#3525B8]">
-              {finding.priority.tie.statement}
-            </p>
-          )}
-
-          {/* Compact evidence & context chips */}
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
-            <span className="inline-flex items-center gap-1.5 rounded-md border border-[#E3E1FA] bg-[#F0EDFF]/55 px-2.5 py-1 text-[#3525B8]">
-              <span className="font-medium">Evidence:</span>
-              <span className="tabular-nums">
-                {refCount > 0
-                  ? `${refCount} ${refCount === 1 ? "source" : "sources"}`
-                  : formatSourceLabel(finding.evidence.source)}
-              </span>
-            </span>
-
-            <span className="inline-flex items-center gap-1.5 rounded-md border border-[#DCE6FA] bg-[#EDF4FF]/70 px-2.5 py-1 text-[#2B59C3]">
-              <span>{confidenceText}</span>
-            </span>
-
-            {updatedIso && (
-              <span
-                className="inline-flex items-center gap-1 text-[12px] text-[#707582]"
-                title={dateTime(updatedIso)}
-              >
-                <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
-                <span>Updated {relativeTime(updatedIso)}</span>
-              </span>
-            )}
-          </div>
-
-          {/* Primary finding epistemic separation: Priority vs. Confidence vs. Limitations */}
-          {isPrimary && (
-            <div className="mt-4 grid gap-3 rounded-xl border border-[#E4E6F0] bg-[#F4F5FA]/75 p-3.5 sm:grid-cols-3">
-              <div className="min-w-0">
-                <h4 className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[#3525B8]">
-                  Why this is the priority
-                </h4>
-                <ul className="mt-1.5 space-y-1 text-xs leading-5 text-[#4B5563]">
-                  {(finding.priority.rationale.length > 0
-                    ? finding.priority.rationale
-                    : ["Ranked by verified severity, freshness, and coverage."]
-                  ).map((item, idx) => (
-                    <li key={idx}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="min-w-0">
-                <h4 className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[#2B59C3]">
-                  Confidence
-                </h4>
-                <ul className="mt-1.5 space-y-1 text-xs leading-5 text-[#4B5563]">
-                  {(finding.confidence.rationale.length > 0
-                    ? finding.confidence.rationale
-                    : [confidenceText]
-                  ).map((item, idx) => (
-                    <li key={idx}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="min-w-0">
-                <h4 className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[#17191F]">
-                  Limits of this conclusion
-                </h4>
-                <ul className="mt-1.5 space-y-1 text-xs leading-5 text-[#4B5563]">
-                  {(finding.limitations.length > 0
-                    ? finding.limitations
-                    : ["No additional evidence limitations recorded."]
-                  ).map((item, idx) => (
-                    <li key={idx}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          )}
-
-          {/* Keyboard-native progressive disclosure for provenance, lifecycle & unknowns */}
-          <details className="mt-3">
-            <summary className={cn(cc.disclosure, "inline-flex items-center gap-1 select-none text-[#3525B8] hover:text-[#4438E8]")}>
-              Inspect evidence, provenance and uncertainty
-            </summary>
-            <div className="mt-2.5 space-y-2.5 rounded-xl border border-[#E4E6F0] bg-[#FAFBFD] p-3.5 text-xs leading-5 text-[#4B5563]">
-              <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
-                <div>
-                  <dt className="font-medium text-[#707582]">Finding ID</dt>
-                  <dd className="mt-0.5 font-mono text-[11px] text-[#17191F] break-all">
-                    {finding.id}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-[#707582]">Ranking method</dt>
-                  <dd className="mt-0.5 font-mono text-[11px] text-[#17191F]">
-                    {finding.priority.method_version}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-[#707582]">Coverage run</dt>
-                  <dd className="mt-0.5 text-[#17191F]">
-                    {finding.coverage.run_id || "Not recorded"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-[#707582]">Lifecycle validity</dt>
-                  <dd className="mt-0.5 text-[#17191F]">
-                    {finding.lifecycle.current_validity.replaceAll("_", " ")}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-[#707582]">Detected</dt>
-                  <dd className="mt-0.5 tabular-nums text-[#17191F]">
-                    {dateTime(finding.detected_at)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-[#707582]">Last verified</dt>
-                  <dd className="mt-0.5 tabular-nums text-[#17191F]">
-                    {dateTime(finding.last_verified_at)}
-                  </dd>
-                </div>
-              </dl>
-
-              {!isPrimary && finding.limitations.length > 0 && (
-                <div>
-                  <p className="font-medium text-[#17191F]">Limitations</p>
-                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                    {finding.limitations.map((item, idx) => (
-                      <li key={idx}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {finding.unknowns.length > 0 && (
-                <div>
-                  <p className="font-medium text-[#17191F]">Unknowns</p>
-                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                    {finding.unknowns.map((item, idx) => (
-                      <li key={idx}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {finding.evidence.references.length > 0 && (
-                <div>
-                  <p className="font-medium text-[#17191F]">Evidence references</p>
-                  <ul className="mt-1 space-y-0.5">
-                    {finding.evidence.references.map((ref) => (
-                      <li key={ref.id} className="font-mono text-[11px] text-[#4B5563]">
-                        {ref.source_type}: {ref.source_record_id}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {finding.evidence.duplicate_finding_ids.length > 0 && (
-                <p className="text-[11px] text-[#707582]">
-                  Deduplicated records retained: {finding.evidence.duplicate_finding_ids.join(", ")}
-                </p>
-              )}
-            </div>
-          </details>
-        </div>
-
-        {/* Column 3: Next Step & Functional Rev Intelligence Action */}
-        <div className="flex flex-col justify-between gap-4 border-t border-[#E4E6F0] bg-gradient-to-b from-[#F8F8FE] to-[#F4F5FA]/70 px-5 py-4 lg:border-l lg:border-t-0 lg:px-5 lg:py-5">
-          <div className="min-w-0">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-[#3525B8]">Next step</span>
-              <ChevronRight
-                className="h-3.5 w-3.5 shrink-0 text-[#6475E8] transition-transform group-hover:translate-x-0.5"
-                aria-hidden="true"
-              />
-            </div>
-
-            {finding.recommendation.available && finding.recommendation.step ? (
-              <div className="mt-2 space-y-1.5">
-                <p className="text-[13px] font-medium leading-5 text-[#17191F]">
-                  {finding.recommendation.step}
-                </p>
-                {finding.recommendation.expected_result && (
-                  <p className="text-xs leading-5 text-[#4B5563]">
-                    {finding.recommendation.expected_result}
-                  </p>
-                )}
-                <p className="pt-0.5 text-[11px] leading-4 text-[#707582]">
-                  Read-only merchant action, not executed by Revluma.
-                </p>
-              </div>
-            ) : finding.recommendation.prerequisites.length > 0 ? (
-              <ul className="mt-2 space-y-1.5 text-xs leading-5 text-[#4B5563]">
-                {finding.recommendation.prerequisites.map((prereq, idx) => (
-                  <li key={idx}>{prereq}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2 text-xs leading-5 text-[#707582]">
-                Review this signal in Rev Intelligence with its underlying records.
-              </p>
-            )}
-          </div>
-
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => onInvestigate(finding.investigation.route)}
-              className={cn(
-                isPrimary
-                  ? "inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-[#4438E8] px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-[#3525B8]"
-                  : "inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-[#D8D7FA] bg-white px-3 py-1.5 text-xs font-semibold text-[#4438E8] transition-colors hover:border-[#4438E8] hover:bg-[#F0EDFF]",
-                cc.focus,
-              )}
-            >
-              <span>
-                {isPrimary
-                  ? "Investigate in Rev Intelligence"
-                  : finding.next_step?.label &&
-                      finding.next_step.label !== "Investigate with Rev"
-                    ? finding.next_step.label
-                    : "View investigation"}
-              </span>
-              <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </article>
   );
 }
 
@@ -973,7 +553,7 @@ export function TopPrioritiesSection({
       {eligibleCount > 0 ? (
         <div className="space-y-4">
           {visiblePrimary && (
-            <PriorityItemCard
+            <PriorityFindingCard
               finding={visiblePrimary}
               rank={1}
               isPrimary
@@ -999,7 +579,7 @@ export function TopPrioritiesSection({
               >
                 {visibleSecondary.map((finding, idx) => (
                   <li key={finding.id} className="min-w-0">
-                    <PriorityItemCard
+                    <PriorityFindingCard
                       finding={finding}
                       rank={idx + 2}
                       isPrimary={false}
