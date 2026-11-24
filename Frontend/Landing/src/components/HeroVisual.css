@@ -36,17 +36,22 @@
   box-shadow: inset -3cqw -4cqw 8cqw rgba(8, 3, 46, 0.45);
 }
 
-/* ---- Plant (behind the laptop) -------------------------------------- */
-.hv-plant {
+/* ---- Leaking funnel (behind the laptop) ----------------------------- */
+.hv-funnel {
   position: absolute;
-  left: 73cqw;
-  top: -9cqw;
+  left: 78cqw;
+  top: -6cqw;
   width: 32cqw;
-  height: auto;
-  transform: rotate(6deg);
-  transform-origin: 50% 100%;
-  filter: drop-shadow(1cqw 1.6cqw 1.6cqw rgba(12, 10, 29, 0.12));
+  height: 64cqw;
+  overflow: visible;
+  filter: drop-shadow(1cqw 1.6cqw 1.4cqw rgba(12, 10, 29, 0.1));
 }
+/* Wide single-column layouts (tablets) have a slimmer right margin. */
+@container (min-width: 600px) {
+  .hv-funnel { left: 76cqw; }
+}
+/* The escaping balls only exist as motion; reduced motion shows them frozen. */
+.hv-funnel__leak { display: none; }
 
 /* ---- Concrete plinth ------------------------------------------------ */
 .hv-plinth {
@@ -374,7 +379,10 @@
   .hv-card__check svg { width: 2.7cqw; height: 2.7cqw; }
   .hv-card__legend { gap: 1.2cqw; }
   .hv-card__legend i { font-size: 2.3cqw; padding: 0.7cqw 1.5cqw; }
-  .hv-card--evidence { left: auto; right: -1cqw; top: 6cqw; }
+  .hv-card--evidence { left: 34cqw; right: auto; top: 3cqw; }
+  /* Smaller funnel, kept inside the frame; its floor still meets the plinth
+     (top + 572/300 x width = 55cqw). */
+  .hv-funnel { left: 79cqw; top: 9.2cqw; width: 24cqw; height: 48cqw; }
   .hv-card--facts { left: -1cqw; top: 31cqw; gap: 1.8cqw; }
   .hv-arrow { left: 6cqw; top: 11cqw; }
 }
