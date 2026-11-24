@@ -216,24 +216,36 @@
   }
   .hv-funnel__leak { display: inline; }
   .hv-funnel__leak-still { display: none; }
+  /* Balls escape in pairs: a leader and, a beat later, a follower that
+     lands a little short of it. One pair every 3.75s. */
   .hv-funnel__drop {
     opacity: 0;
     transform-box: fill-box;
     transform-origin: 50% 50%;
-    animation: hv-funnel-drop 7.5s infinite;
+    animation: hv-funnel-drop-a 7.5s infinite;
     animation-delay: 3.4s;
   }
-  .hv-funnel__drop--1 { animation-delay: 5.9s; }
-  .hv-funnel__drop--2 { animation-delay: 8.4s; }
-  /* Squeezes out of the crack, falls under gravity, bounces once, rolls off. */
-  @keyframes hv-funnel-drop {
-    0% { opacity: 0; transform: translate(-4px, 0) scale(0.35); animation-timing-function: var(--ease-out-quart); }
-    9% { opacity: 1; transform: translate(10px, 4px) scale(1); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
-    44% { opacity: 1; transform: translate(26px, 340px); animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1); }
-    51% { transform: translate(31px, 322px); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4); }
-    58% { transform: translate(35px, 340px); animation-timing-function: var(--ease-out-quart); }
-    80% { opacity: 1; transform: translate(52px, 340px); }
-    92%, 100% { opacity: 0; transform: translate(58px, 340px); }
+  .hv-funnel__drop--1 { animation-name: hv-funnel-drop-b; animation-delay: 3.64s; }
+  .hv-funnel__drop--2 { animation-delay: 7.15s; }
+  .hv-funnel__drop--3 { animation-name: hv-funnel-drop-b; animation-delay: 7.39s; }
+  /* Squeezes out of the hole, falls under gravity, bounces once, rolls off. */
+  @keyframes hv-funnel-drop-a {
+    0% { opacity: 0; transform: translate(-8px, 0) scale(0.4); animation-timing-function: var(--ease-out-quart); }
+    8% { opacity: 1; transform: translate(6px, 4px) scale(1); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+    46% { opacity: 1; transform: translate(22px, 458px); animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1); }
+    53% { transform: translate(27px, 436px); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4); }
+    60% { transform: translate(31px, 458px); animation-timing-function: var(--ease-out-quart); }
+    82% { opacity: 1; transform: translate(44px, 458px); }
+    94%, 100% { opacity: 0; transform: translate(48px, 458px); }
+  }
+  @keyframes hv-funnel-drop-b {
+    0% { opacity: 0; transform: translate(-8px, 0) scale(0.4); animation-timing-function: var(--ease-out-quart); }
+    8% { opacity: 1; transform: translate(3px, 6px) scale(1); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+    46% { opacity: 1; transform: translate(10px, 459px); animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1); }
+    52% { transform: translate(13px, 443px); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4); }
+    58% { transform: translate(16px, 459px); animation-timing-function: var(--ease-out-quart); }
+    80% { opacity: 1; transform: translate(30px, 459px); }
+    92%, 100% { opacity: 0; transform: translate(34px, 459px); }
   }
 
   /* The laptop lifts onto the plinth and its lid opens. */
