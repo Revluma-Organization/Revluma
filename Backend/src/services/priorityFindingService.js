@@ -55,16 +55,59 @@ function freshnessFor(finding, now, resource) {
 
 const STORE_SIGNAL_TYPES = new Set([
   'storefront_domain_unconfigured',
+  'products_unpublished_or_unavailable',
+  'no_recorded_traffic',
+  'traffic_without_orders',
   'abandoned_checkouts_open',
   'inventory_stockouts',
+  'unfulfilled_orders_backlog',
   'no_storefront_events',
 ]);
+
+const SIGNAL_CATEGORY_FOR_TYPE = {
+  storefront_domain_unconfigured: 'storefront_readiness',
+  products_unpublished_or_unavailable: 'storefront_readiness',
+  no_recorded_traffic: 'traffic_acquisition',
+  no_storefront_events: 'traffic_acquisition',
+  no_recent_orders: 'sales_revenue',
+  revenue_change: 'sales_revenue',
+  order_volume_change: 'sales_revenue',
+  traffic_without_orders: 'conversion_purchasing',
+  abandoned_checkouts_open: 'conversion_purchasing',
+  inventory_stockouts: 'product_inventory',
+  unfulfilled_orders_backlog: 'customer_fulfillment',
+  refund_increase: 'customer_fulfillment',
+  returning_customer_change: 'customer_fulfillment',
+  integration_failure: 'storefront_readiness',
+};
+
+// Higher operational urgency / commercial impact tier ranks first within equal severity.
+const IMPACT_URGENCY_RANK = {
+  integration_failure: 0,
+  traffic_without_orders: 1,
+  no_recent_orders: 2,
+  revenue_change: 3,
+  order_volume_change: 4,
+  no_recorded_traffic: 5,
+  products_unpublished_or_unavailable: 6,
+  abandoned_checkouts_open: 7,
+  refund_increase: 8,
+  unfulfilled_orders_backlog: 9,
+  inventory_stockouts: 10,
+  storefront_domain_unconfigured: 11,
+  returning_customer_change: 12,
+  no_storefront_events: 13,
+};
 
 function resourceIdForFindingType(type) {
   if (type === 'refund_increase') return 'order.refunds';
   if (type === 'storefront_domain_unconfigured') return 'shop.identity';
+  if (type === 'products_unpublished_or_unavailable') return 'products';
   if (type === 'abandoned_checkouts_open') return 'abandoned-checkouts';
   if (type === 'inventory_stockouts') return 'inventory.levels';
+  if (type === 'unfulfilled_orders_backlog') return 'orders';
+  if (type === 'no_recorded_traffic') return 'analytics.reports';
+  if (type === 'traffic_without_orders') return 'orders';
   if (type === 'integration_failure' || type === 'no_storefront_events') return null;
   return 'orders';
 }
@@ -74,12 +117,24 @@ function limitationsFor(finding, freshness, resource) {
   const limits = [];
   if (finding.type === 'storefront_domain_unconfigured') {
     limits.push('Domain configuration reflects synchronized Shopify settings and does not measure traffic or conversion impact.');
+  } else if (finding.type === 'products_unpublished_or_unavailable') {
+    limits.push('Catalog product statuses reflect synchronized Shopify admin records and do not measure storefront demand or channel publishing outside Shopify.');
+  } else if (finding.type === 'no_recorded_traffic') {
+    limits.push('Verified analytics returned zero sessions for this window, but does not identify whether marketing campaigns, SEO, or storefront routing caused the absence of visits.');
+  } else if (finding.type === 'traffic_without_orders') {
+    limits.push('Verified storefront sessions and zero completed orders do not by themselves establish whether checkout errors, pricing, shipping, or product fit prevented purchases.');
   } else if (finding.type === 'no_recent_orders') {
-    limits.push('Zero recorded orders over this window does not establish whether traffic, pricing, or checkout setup explains the absence of sales.');
+    limits.push(
+      evidence.trafficEvaluated
+        ? 'Zero completed orders over this window does not establish whether acquisition channels, pricing, or checkout friction caused the absence of sales.'
+        : 'Traffic data was not verified for this window; zero completed orders does not distinguish zero storefront traffic from a conversion or checkout issue.'
+    );
   } else if (finding.type === 'abandoned_checkouts_open') {
     limits.push('Abandoned checkout records do not establish total storefront visits, checkout conversion rate, or how much cart value would convert.');
   } else if (finding.type === 'inventory_stockouts') {
     limits.push('Current inventory snapshots do not establish historical stockout duration or missed demand.');
+  } else if (finding.type === 'unfulfilled_orders_backlog') {
+    limits.push('Fulfillment status reflects synchronized Shopify order states and does not include carrier-side delays not yet synced back to Shopify.');
   } else if (finding.type === 'no_storefront_events') {
     limits.push('Zero recorded storefront events can reflect either zero storefront visits or inactive storefront event instrumentation.');
   } else if (finding.type !== 'integration_failure') {
@@ -136,11 +191,16 @@ function assessFinding(finding, { now = new Date(), resource = null } = {}) {
 function priorityRank(finding, assessment) {
   const evidence = object(finding.evidence);
   const hasMeasuredSample = evidence.currentCount !== null && evidence.currentCount !== undefined;
-  return [SEVERITY[finding.severity] ?? 4,
+  const confidenceRank = { high: 0, moderate: 1, low: 2, insufficient_evidence: 3, unable_to_determine: 4 }[assessment.confidence] ?? 4;
+  return [
+    SEVERITY[finding.severity] ?? 4,
     { fresh: 0, aging: 1, stale: 2, unknown: 3 }[assessment.freshness.state] ?? 3,
     hasMeasuredSample ? 0 : 1,
+    confidenceRank,
+    IMPACT_URGENCY_RANK[finding.type] ?? 20,
     -(timestamp(finding.updated_at) || timestamp(finding.detected_at) || 0),
-    String(finding.id)];
+    String(finding.id),
+  ];
 }
 
 function dedupeFindings(findings) {
@@ -207,10 +267,18 @@ const RECOMMENDATIONS = {
     'Certified order history shows zero completed sales across this window, signaling an urgent acquisition or checkout readiness check.', 'Track verified completed-order counts across the next equivalent period.'],
   storefront_domain_unconfigured: ['Connect a branded custom domain in Shopify Admin (Settings -> Domains), set it as the primary domain, and confirm SSL certificate provisioning.',
     'Using a default .myshopify.com primary domain signals an incomplete public storefront launch configuration.', 'Confirm that a custom primary domain appears in synchronized store domain records after the next sync.'],
+  products_unpublished_or_unavailable: ['Review draft and archived products in Shopify Admin (Products) and publish ready listings to the Online Store sales channel.',
+    'Unpublished or inactive catalog products cannot be discovered or purchased by storefront visitors.', 'Confirm active product counts increase in synchronized catalog records after publishing updates.'],
+  no_recorded_traffic: ['Verify that the storefront is live and unblocked (no password gate), check acquisition campaigns, and inspect referrer channels in Shopify Analytics.',
+    'Verified analytics recorded zero storefront sessions during the evaluated period, limiting any chance of organic or paid conversion.', 'Confirm verified session counts rise above zero over the next equivalent evaluation window.'],
+  traffic_without_orders: ['Walk through the product page, cart, shipping calculation, and payment checkout flow in Shopify to verify shoppers can complete purchases without friction or blockers.',
+    'Verified sessions reached the storefront while zero orders completed, warranting direct inspection of product presentation and checkout flow without assuming a technical fault.', 'Compare completed orders alongside verified sessions over the next equivalent window.'],
   abandoned_checkouts_open: ['Inspect recent open abandoned checkouts in Shopify Admin for shipping rate surprises, payment method gaps, or checkout friction, and verify whether automated checkout reminder emails are active.',
     'Open abandoned checkouts highlight active shopper intent that did not complete checkout, without assuming conversion rate.', 'Compare open abandoned checkout counts alongside completed orders across the next equivalent window.'],
   inventory_stockouts: ['Audit zero-stock SKUs in Shopify Admin (Products -> Inventory) to confirm whether active listings need replenishment, incoming transfers, or archiving.',
     'Zero available units on tracked inventory levels can block purchases on active listings until stock is updated.', 'Confirm zero-stock inventory counts decrease after replenishment updates synchronize.'],
+  unfulfilled_orders_backlog: ['Review aged unfulfilled orders in Shopify Admin (Orders -> Unfulfilled) to verify shipping labels, warehouse dispatch, or inventory holds.',
+    'Orders unfulfilled past 48 hours increase shipping delay risk and customer support volume.', 'Confirm the aged unfulfilled order count clears after fulfillment records synchronize.'],
   no_storefront_events: ['Confirm the storefront is published and accessible to shoppers, check traffic sources in Shopify Analytics, and verify storefront event tracking is active on the live theme.',
     'Zero recorded visitor or session events means either no traffic is reaching the storefront or event instrumentation is inactive.', 'Verify incoming storefront session events appear in synchronized event records.'],
 };
@@ -255,6 +323,29 @@ function observationFor(finding) {
       count(e.customDomainCount, 'Custom domains connected', 'observation'),
     ];
   }
+  if (finding.type === 'products_unpublished_or_unavailable') {
+    return [
+      count(e.activeProductsCount, 'Active products', 'observation'),
+      count(e.inactiveProductsCount, 'Unpublished / inactive products', 'observation'),
+      count(e.totalProductsCount, 'Total catalog products', 'observation'),
+    ];
+  }
+  if (finding.type === 'no_recorded_traffic') {
+    return [
+      count(e.verifiedSessions, `Verified sessions (${e.windowDays || 7}d)`, 'current'),
+      statusObs('Verified analytics query', 'Telemetry status'),
+    ];
+  }
+  if (finding.type === 'traffic_without_orders') {
+    const items = [
+      count(e.verifiedSessions, `Verified sessions (${e.windowDays || 7}d)`, 'current'),
+      count(e.currentOrdersCount, `Completed orders (${e.windowDays || 7}d)`, 'current'),
+    ];
+    if (finite(e.openAbandonedCount) !== null && e.openAbandonedCount > 0) {
+      items.push(count(e.openAbandonedCount, 'Open abandoned checkouts', 'current'));
+    }
+    return items;
+  }
   if (finding.type === 'abandoned_checkouts_open') {
     const items = [
       count(e.openAbandonedCount, 'Open abandoned checkouts', 'current'),
@@ -270,6 +361,12 @@ function observationFor(finding) {
       count(e.zeroStockCount, 'Zero-stock levels', 'observation'),
       count(e.totalLevelsCount, 'Total tracked levels', 'observation'),
       count(e.inStockCount, 'In-stock levels', 'observation'),
+    ];
+  }
+  if (finding.type === 'unfulfilled_orders_backlog') {
+    return [
+      count(e.unfulfilledOrdersCount, 'Aged unfulfilled orders', 'observation'),
+      count(e.ageThresholdHours || 48, 'Age threshold (hours)', 'observation'),
     ];
   }
   if (finding.type === 'no_storefront_events') {
@@ -294,7 +391,9 @@ function presentPriorityFinding(entry, organizationId) {
     : 'business_performance';
   return {
     contract_version: CONTRACT_VERSION, id: finding.id, organization_id: organizationId, store_id: finding.store_id,
-    category, type: finding.type,
+    category, signal_category: SIGNAL_CATEGORY_FOR_TYPE[finding.type] || 'storefront_readiness',
+    evaluation_state: assessment.eligible ? 'verified' : (assessment.freshness.state === 'stale' ? 'stale' : 'not_evaluated'),
+    type: finding.type,
     title: finding.title, description: finding.description, severity: finding.severity,
     priority: { method_version: PRIORITY_METHOD_VERSION, classification: finding.severity,
       rationale: [`Recorded severity: ${finding.severity}.`, `Evidence freshness: ${assessment.freshness.state}.`, `Confidence: ${assessment.confidence.replaceAll('_', ' ')}.`, 'Only current, verified, sufficiently covered findings are eligible.'],

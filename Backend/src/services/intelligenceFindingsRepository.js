@@ -8,8 +8,12 @@ const allowedTypes = new Set([
   'refund_increase',
   'no_recent_orders',
   'storefront_domain_unconfigured',
+  'products_unpublished_or_unavailable',
+  'no_recorded_traffic',
+  'traffic_without_orders',
   'abandoned_checkouts_open',
   'inventory_stockouts',
+  'unfulfilled_orders_backlog',
   'no_storefront_events',
 ]);
 const allowedSeverity = new Set(['low', 'medium', 'high', 'critical']);

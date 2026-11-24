@@ -8,9 +8,55 @@ export type BusinessMetric = {
   availability_reason: string | null; reporting_period: { timezone: string };
   zero_semantics: "verified_zero" | "unverified_zero_withheld" | null;
 };
+export type SignalEvaluationState =
+  | "verified"
+  | "not_detected"
+  | "not_evaluated"
+  | "evaluation_failed"
+  | "stale";
+
+export type SignalCategoryId =
+  | "storefront_readiness"
+  | "traffic_acquisition"
+  | "sales_revenue"
+  | "conversion_purchasing"
+  | "product_inventory"
+  | "customer_fulfillment";
+
+export type SignalEvaluationItem = {
+  id: SignalCategoryId;
+  label: string;
+  category: SignalCategoryId;
+  state: SignalEvaluationState;
+  finding_types: string[];
+  source: string;
+  last_evaluated_at: string | null;
+  reason: string;
+};
+
+export type SignalEvaluationCoverage = {
+  contract_version: "signal-evaluation-coverage-v1";
+  evaluated_at: string;
+  period_days: number;
+  complete: boolean;
+  incomplete: boolean;
+  summary: {
+    total_signals: number;
+    evaluated_count: number;
+    verified_findings_count: number;
+    not_detected_count: number;
+    not_evaluated_count: number;
+    failed_count: number;
+    stale_count: number;
+  };
+  signals: SignalEvaluationItem[];
+};
+
 export type Finding = {
   contract_version: "command-center-priority-finding-v1";
   id: string; organization_id: string; store_id: string; category: string; type: string;
+  signal_category?: SignalCategoryId;
+  evaluation_state?: SignalEvaluationState;
   severity: "critical" | "high" | "medium" | "low";
   title: string; description: string;
   priority: { method_version: "finding-priority-v1"; classification: string; rationale: string[];
@@ -174,6 +220,7 @@ export type CommandCenterData = {
   priority_selection: { method_version: "finding-priority-v1"; eligible_count: number;
     tie: Finding["priority"]["tie"]; exclusions: { finding_id: string; title: string; reason: string }[];
     no_defensible_priority: boolean; reason: string | null };
+  signal_evaluation?: SignalEvaluationCoverage | null;
   business_health?: BusinessHealthContract | null;
   operational_activity?: OperationalActivityContract | null;
   activity: { id: string; kind: "system" | "business"; type: string; label: string; occurred_at: string; note: string; finding_id?: string }[];

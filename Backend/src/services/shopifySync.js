@@ -816,6 +816,25 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
         reason: coverageError.code || coverageError.name || 'verification_failed',
       });
     }
+    // Best-effort post-sync findings evaluation so freshly synced stores
+    // surface verified priorities promptly without waiting for the next cron pass.
+    try {
+      if (store.organization_id) {
+        const { evaluateOrganizationFindings } = require('./intelligenceFindingsAggregator');
+        const { persistVerifiedFindings } = require('./intelligenceFindingsRepository');
+        const evaluated = await evaluateOrganizationFindings(prisma, store.organization_id);
+        const persisted = await persistVerifiedFindings(prisma, store.organization_id, evaluated.findings);
+        logger.info('shopify_post_sync_findings_evaluated', {
+          store_id: store.id,
+          findings_persisted: persisted,
+        });
+      }
+    } catch (findingsError) {
+      logger.warn('shopify_post_sync_findings_deferred', {
+        store_id: store.id,
+        reason: findingsError?.code || findingsError?.name || 'evaluation_deferred',
+      });
+    }
     const rfm = await rfmSync({ storeId: store.id, correlationId: `shopify-sync-${store.id}-${Date.now()}` });
     if (!rfm.success) logger.warn('shopify_rfm_sync_deferred', { store_id: store.id, code: rfm.error?.code });
     logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned, webhook_setup_complete: !webhookSetupError, products_sync_failed: Boolean(productsError), products_error_type: productsError ? (productsError.degraded === 'permission_denied' ? 'permission_denied' : (productsError.code || productsError.name || 'product_sync_error')) : null });

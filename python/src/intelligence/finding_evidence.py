@@ -43,16 +43,23 @@ _SCALAR_KEYS = {
     "currentStart", "currentEnd", "previousStart", "previousEnd",
     "coverage_source", "coverage_run_id", "failed_webhook_registrations",
     "primaryDomainHost", "customDomainCount", "totalDomainsCount",
+    "totalProductsCount", "inactiveProductsCount",
+    "analyticsAccessVerified", "verifiedSessions", "currentOrdersCount", "trafficEvaluated",
     "openAbandonedCount", "openAbandonedValue", "completedAfterCheckoutCount", "windowDays",
     "zeroStockCount", "totalLevelsCount", "inStockCount",
+    "unfulfilledOrdersCount", "ageThresholdHours",
     "recordedEventsCount", "activeProductsCount", "lastOrderAt", "observed_at",
 }
 
 _POINT_OBSERVATION_TYPES = {
     "integration_failure",
     "storefront_domain_unconfigured",
+    "products_unpublished_or_unavailable",
+    "no_recorded_traffic",
+    "traffic_without_orders",
     "abandoned_checkouts_open",
     "inventory_stockouts",
+    "unfulfilled_orders_backlog",
     "no_storefront_events",
 }
 

@@ -8,6 +8,7 @@
 const { retrieveIntegrationStates } = require('./revIntegrationState');
 const { RESOURCE_BY_ID } = require('./revIntegrationEvidenceService');
 const { listFindings } = require('./intelligenceFindingsRepository');
+const { buildSignalEvaluationSummary } = require('./intelligenceFindingsAggregator');
 const priorityFinding = require('./priorityFindingService');
 const { buildBusinessHealth, validateBusinessHealth } = require('./businessHealth');
 const { fetchBusinessHealthBundle, normalizePeriodDays: repoNormalizePeriodDays } = require('./businessHealthRepository');
@@ -667,6 +668,25 @@ async function getCommandCenter({ prisma, organizationId, storeId = null, period
   if (operationalActivity && !validateOperationalActivity(operationalActivity)) throw new Error('Operational activity contract validation failed.');
 
   const primaryProfile = primaryStore ? (profileByStoreId.get(primaryStore.id) || null) : null;
+  const primaryDomainRows = primaryStore
+    ? (domainRows || []).filter(row => row.store_id === primaryStore.id)
+    : [];
+  const primaryOrderCoverage = primaryStore && prisma.intelligence_order_coverage && typeof prisma.intelligence_order_coverage.findFirst === 'function'
+    ? await prisma.intelligence_order_coverage.findFirst({
+        where: { store_id: primaryStore.id, organization_id: organizationId },
+        orderBy: { certified_at: 'desc' },
+        select: { source: true, source_run_id: true, certified_at: true, coverage_start: true, coverage_end: true },
+      }).catch(() => null)
+    : null;
+  const signalEvaluation = buildSignalEvaluationSummary({
+    store: primaryStore,
+    domainRows: primaryDomainRows,
+    storeProfile: primaryProfile,
+    coverage: primaryOrderCoverage,
+    activeFindings: findings,
+    now,
+    periodDays: days,
+  });
   const healthPeriod = businessHealth && businessHealth.reporting_period ? businessHealth.reporting_period : null;
   const verifiedTimezone = (primaryProfile && typeof primaryProfile.iana_timezone === 'string' && primaryProfile.iana_timezone.trim())
     || (healthPeriod && typeof healthPeriod.timezone === 'string' && healthPeriod.timezone.trim())
@@ -778,8 +798,15 @@ async function getCommandCenter({ prisma, organizationId, storeId = null, period
       tie: priority.tie,
       exclusions: priority.excluded.slice(0, 12),
       no_defensible_priority: priority.candidates.length === 0,
-      reason: priority.candidates.length ? null : scopedFindings.length ? 'No open finding currently satisfies validity, evidence, freshness and coverage requirements.' : 'No open verified findings are recorded; this does not establish that no business problem exists.',
+      reason: priority.candidates.length
+        ? null
+        : scopedFindings.length
+          ? 'No open finding currently satisfies validity, evidence, freshness and coverage requirements.'
+          : signalEvaluation.incomplete
+            ? 'Store assessment is incomplete; one or more business signal categories could not be evaluated.'
+            : 'No open verified findings are recorded across evaluated business signals; this does not prove the store has no unmeasured issues.',
     },
+    signal_evaluation: signalEvaluation,
     findings: presentedFindings,
     business_health: businessHealth,
     operational_activity: operationalActivity,

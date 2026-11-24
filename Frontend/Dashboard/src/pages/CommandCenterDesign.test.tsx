@@ -41,7 +41,7 @@ describe("Task 219 scenarios A–J and authoritative hierarchy", () => {
   });
   it("D: a critical finding has stronger emphasis than health indicators", () => {
     const { container } = priority(ccPriorityFixture({ severity: "critical" }));
-    expect(container.querySelector("article")?.className).toContain("border-l-[#B42318]");
+    expect(container.querySelector("article")?.className).toContain("border-l-[#E5484D]");
     expect(screen.getByRole("heading", { name: "Net sales declined", level: 3 })).toBeInTheDocument();
   });
   it("E: no defensible priority is informative and not a healthy-store claim", () => {
