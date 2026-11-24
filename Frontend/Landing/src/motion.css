@@ -177,20 +177,63 @@
     to { opacity: 1; transform: none; }
   }
 
-  /* The plant unfurls into place, then sways gently. */
-  .hv-plant {
-    animation:
-      hv-plant-in 2.24s var(--ease-spring) both,
-      hv-sway 8.75s ease-in-out infinite alternate;
-    animation-delay: 830ms, 3.04s;
+  /* The funnel drops into place and hovers; revenue flows down the spout,
+     and every couple of seconds a ball escapes the crack and falls. */
+  .hv-funnel {
+    animation: hv-funnel-in 2.24s var(--ease-spring) both;
+    animation-delay: 830ms;
   }
-  @keyframes hv-plant-in {
-    from { opacity: 0; transform: rotate(16deg) scale(0.86); }
-    to { opacity: 1; transform: rotate(6deg); }
+  @keyframes hv-funnel-in {
+    from { opacity: 0; transform: translateY(-5cqw) rotate(-4deg) scale(0.9); }
+    to { opacity: 1; transform: none; }
   }
-  @keyframes hv-sway {
-    from { rotate: -1.6deg; }
-    to { rotate: 1.4deg; }
+  .hv-funnel__body {
+    animation: hv-funnel-hover 7.5s ease-in-out infinite alternate;
+    animation-delay: 3.04s;
+  }
+  @keyframes hv-funnel-hover {
+    from { transform: translateY(0); }
+    to { transform: translateY(-6px); }
+  }
+  .hv-funnel__stream {
+    animation: hv-funnel-stream 1.5s linear infinite;
+    animation-delay: 2.6s;
+  }
+  @keyframes hv-funnel-stream {
+    from { transform: translateY(0); }
+    to { transform: translateY(26px); }
+  }
+  /* The pile settles: each ball shifts a hair, out of step with its neighbours. */
+  .hv-funnel__ball {
+    animation: hv-funnel-jiggle 3.2s ease-in-out infinite alternate;
+  }
+  .hv-funnel__ball--1 { animation-delay: -0.8s; animation-duration: 3.7s; }
+  .hv-funnel__ball--2 { animation-delay: -1.9s; animation-duration: 2.9s; }
+  .hv-funnel__ball--3 { animation-delay: -2.6s; animation-duration: 4.1s; }
+  @keyframes hv-funnel-jiggle {
+    from { transform: translate(0, 0); }
+    to { transform: translate(0.6px, 1.4px); }
+  }
+  .hv-funnel__leak { display: inline; }
+  .hv-funnel__leak-still { display: none; }
+  .hv-funnel__drop {
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+    animation: hv-funnel-drop 7.5s infinite;
+    animation-delay: 3.4s;
+  }
+  .hv-funnel__drop--1 { animation-delay: 5.9s; }
+  .hv-funnel__drop--2 { animation-delay: 8.4s; }
+  /* Squeezes out of the crack, falls under gravity, bounces once, rolls off. */
+  @keyframes hv-funnel-drop {
+    0% { opacity: 0; transform: translate(-4px, 0) scale(0.35); animation-timing-function: var(--ease-out-quart); }
+    9% { opacity: 1; transform: translate(10px, 4px) scale(1); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+    44% { opacity: 1; transform: translate(26px, 340px); animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1); }
+    51% { transform: translate(31px, 322px); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4); }
+    58% { transform: translate(35px, 340px); animation-timing-function: var(--ease-out-quart); }
+    80% { opacity: 1; transform: translate(52px, 340px); }
+    92%, 100% { opacity: 0; transform: translate(58px, 340px); }
   }
 
   /* The laptop lifts onto the plinth and its lid opens. */
@@ -490,7 +533,7 @@
     --spc: min(1, var(--sp, 0));
   }
   .hv-layer--circle { translate: 0 calc(var(--spc) * 12cqw); scale: calc(1 + var(--spc) * 0.12); }
-  .hv-layer--plant { translate: calc(var(--spc) * 5cqw) calc(var(--spc) * -4cqw); rotate: calc(var(--spc) * 5deg); }
+  .hv-layer--funnel { translate: calc(var(--spc) * 5cqw) calc(var(--spc) * -4cqw); rotate: calc(var(--spc) * 5deg); }
   /* The laptop stays seated on its plinth; everything else moves around it. */
   .hv-layer--evidence { translate: calc(var(--spc) * 6cqw) calc(var(--spc) * -22cqw); }
   .hv-layer--facts { translate: calc(var(--spc) * -6cqw) calc(var(--spc) * -14cqw); }

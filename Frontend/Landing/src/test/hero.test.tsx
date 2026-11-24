@@ -98,6 +98,20 @@ describe("Landing hero", () => {
     expect(HERO.sources.label).toMatch(/read-only/i);
   });
 
+  it("shows the leaking funnel instead of the reference's plant", () => {
+    const { container } = render(<App />);
+    const visual = screen.getByRole("img", { name: /illustration/i });
+    expect(visual.getAttribute("aria-label")).toMatch(/funnel leaking revenue/i);
+    expect(container.querySelector(".hv-plant")).toBeNull();
+    const funnel = container.querySelector(".hv-funnel");
+    expect(funnel).not.toBeNull();
+    // Balls in the funnel, a crack, and escaping balls (frozen and animated).
+    expect(funnel!.querySelectorAll(".hv-funnel__ball").length).toBeGreaterThan(20);
+    expect(funnel!.querySelector(".hv-funnel__crack")).not.toBeNull();
+    expect(funnel!.querySelectorAll(".hv-funnel__drop")).toHaveLength(3);
+    expect(funnel!.querySelector(".hv-funnel__leak-still")).not.toBeNull();
+  });
+
   it("contains none of the banned claims", () => {
     const { container } = render(<App />);
     const text = [container.textContent ?? "", HERO.sources.label, ...HERO.sources.items].join(" ");
