@@ -130,159 +130,139 @@ export function OperationalBriefingSection({
   return (
     <section
       aria-labelledby="operational-briefing-heading"
-      className="min-w-0 overflow-hidden rounded-2xl border border-[#E4E8F0] bg-white shadow-[0_12px_36px_rgba(16,24,40,0.045)]"
+      className="min-w-0 overflow-hidden rounded-[28px] border border-[#E3E8F2] bg-[#F7F8FC] shadow-[0_18px_55px_rgba(20,31,65,0.09)]"
     >
       {/* 1. Briefing Header and Business Assessment */}
-      <div className="bg-[linear-gradient(180deg,#FCFCFF_0%,#FFFFFF_100%)] px-6 py-7 sm:px-9 sm:py-8">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#4338CA]">
-              Operational briefing
-            </p>
-            <p className="mt-1 text-xs text-[#667085]">
-              Your latest business intelligence briefing
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs sm:justify-end">
-            {/* Independent business assessment posture & data quality axis */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 font-medium",
-                  TONE_TEXT[assessment.tone],
-                )}
-              >
-                <span
-                  aria-hidden="true"
-                  className={cn("h-1.5 w-1.5 shrink-0 rounded-full", TONE_DOT[assessment.tone])}
-                />
-                <span>{assessment.label}</span>
-              </span>
-              <span aria-hidden="true" className="text-[#D0D5DD]">
-                ·
-              </span>
-              <span
-                className={cn(
-                  "font-medium",
-                  TONE_TEXT[assessment.dataQualityTone],
-                )}
-              >
-                {assessment.dataQualityLabel}
-              </span>
+      <div className="p-4 sm:p-6 lg:p-7">
+        <div className="rounded-2xl border border-[#E8EBF4] bg-white px-5 py-4 shadow-[0_3px_12px_rgba(16,24,40,0.035)] sm:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#4338CA]">
+                Operational briefing
+              </p>
+              <p className="mt-1 text-xs text-[#667085]">
+                Your latest business intelligence briefing
+              </p>
             </div>
-
-            <span aria-hidden="true" className="hidden text-[#D0D5DD] sm:inline">
-              |
-            </span>
-
-            {/* Authoritative briefing generation time (separate from sync time) */}
-            <span
-              title={timestamp.exactTitle ?? undefined}
-              className="text-[#667085] tabular-nums"
-            >
-              {timestamp.label}
-            </span>
-
-            {onRefresh && (
-              <div className="inline-flex items-center gap-2">
-                {refreshFeedback === "succeeded" && (
-                  <span
-                    role="status"
-                    className="inline-flex items-center gap-1 text-xs font-medium text-[#067647]"
-                  >
-                    <Check className="h-3 w-3" aria-hidden="true" />
-                    <span>Updated</span>
-                  </span>
-                )}
-                {refreshFeedback === "failed" && (
-                  <span role="status" className="text-xs font-medium text-[#B42318]">
-                    Update failed
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={handleRefresh}
-                  disabled={refreshing}
-                  aria-busy={refreshing}
-                  aria-label={
-                    refreshing ? "Updating operational briefing…" : "Update operational briefing"
-                  }
-                  className={cn(
-                    "inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-[#475467] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A] disabled:cursor-not-allowed disabled:opacity-55",
-                    FOCUS_RING,
+            <div className="flex flex-wrap items-center gap-3">
+              <span title={timestamp.exactTitle ?? undefined} className="text-xs text-[#667085] tabular-nums">
+                {timestamp.label}
+              </span>
+              {onRefresh && (
+                <div className="inline-flex items-center gap-2">
+                  {refreshFeedback === "succeeded" && (
+                    <span role="status" className="inline-flex items-center gap-1 text-xs font-medium text-[#067647]">
+                      <Check className="h-3 w-3" aria-hidden="true" />
+                      <span>Updated</span>
+                    </span>
                   )}
-                >
-                  <RefreshCw
+                  {refreshFeedback === "failed" && (
+                    <span role="status" className="text-xs font-medium text-[#B42318]">Update failed</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleRefresh}
+                    disabled={refreshing}
+                    aria-busy={refreshing}
+                    aria-label={refreshing ? "Updating operational briefing…" : "Update operational briefing"}
                     className={cn(
-                      "h-3 w-3",
-                      refreshing && "animate-spin motion-reduce:animate-none",
+                      "inline-flex min-h-9 items-center gap-2 rounded-lg border border-[#DDE3F0] bg-white px-3 text-xs font-semibold text-[#344054] shadow-sm transition-all hover:border-[#B9C4DD] hover:bg-[#F8F9FF] disabled:cursor-not-allowed disabled:opacity-55",
+                      FOCUS_RING,
                     )}
-                    aria-hidden="true"
-                  />
-                  <span>{refreshing ? "Updating…" : "Update"}</span>
-                </button>
+                  >
+                    <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
+                    <span>{refreshing ? "Updating…" : "Update briefing"}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(245px,0.75fr)]">
+          <div className="relative isolate overflow-hidden rounded-2xl bg-[linear-gradient(125deg,#111A39_0%,#1D2A5B_58%,#303F82_100%)] px-6 py-7 text-white shadow-[0_12px_28px_rgba(26,39,91,0.18)] sm:px-8 sm:py-9">
+            <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-24 -z-10 h-64 w-64 rounded-full border-[36px] border-white/[0.045]" />
+            <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-24 -z-10 h-56 w-56 rounded-full bg-[#7C8DFF]/10 blur-2xl" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.09] px-3 py-1.5 text-[11px] font-semibold tracking-wide text-white/90">
+              <span aria-hidden="true" className={cn("h-2 w-2 rounded-full", TONE_DOT[assessment.tone])} />
+              Business assessment
+            </div>
+            <h2
+              id="operational-briefing-heading"
+              className="mt-5 max-w-[46rem] text-[1.8rem] font-semibold leading-[1.13] tracking-[-0.04em] text-white sm:text-[2.45rem]"
+            >
+              {assessment.headline}
+            </h2>
+            <p className="mt-4 max-w-[46rem] text-sm leading-7 text-[#E0E6FA] sm:text-[0.95rem]">
+              {assessment.summary}
+            </p>
+            {assessment.noFindingsNote && (
+              <p className="mt-3 max-w-[44rem] border-l-2 border-white/25 pl-3 text-xs leading-5 text-[#C4CDE8]">
+                {assessment.noFindingsNote}
+              </p>
+            )}
+            {assessment.primaryAction && (
+              <div className="mt-6">
+                {assessment.primaryAction.isAnchor ? (
+                  <a
+                    href={assessment.primaryAction.href}
+                    className={cn("inline-flex min-h-10 items-center gap-2 rounded-lg bg-white px-4 text-xs font-bold text-[#1B2860] shadow-sm transition-colors hover:bg-[#EEF1FF]", FOCUS_RING)}
+                  >
+                    <span>{assessment.primaryAction.label}</span>
+                    <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openRoute(assessment.primaryAction!.href)}
+                    className={cn("inline-flex min-h-10 items-center gap-2 rounded-lg bg-white px-4 text-xs font-bold text-[#1B2860] shadow-sm transition-colors hover:bg-[#EEF1FF]", FOCUS_RING)}
+                  >
+                    <span>{assessment.primaryAction.label}</span>
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                )}
               </div>
             )}
           </div>
-        </div>
 
-        {/* Editorial Business Assessment */}
-        <div className="mt-7 max-w-[54rem]">
-          <h2
-            id="operational-briefing-heading"
-            className="text-[1.75rem] font-semibold leading-[1.16] tracking-[-0.04em] text-[#101828] sm:text-[2.15rem]"
-          >
-            {assessment.headline}
-          </h2>
-          <p className="mt-3 max-w-[48rem] text-[0.92rem] leading-7 text-[#475467]">
-            {assessment.summary}
-          </p>
-          {assessment.noFindingsNote && (
-            <p className="mt-2 text-xs leading-5 text-[#667085]">
-              {assessment.noFindingsNote}
-            </p>
-          )}
-        </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+            <article className="flex min-h-[132px] flex-col justify-between rounded-2xl border border-[#F0D9B6] bg-[linear-gradient(145deg,#FFFCF5_0%,#FFF7E8_100%)] p-5 shadow-[0_4px_14px_rgba(146,91,20,0.045)]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#9A5B13]">Business posture</span>
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/80 text-[#A15C0A] ring-1 ring-[#F2E2C9]">
+                  <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                </span>
+              </div>
+              <div>
+                <p className="text-xl font-semibold tracking-[-0.03em] text-[#653D12]">{assessment.label}</p>
+                <p className="mt-1 text-xs leading-5 text-[#8B663B]">What the verified business evidence currently indicates.</p>
+              </div>
+            </article>
 
-        {assessment.primaryAction && (
-          <div className="mt-4">
-            {assessment.primaryAction.isAnchor ? (
-              <a
-                href={assessment.primaryAction.href}
-                className={cn(
-                  "inline-flex min-h-9 items-center gap-1.5 rounded-md text-xs font-semibold text-[#1F06AC] transition-colors hover:text-[#18058C]",
-                  FOCUS_RING,
-                )}
-              >
-                <span>{assessment.primaryAction.label}</span>
-                <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
-              </a>
-            ) : (
-              <button
-                type="button"
-                onClick={() => openRoute(assessment.primaryAction!.href)}
-                className={cn(
-                  "inline-flex min-h-9 items-center gap-1.5 rounded-md text-xs font-semibold text-[#1F06AC] transition-colors hover:text-[#18058C]",
-                  FOCUS_RING,
-                )}
-              >
-                <span>{assessment.primaryAction.label}</span>
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
+            <article className="flex min-h-[132px] flex-col justify-between rounded-2xl border border-[#D9E1F5] bg-[linear-gradient(145deg,#F8FAFF_0%,#EEF2FF_100%)] p-5 shadow-[0_4px_14px_rgba(43,64,140,0.045)]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#4655A4]">Evidence freshness</span>
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/85 text-[#4655A4] ring-1 ring-[#E0E6FA]">
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                </span>
+              </div>
+              <div>
+                <p className="text-xl font-semibold tracking-[-0.03em] text-[#24336D]">{assessment.dataQualityLabel}</p>
+                <p className="mt-1 text-xs leading-5 text-[#6876AD]">Data coverage and freshness are assessed separately from store connection.</p>
+              </div>
+            </article>
           </div>
-        )}
+        </div>
       </div>
 
       {/* 2. Featured Intelligence — "A closer look" (always rendered, never silently hidden) */}
       <div
         aria-labelledby="briefing-featured-heading"
-        className="border-t border-[#EDF0F5] px-6 py-6 sm:px-9 sm:py-7"
+        className="border-t border-[#E7EAF2] bg-white px-4 py-6 sm:px-7 sm:py-7"
       >
         <h3
           id="briefing-featured-heading"
-          className="text-[11px] font-semibold uppercase tracking-[0.11em] text-[#667085]"
+          className="text-[11px] font-bold uppercase tracking-[0.15em] text-[#4655A4]"
         >
           A closer look
         </h3>
@@ -360,12 +340,12 @@ export function OperationalBriefingSection({
         ) : featured.empty ? (
           <div
             data-featured-empty-state={featured.empty.state}
-            className="mt-4 rounded-2xl border border-[#E8EBF1] bg-[#FAFBFD] p-5 sm:p-6"
+            className="mt-4 overflow-hidden rounded-2xl border border-[#DCE4F7] bg-[linear-gradient(115deg,#F4F7FF_0%,#F8FAFF_58%,#EEF3FF_100%)] p-5 sm:p-6"
           >
             <div className="flex items-start gap-3">
               <span
                 aria-hidden="true"
-                className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-[#667085] ring-1 ring-[#EAECF0]"
+                className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#4655A4] shadow-sm ring-1 ring-[#E1E7F5]"
               >
                 {featured.empty.state === "no_new_findings" ? (
                   <CheckCircle2 className="h-3.5 w-3.5 text-[#475467]" />
@@ -379,17 +359,17 @@ export function OperationalBriefingSection({
               </span>
 
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium text-[#667085]">
+                <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#5969AA]">
                   {featured.empty.statusLabel}
                 </p>
-                <p className="mt-1 text-sm font-medium text-[#0F172A]">
+                <p className="mt-1.5 text-base font-semibold tracking-[-0.02em] text-[#1B2859]">
                   {featured.empty.headline}
                 </p>
-                <p className="mt-1 max-w-2xl text-xs leading-5 text-[#475467]">
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#46516F]">
                   {featured.empty.explanation}
                 </p>
                 {featured.empty.clarification && (
-                  <p className="mt-1.5 max-w-2xl text-xs leading-5 text-[#667085]">
+                  <p className="mt-2 max-w-2xl text-xs leading-5 text-[#68749B]">
                     {featured.empty.clarification}
                   </p>
                 )}
@@ -437,7 +417,7 @@ export function OperationalBriefingSection({
       {/* 3. Recent Developments — compact editorial timeline */}
       <div
         aria-labelledby="briefing-developments-heading"
-        className="border-t border-[#EDF0F5] px-6 py-6 sm:px-9 sm:py-7"
+        className="border-t border-[#E7EAF2] bg-[#FBFCFF] px-4 py-6 sm:px-7 sm:py-7"
       >
         <div>
           <h3
@@ -452,13 +432,13 @@ export function OperationalBriefingSection({
         </div>
 
         {developments.items.length > 0 ? (
-          <ol className="mt-5 space-y-0 border-l border-[#E6EAF1] pl-5">
+          <ol className="mt-5 space-y-3">
             {developments.items.map((entry) => (
-              <li key={entry.id} className="relative pb-5 last:pb-0">
+              <li key={entry.id} className="relative rounded-xl border border-[#E8ECF4] bg-white p-4 shadow-[0_2px_8px_rgba(16,24,40,0.025)]">
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "absolute -left-[25px] top-1.5 h-2 w-2 rounded-full ring-4 ring-white",
+                    "absolute right-4 top-4 h-2.5 w-2.5 rounded-full ring-4 ring-[#F8FAFF]",
                     LIFECYCLE_DOT[entry.lifecycle],
                   )}
                 />
@@ -501,7 +481,7 @@ export function OperationalBriefingSection({
             ))}
           </ol>
         ) : (
-          <div className="mt-3.5 py-1">
+          <div className="mt-4 rounded-2xl border border-dashed border-[#D9E0EC] bg-white px-5 py-6">
             <p className="text-sm font-medium text-[#344054]">
               {developments.emptyHeadline}
             </p>
@@ -515,7 +495,7 @@ export function OperationalBriefingSection({
       </div>
 
       {/* 4. Expandable Briefing Evidence and Context */}
-      <div className="border-t border-[#EDF0F5] bg-[#FBFCFE] px-6 py-4 sm:px-9">
+      <div className="border-t border-[#E7EAF2] bg-[#F2F4F9] px-4 py-4 sm:px-7">
         <details className="group">
           <summary
             className={cn(
@@ -600,9 +580,9 @@ export function OperationalBriefingSection({
               <div>
                 <p className="font-semibold text-[#344054]">Evidence categories examined</p>
                 {context.categories.length > 0 ? (
-                  <ul className="mt-2 divide-y divide-[#EAECF0]">
+                  <ul className="mt-3 grid gap-2 sm:grid-cols-2">
                     {context.categories.map((cat) => (
-                      <li key={cat.id} className="py-2 first:pt-0 last:pb-0">
+                      <li key={cat.id} className="rounded-xl border border-[#E8ECF3] bg-white p-3 shadow-[0_2px_7px_rgba(16,24,40,0.025)]">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="font-medium text-[#101828]">{cat.name}</span>
                           <span
