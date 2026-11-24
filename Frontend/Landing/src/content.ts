@@ -50,13 +50,6 @@ export const FEATURES = {
   },
   description:
     "Your store generates signals every day. Revluma connects the dots, uncovers what's going wrong, and shows you where to focus before more opportunities slip away.",
-  // Decorative signal chips floating around the intro (sample signals, no figures).
-  signals: [
-    { tone: "high", label: "Refund requests rising" },
-    { tone: "brand", label: "New signal detected" },
-    { tone: "medium", label: "Checkout completion dipping" },
-    { tone: "good", label: "Discount usage back to normal" },
-  ],
   items: [
     {
       id: "detect",
