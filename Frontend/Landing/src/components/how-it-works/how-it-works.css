@@ -175,7 +175,6 @@
   .hiw-diagram {
     display: block;
     position: relative;
-    aspect-ratio: 1200 / 240;
   }
   .hiw-diagram__svg {
     position: absolute;
