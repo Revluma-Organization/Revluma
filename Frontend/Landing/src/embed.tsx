@@ -1,12 +1,13 @@
 /**
  * Embed build of the rebuilt landing sections for the current homepage
- * (Frontend/index.html): the nav + hero, and the features section ("What
- * Revluma does").
+ * (Frontend/index.html): the nav + hero, the features section ("What
+ * Revluma does") and how it works (three steps).
  *
  * The homepage still runs on the Tailwind CDN with a dark global theme, so each
  * section renders inside its own shadow root on its host element: page styles
  * cannot restyle the sections and their Tailwind reset cannot leak into the
- * rest of the page. Hosts keep their ids, so in-page links (#platform) work.
+ * rest of the page. Hosts keep their ids, so in-page links (#platform,
+ * #how-it-works) work.
  *
  * Built by `npm run build:embed` into Frontend/landing-hero/ (see vercel.json).
  */
@@ -19,6 +20,7 @@ import { LandingConfigProvider, type LandingConfig } from "./config";
 import { Hero } from "./components/Hero";
 import { Navbar } from "./components/Navbar";
 import { FeaturesSection } from "./components/features/FeaturesSection";
+import { HowItWorksSection } from "./components/how-it-works/HowItWorksSection";
 
 // Only sections that exist on the current homepage. "Why Revluma" and "FAQ"
 // return once those sections are rebuilt. "Platform" leads to the features
@@ -47,6 +49,7 @@ export const SECTIONS: Record<string, () => ReactNode> = {
     </>
   ),
   platform: () => <FeaturesSection />,
+  "how-it-works": () => <HowItWorksSection />,
 };
 
 function mountSection(hostId: string, render: () => ReactNode) {

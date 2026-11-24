@@ -78,3 +78,32 @@ export const FEATURES = {
     },
   ],
 } as const;
+
+// Section 4: how it works (three steps). Revluma reads store data and explains
+// it; the merchant decides. No setup-time, automation or recovery claims.
+export const HOW_IT_WORKS = {
+  eyebrow: "Understand your store in three steps",
+  headline: { lead: "From raw store data", accent: "to clear business intelligence." },
+  description:
+    "No complex workflows. No manual data analysis. Connect your Shopify store, let Revluma investigate the evidence, and understand what deserves your attention.",
+  steps: [
+    {
+      id: "connect",
+      label: "Connect your store",
+      title: "Bring your Shopify data into Revluma.",
+      body: "Securely connect your Shopify store and authorize access to the data Revluma needs. Your store information becomes the foundation for understanding your business.",
+    },
+    {
+      id: "analyze",
+      label: "Revluma analyzes your business",
+      title: "Discover what's happening beneath the surface.",
+      body: "Revluma organizes and analyzes your available store data, verifies evidence, detects meaningful patterns and investigates potential revenue leaks, purchasing problems and operational issues.",
+    },
+    {
+      id: "understand",
+      label: "Understand what matters. Know what to do next.",
+      title: "Turn business intelligence into informed decisions.",
+      body: "Revluma prioritizes the issues that deserve your attention, explains why they matter, presents supporting evidence and recommends practical next steps to help you make better business decisions.",
+    },
+  ],
+} as const;
