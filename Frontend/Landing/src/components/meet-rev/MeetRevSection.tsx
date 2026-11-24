@@ -1,5 +1,5 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowUp, ArrowUpRight, Check, CircleHelp, CircleSlash, Database, Lightbulb, RotateCcw, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, Check, CircleHelp, CircleSlash, Database, Lightbulb, RotateCcw, ShieldCheck } from "lucide-react";
 import { MEET_REV } from "@/content";
 import { useReveal } from "@/useReveal";
 import orbStill from "@/assets/rev-orb.png";
@@ -7,15 +7,16 @@ import orbAnimated from "@/assets/rev-orb.webp";
 
 /**
  * "Meet Rev": the intelligence interface, shown through one worked
- * interaction from a clearly labelled sample store. The conversation mirrors
- * the real Rev answer layout (evidence state, checks that ran, facts with
- * numbered sources, hypotheses marked as not verified, unknowns and limits,
- * recommendations that change nothing).
+ * interaction from a clearly labelled sample store, in a dark Rev window.
+ * The answer mirrors the real Rev layout (evidence state, checks that ran,
+ * facts with numbered sources, hypotheses marked as not verified, unknowns
+ * and limits, recommendations that change nothing).
  *
- * A guide beside the window names the six things Rev does; hovering, focusing
- * or tapping one highlights the matching part of the answer. When the section
- * is reached the conversation plays through once (question, checks, answer);
- * Replay runs it again. All motion is in meet-rev.css and is off with reduced
+ * Compact by design: on wide screens the window splits into the
+ * investigation (left) and the answer (right). A row of six numbered steps
+ * above it names what Rev does; hovering, focusing or tapping one highlights
+ * the matching part. The conversation plays through once when reached and
+ * again on Replay. All motion is in meet-rev.css and is off with reduced
  * motion, which shows the finished conversation.
  */
 
@@ -27,17 +28,16 @@ const STEP_NO = Object.fromEntries(MEET_REV.steps.map((s, i) => [s.id, i + 1])) 
 /* Timeline of the play-through, in seconds. */
 const T = {
   ask: 0.2,
-  investigate: 0.8,
-  check: (i: number) => 1.1 + i * 0.4,
-  answer: 2.75,
-  summary: 2.95,
-  verify: 3.2,
-  bar: (i: number) => 3.4 + i * 0.07,
-  interpret: 3.6,
-  gaps: 3.8,
-  sources: 4.0,
-  recommend: 4.2,
-  followUps: 4.5,
+  investigate: 0.7,
+  check: (i: number) => 0.95 + i * 0.35,
+  answer: 2.4,
+  summary: 2.5,
+  bar: (i: number) => 2.7 + i * 0.06,
+  verify: 2.9,
+  interpret: 3.2,
+  gaps: 3.35,
+  recommend: 3.6,
+  followUps: 3.9,
 };
 
 function Orb({ size }: { size: number }) {
@@ -74,23 +74,23 @@ function Block({ id, focus, at, className = "", children }: { id: StepId; focus:
 
 function Chart() {
   const { chart } = MEET_REV;
-  const max = 60;
+  const max = 56;
   const summary = chart.days.map((d) => `${d.day} ${d.value}%`).join(", ");
   return (
-    <figure className="mr-chart" aria-label={`${chart.label}: ${summary}. The week before averaged ${chart.previousWeek}%.`}>
+    <figure
+      className="mr-chart mr-play"
+      style={vars({ "--t": `${T.summary}s` })}
+      aria-label={`${chart.label} by day: ${summary}. The week before averaged ${chart.previousWeek}%.`}
+    >
       <figcaption className="mr-chart__label">
         {chart.label}
-        <span>Sample</span>
+        <span>Week before · {chart.previousWeek}%</span>
       </figcaption>
       <div className="mr-chart__plot" aria-hidden="true">
-        <span className="mr-chart__ref" style={vars({ "--y": chart.previousWeek / max })}>
-          <em>Week before · {chart.previousWeek}%</em>
-        </span>
+        <span className="mr-chart__ref" style={vars({ "--y": chart.previousWeek / max })} />
         {chart.days.map((d, i) => (
           <span key={d.day} className={`mr-chart__col${i >= 2 ? " is-low" : ""}`}>
-            <span className="mr-chart__bar mr-grow" style={vars({ height: `${(d.value / max) * 100}%`, "--t": `${T.bar(i)}s` })}>
-              <b>{d.value}</b>
-            </span>
+            <span className="mr-chart__bar mr-grow" style={vars({ height: `${(d.value / max) * 100}%`, "--t": `${T.bar(i)}s` })} />
             <i>{d.day}</i>
           </span>
         ))}
@@ -99,17 +99,33 @@ function Chart() {
   );
 }
 
+function FollowUps({ where }: { where: "left" | "right" }) {
+  return (
+    <div className={`mr-follow mr-follow--${where} mr-play`} style={vars({ "--t": `${T.followUps}s` })} aria-hidden="true">
+      {MEET_REV.followUps.map((f) => (
+        <span key={f}>
+          {f}
+          <ArrowUpRight size={11} strokeWidth={1.8} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function Conversation({ focus }: { focus: StepId | null }) {
   const r = MEET_REV;
   return (
-    <div className="mr-thread">
-      <Block id="ask" focus={focus} at={T.ask} className="mr-ask">
-        <p className="mr-bubble">{r.question}</p>
-      </Block>
+    <div className="mr-body">
+      {/* Left: the question and the investigation. */}
+      <div className="mr-col mr-col--left">
+        <div className="mr-ask-row">
+          <Block id="ask" focus={focus} at={T.ask} className="mr-ask">
+            <p className="mr-bubble">{r.question}</p>
+          </Block>
+        </div>
 
-      <div className="mr-answer">
         <div className="mr-answer__head mr-play" style={vars({ "--t": `${T.investigate}s` })}>
-          <Orb size={30} />
+          <Orb size={26} />
           <span className="mr-answer__name">Rev</span>
           <span className="mr-pill">
             <span className="mr-pill__live">Investigating</span>
@@ -119,17 +135,17 @@ function Conversation({ focus }: { focus: StepId | null }) {
           </span>
         </div>
 
-        <Block id="investigate" focus={focus} at={T.investigate} className="mr-checks">
+        <Block id="investigate" focus={focus} at={T.investigate} className="mr-panel mr-checks">
           <p className="mr-checks__title">
             Checks that ran
             <span>
-              {r.period[0].toUpperCase() + r.period.slice(1)}, compared with {r.comparedTo}
+              {r.period[0].toUpperCase() + r.period.slice(1)} vs {r.comparedTo}
             </span>
           </p>
           <ul>
             {r.checks.map((check, i) => (
               <li key={check.label} className={`mr-play ${check.status === "done" ? "is-done" : "is-missing"}`} style={vars({ "--t": `${T.check(i)}s` })}>
-                {check.status === "done" ? <Check size={13} strokeWidth={3} aria-hidden="true" /> : <CircleSlash size={13} aria-hidden="true" />}
+                {check.status === "done" ? <Check size={12} strokeWidth={3} aria-hidden="true" /> : <CircleSlash size={12} aria-hidden="true" />}
                 <span>{check.label}</span>
                 <em>{check.status === "done" ? "completed" : "note" in check ? check.note : "unavailable"}</em>
               </li>
@@ -140,26 +156,41 @@ function Conversation({ focus }: { focus: StepId | null }) {
         <p className="mr-summary mr-play" style={vars({ "--t": `${T.summary}s` })}>
           {r.summary}
         </p>
+        <Chart />
+        <FollowUps where="left" />
+      </div>
 
-        <Block id="verify" focus={focus} at={T.verify} className="mr-facts">
+      {/* Right: what Rev verified, suspects, lacks and recommends. */}
+      <div className="mr-col mr-col--right">
+        <Block id="verify" focus={focus} at={T.verify} className="mr-panel mr-facts">
           <h4 className="mr-h">
             <ShieldCheck size={13} aria-hidden="true" />
             Facts
           </h4>
-          <div className="mr-facts__grid">
-            <ul>
-              {r.facts.map((fact) => (
-                <li key={fact.text}>
-                  {fact.text} <Cite n={fact.cite} />
-                </li>
-              ))}
-            </ul>
-            <Chart />
+          <ul>
+            {r.facts.map((fact) => (
+              <li key={fact.text}>
+                {fact.text} <Cite n={fact.cite} />
+              </li>
+            ))}
+          </ul>
+          <div className="mr-sources">
+            <span>Sources:</span>
+            {r.sources.map((s) => (
+              <span key={s.n} className="mr-source">
+                <b>{s.n}</b>
+                {s.label}
+              </span>
+            ))}
+            <span className="mr-evidence">
+              <Database size={11} aria-hidden="true" />
+              Evidence ({r.sources.length})
+            </span>
           </div>
         </Block>
 
         <div className="mr-split">
-          <Block id="interpret" focus={focus} at={T.interpret} className="mr-note mr-note--hyp">
+          <Block id="interpret" focus={focus} at={T.interpret} className="mr-panel mr-note mr-note--hyp">
             <h4 className="mr-h">
               <Lightbulb size={13} aria-hidden="true" />
               Hypotheses · not verified
@@ -170,7 +201,7 @@ function Conversation({ focus }: { focus: StepId | null }) {
               ))}
             </ul>
           </Block>
-          <Block id="gaps" focus={focus} at={T.gaps} className="mr-note mr-note--gap">
+          <Block id="gaps" focus={focus} at={T.gaps} className="mr-panel mr-note mr-note--gap">
             <h4 className="mr-h">
               <CircleHelp size={13} aria-hidden="true" />
               Unknowns and limits
@@ -183,50 +214,23 @@ function Conversation({ focus }: { focus: StepId | null }) {
           </Block>
         </div>
 
-        <div className="mr-sources mr-play" style={vars({ "--t": `${T.sources}s` })}>
-          <p>Based on recorded store data for {r.period}</p>
-          <div>
-            <span>Sources:</span>
-            {r.sources.map((s) => (
-              <span key={s.n} className="mr-source">
-                <b>{s.n}</b>
-                {s.label}
-              </span>
-            ))}
-            <span className="mr-evidence">
-              <Database size={12} aria-hidden="true" />
-              Evidence ({r.sources.length})
-            </span>
+        <Block id="recommend" focus={focus} at={T.recommend} className="mr-panel mr-recs">
+          <div className="mr-recs__head">
+            <h4 className="mr-h mr-h--caps">Recommended next steps</h4>
+            <p className="mr-recs__note">Recommendations only. Nothing was changed or sent.</p>
           </div>
-        </div>
-
-        <Block id="recommend" focus={focus} at={T.recommend} className="mr-recs">
-          <h4 className="mr-h mr-h--caps">Recommended next steps</h4>
-          <p className="mr-recs__note">Recommendations only. Nothing was changed or sent.</p>
           <ul>
             {r.recommendations.map((rec) => (
               <li key={rec.label}>
                 <Check size={13} strokeWidth={2.5} aria-hidden="true" />
-                <div>
-                  <p className="mr-recs__label">{rec.label}</p>
-                  <p className="mr-recs__why">
-                    {rec.why}
-                    {"measure" in rec ? ` Measure: ${rec.measure}` : ""}
-                  </p>
-                </div>
+                <p>
+                  <span className="mr-recs__label">{rec.label}</span> <span className="mr-recs__why">{rec.why}</span>
+                </p>
               </li>
             ))}
           </ul>
         </Block>
-
-        <div className="mr-follow mr-play" style={vars({ "--t": `${T.followUps}s` })} aria-hidden="true">
-          {r.followUps.map((f) => (
-            <span key={f}>
-              {f}
-              <ArrowUpRight size={12} strokeWidth={1.8} />
-            </span>
-          ))}
-        </div>
+        <FollowUps where="right" />
       </div>
     </div>
   );
@@ -243,24 +247,24 @@ export function MeetRevSection({ id }: { id?: string }) {
   const active = focus ?? pinned;
 
   return (
-    <section id={id} aria-labelledby="mr-title" className="mr-section relative overflow-hidden py-20 sm:py-24 lg:py-28">
+    <section id={id} aria-labelledby="mr-title" className="mr-section relative overflow-hidden py-14 sm:py-16 lg:py-20">
       <div className="mr-glow" aria-hidden="true" />
-      <div className="relative mx-auto max-w-page px-4 sm:px-8">
-        <div ref={intro} className="mx-auto max-w-[62rem] text-center">
+      <div className="relative mx-auto max-w-[1120px] px-4 sm:px-8">
+        <div ref={intro} className="mx-auto max-w-[60rem] text-center">
           <p className="mr-eyebrow fx-up" style={vars({ "--i": 0 })}>
-            <Orb size={22} />
+            <Orb size={20} />
             {MEET_REV.eyebrow}
           </p>
           <h2
             id="mr-title"
-            className="fx-up mt-5 font-headline text-[clamp(1.75rem,6.6vw,2.4rem)] font-black leading-[1.07] tracking-[-0.03em] text-white [font-synthesis:none] [text-wrap:balance] sm:text-[clamp(2.2rem,4.4vw,3.3rem)]"
+            className="fx-up mt-4 font-headline text-[clamp(1.6rem,6vw,2.1rem)] font-black leading-[1.08] tracking-[-0.03em] text-white [font-synthesis:none] [text-wrap:balance] sm:text-[clamp(2rem,3.6vw,2.6rem)]"
             style={vars({ "--i": 1 })}
           >
             <span className="block">{MEET_REV.headline.lead}</span>
             <span className="mr-accent block">{MEET_REV.headline.accent}</span>
           </h2>
           <p
-            className="fx-up mx-auto mt-5 max-w-[40rem] text-[0.98rem] leading-relaxed text-white/70 [text-wrap:pretty] sm:text-[1.05rem]"
+            className="fx-up mx-auto mt-3 max-w-[36rem] text-[0.92rem] leading-relaxed text-white/65 [text-wrap:pretty] sm:text-[0.98rem]"
             style={vars({ "--i": 2 })}
           >
             {MEET_REV.description}
@@ -285,10 +289,7 @@ export function MeetRevSection({ id }: { id?: string }) {
                   <span className="mr-guide__no" aria-hidden="true">
                     {i + 1}
                   </span>
-                  <span>
-                    <span className="mr-guide__title">{step.title}</span>
-                    <span className="mr-guide__body">{step.body}</span>
-                  </span>
+                  <span className="mr-guide__title">{step.title}</span>
                 </button>
               </li>
             ))}
@@ -302,7 +303,7 @@ export function MeetRevSection({ id }: { id?: string }) {
                 <i />
               </span>
               <span className="mr-window__app">
-                <Orb size={18} />
+                <Orb size={16} />
                 Rev Intelligence
               </span>
               <span className="mr-window__tag">
@@ -312,17 +313,11 @@ export function MeetRevSection({ id }: { id?: string }) {
                 </span>
               </span>
               <button type="button" className="mr-replay" onClick={() => setRun((n) => n + 1)}>
-                <RotateCcw size={12} aria-hidden="true" />
+                <RotateCcw size={11} aria-hidden="true" />
                 Replay
               </button>
             </div>
             <Conversation key={run} focus={active} />
-            <div className="mr-composer" aria-hidden="true">
-              <span>Ask Rev about your store…</span>
-              <i>
-                <ArrowUp size={14} strokeWidth={2.4} />
-              </i>
-            </div>
           </figure>
         </div>
       </div>

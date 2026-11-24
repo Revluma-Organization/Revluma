@@ -121,7 +121,7 @@ export const MEET_REV = {
   eyebrow: "Meet Rev",
   headline: { lead: "Don't just look at the numbers.", accent: "Understand what they mean." },
   description:
-    "Rev is the intelligence interface at the centre of Revluma. Ask about your store in plain language. Rev investigates the data that's available, separates what it verified from what it suspects, says what's missing, and recommends sensible next steps.",
+    "Ask about your store in plain language. Rev checks the data that's available, separates what it verified from what it suspects, says what's missing and recommends what to do next.",
   sampleLabel: "Sample store · demonstration data",
   period: "last week (Mon – Sun)",
   comparedTo: "the week before",
@@ -132,17 +132,15 @@ export const MEET_REV = {
     { label: "Products and inventory", status: "done" },
     { label: "Traffic and sessions", status: "unavailable", note: "not connected" },
   ],
-  summary:
-    "Sales fell 16.1% because fewer mobile checkouts were completed, starting on Wednesday. Mobile shoppers reached checkout as often as the week before; fewer of them finished it.",
+  summary: "Sales fell 16.1% because fewer mobile checkouts were completed, starting on Wednesday.",
   facts: [
-    { text: "Sales were down 16.1% on the week before.", cite: 1 },
-    { text: "Orders fell from 281 to 236, while average order value was unchanged.", cite: 1 },
-    { text: "Mobile checkout completion fell from 48.4% to 38.2%. Desktop held steady at 61.6%.", cite: 2 },
-    { text: "Mobile checkouts started held steady (345 → 340). Mobile accounts for 37 of the 45 fewer orders.", cite: 2 },
-    { text: "None of your top sellers were out of stock during the week.", cite: 3 },
+    { text: "Orders fell from 281 to 236 (sales −16.1%); average order value was unchanged.", cite: 1 },
+    { text: "Mobile checkout completion fell from 48.4% to 38.2%. Desktop held at 61.6%.", cite: 2 },
+    { text: "Mobile checkouts started held steady (345 → 340): mobile accounts for 37 of the 45 fewer orders.", cite: 2 },
+    { text: "No top sellers were out of stock.", cite: 3 },
   ],
   chart: {
-    label: "Mobile checkout completion by day",
+    label: "Mobile checkout completion",
     days: [
       { day: "Mon", value: 48.1 },
       { day: "Tue", value: 47.5 },
@@ -154,41 +152,25 @@ export const MEET_REV = {
     ],
     previousWeek: 48.4,
   },
-  hypotheses: [
-    "Something in the mobile checkout may have changed on Wednesday, such as a theme update, an app or a payment setting.",
-    "A payment method may be failing on mobile devices.",
-  ],
-  unknowns: [
-    "Revluma can't see theme, app or checkout-setting changes, so I can't confirm what changed on Wednesday.",
-    "Traffic data isn't connected, so I can't check whether mobile visits also changed.",
-  ],
+  hypotheses: ["A theme, app or payment change to mobile checkout on Wednesday.", "A payment method failing on mobile."],
+  unknowns: ["Theme, app and setting changes aren't visible to Revluma.", "Traffic isn't connected, so mobile visits can't be checked."],
   sources: [
     { n: 1, label: "Orders" },
     { n: 2, label: "Checkouts" },
     { n: 3, label: "Products" },
   ],
   recommendations: [
-    {
-      label: "Place a test order on a phone",
-      why: "The drop is limited to mobile checkout and began on Wednesday.",
-      measure: "Mobile completion moves back toward 48%.",
-    },
-    {
-      label: "Review what changed on Wednesday",
-      why: "Look for a theme publish, a newly installed app or a payment setting change that day.",
-    },
-    {
-      label: "Connect your analytics",
-      why: "So Rev can tell whether mobile traffic changed as well.",
-    },
+    { label: "Place a test order on a phone", why: "Then watch mobile completion return toward 48%." },
+    { label: "Review what changed on Wednesday", why: "Theme publishes, new apps, payment settings." },
+    { label: "Connect your analytics", why: "So Rev can check mobile traffic too." },
   ],
-  followUps: ["Show mobile checkouts by day", "Compare payment methods on mobile"],
+  followUps: ["Show mobile checkouts by day", "Compare payment methods"],
   steps: [
-    { id: "ask", title: "You ask", body: "A question about your store, in plain language." },
-    { id: "investigate", title: "Rev investigates", body: "It checks the store data that's available and says which checks ran." },
-    { id: "verify", title: "Verified facts", body: "Only what the records confirm, each with its source." },
-    { id: "interpret", title: "Possible explanations", body: "Labelled as hypotheses, never presented as facts." },
-    { id: "gaps", title: "What's missing", body: "What Rev couldn't check, and what would close the gap." },
-    { id: "recommend", title: "Next steps", body: "Practical recommendations for you to review. Nothing in your store is changed." },
+    { id: "ask", title: "You ask" },
+    { id: "investigate", title: "Rev investigates" },
+    { id: "verify", title: "Verified facts" },
+    { id: "interpret", title: "Possible explanations" },
+    { id: "gaps", title: "What's missing" },
+    { id: "recommend", title: "Next steps" },
   ],
 } as const;
