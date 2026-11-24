@@ -1,0 +1,108 @@
+/* Data hub under the hero CTAs (see SourceHub.tsx). Static styles only; the
+   entrance, pulses and float live in motion.css. Tiles are sized in container
+   height units so the whole hub scales with the height it is given. */
+
+.source-hub {
+  height: clamp(7.5rem, 34vw, 9.5rem);
+  container-type: size;
+}
+@media (min-width: 1024px) {
+  /* Shares the one-screen hero height on laptops. */
+  .source-hub {
+    height: clamp(6.25rem, 17svh, 9.5rem);
+  }
+}
+
+.source-hub__lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* The reference's lines fade out towards the sides; a short fade at the top
+     and bottom too, so the bundle never ends on a hard crop mid-page. */
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent 0%, #000 17%, #000 83%, transparent 100%),
+    linear-gradient(180deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(90deg, transparent 0%, #000 17%, #000 83%, transparent 100%),
+    linear-gradient(180deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+  mask-composite: intersect;
+}
+.source-hub__line {
+  fill: none;
+  stroke: #4a33e8;
+  stroke-width: 1.15;
+}
+.source-hub__pulse {
+  display: none;
+  fill: none;
+}
+
+/* Centre: Revluma on a glowing indigo tile. */
+.source-hub__core {
+  --s: 36cqh;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--s);
+  height: var(--s);
+  margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  display: grid;
+  place-items: center;
+  border-radius: 26%;
+  background: linear-gradient(160deg, #5640f5 0%, #2b13cf 55%, #1f06ac 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 0 0 1px rgba(31, 6, 172, 0.18),
+    0 12px 26px -8px rgba(43, 19, 207, 0.65),
+    0 0 36px -4px rgba(116, 96, 255, 0.45);
+}
+.source-hub__core::before {
+  content: "";
+  position: absolute;
+  inset: -45%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(116, 96, 255, 0.28), transparent);
+}
+.source-hub__core img {
+  width: 54%;
+  height: 54%;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
+/* Source tiles: white, softly shadowed, sitting on the lines. */
+.source-hub__tile {
+  --s: 26cqh;
+  position: absolute;
+  width: var(--s);
+  height: var(--s);
+  margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  display: grid;
+  place-items: center;
+  border-radius: 25%;
+  background: #fff;
+  border: 1px solid rgba(12, 10, 29, 0.05);
+  box-shadow:
+    0 10px 22px -10px rgba(12, 10, 29, 0.3),
+    0 2px 5px rgba(12, 10, 29, 0.06);
+  transition:
+    scale 0.3s cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 0.3s ease;
+}
+.source-hub__tile--inner {
+  --s: 30cqh;
+}
+.source-hub__tile svg {
+  width: 46%;
+  height: 46%;
+}
+.source-hub__tile:hover {
+  scale: 1.08;
+  box-shadow:
+    0 14px 26px -10px rgba(12, 10, 29, 0.35),
+    0 2px 6px rgba(12, 10, 29, 0.08);
+}

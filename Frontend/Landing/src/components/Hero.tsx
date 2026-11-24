@@ -1,18 +1,11 @@
-import { useRef, type CSSProperties } from "react";
+import { useRef } from "react";
 import { ArrowUpRight, UserPlus } from "lucide-react";
 import { CTA, HERO } from "@/content";
 import { useLandingConfig } from "@/config";
+import { at } from "@/motionTiming";
 import { usePointerParallax, useScrollProgress } from "@/useHeroMotion";
 import { HeroVisual } from "./HeroVisual";
-
-/**
- * Entrance pace. The delays below are the original (PR #436) timings; TEMPO
- * stretches them to match the slower durations in motion.css.
- */
-const TEMPO = 1.6;
-
-/** Entrance delay for one element (see motion.css). */
-const at = (ms: number) => ({ "--d": `${Math.round(ms * TEMPO)}ms` }) as CSSProperties;
+import { SourceHub } from "./SourceHub";
 
 // Headline words enter one after another, 60ms apart (before TEMPO).
 const WORD_START = 150;
@@ -81,15 +74,7 @@ export function Hero() {
             </a>
           </div>
 
-          <dl className="relative mt-12 grid grid-cols-3 pt-6 sm:max-w-[33rem] lg:mt-[clamp(1.1rem,4.4svh,3rem)] lg:pt-[clamp(0.85rem,2.6svh,1.5rem)]">
-            <span className="m-rule absolute inset-x-0 top-0 h-px bg-line" style={at(980)} aria-hidden="true" />
-            {HERO.facts.map((fact, index) => (
-              <div key={fact.title} style={at(1060 + index * 80)} className={`m-fade flex flex-col-reverse justify-end gap-1 ${index > 0 ? "border-l border-line pl-4 sm:pl-6" : "pr-4"}`}>
-                <dt className="text-[0.78rem] leading-snug text-ink-muted">{fact.label}</dt>
-                <dd className="text-[1.15rem] font-semibold tracking-[-0.02em] text-ink sm:text-[1.3rem]">{fact.title}</dd>
-              </div>
-            ))}
-          </dl>
+          <SourceHub />
         </div>
 
         <div className="mx-auto w-full max-w-[40rem] lg:max-w-[calc((100svh_-_clamp(4rem,9svh,5rem))_*_0.9)]">
