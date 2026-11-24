@@ -184,8 +184,8 @@ describe("TopPrioritiesSection — Premium Hybrid Redesign", () => {
     fireEvent.click(viewButtons[0]);
     expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=finding-2"));
 
-    // Clicking a priority card body also opens its investigation without interfering with buttons
-    fireEvent.click(screen.getByText("Primary storefront domain is unconfigured with zero custom domains connected."));
+    // Clicking a priority row body also opens its investigation without interfering with buttons
+    fireEvent.click(screen.getByText("Storefront still uses default myshopify.com domain"));
     expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=finding-3"));
   });
 
@@ -368,9 +368,10 @@ describe("TopPrioritiesSection — Premium Hybrid Redesign", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Checkout conversion dropped sharply", level: 3 })).toBeInTheDocument();
-    expect(screen.getByText("Signal evaluation coverage")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Signal evaluation coverage" })).toBeInTheDocument();
+    expect(screen.getByText("Recent signals")).toBeInTheDocument();
     expect(screen.getByText("5/6 signals evaluated")).toBeInTheDocument();
-    expect(screen.getByText("Evaluation failed")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
   });
 
   it("passes automated axe-core accessibility checks across populated, empty, incomplete, loading, and error states", async () => {

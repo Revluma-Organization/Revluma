@@ -20,6 +20,7 @@ import { useInRouterContext, useNavigate } from "react-router-dom";
 import { investigationRoute } from "@/lib/workspaceNavigation";
 import { cn } from "@/lib/utils";
 import { PriorityFindingCard } from "./PriorityFindingCard";
+import { RecentSignalsPanel } from "./RecentSignalsPanel";
 import { SeveritySummaryDeck, type SeverityFilterTier } from "./SeveritySummaryDeck";
 import { StateBadge } from "./StateBadge";
 import { cc } from "./tokens";
@@ -549,69 +550,96 @@ export function TopPrioritiesSection({
         </div>
       )}
 
-      {/* C. Populated State: Ranked verified priorities (+ partial coverage transparency) */}
+      {/* C. Populated State: Landing-inspired Detected issues + Recent signals dual panel */}
       {eligibleCount > 0 ? (
-        <div className="space-y-4">
-          {visiblePrimary && (
-            <PriorityFindingCard
-              finding={visiblePrimary}
-              rank={1}
-              isPrimary
-              onInvestigate={openRoute}
-            />
+        <div
+          className={cn(
+            "grid items-start gap-4",
+            signalEvaluation && signalEvaluation.signals.length > 0
+              ? "lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]"
+              : "grid-cols-1",
           )}
-
-          {visibleSecondary.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2 pt-1">
-                <h3 className="text-xs font-semibold uppercase tracking-[0.05em] text-[#707582]">
-                  Other eligible findings
-                </h3>
-                <span className="text-xs tabular-nums text-[#707582]">
-                  {visibleSecondary.length}{" "}
-                  {visibleSecondary.length === 1 ? "item" : "items"}
-                </span>
-              </div>
-
-              <ol
-                aria-label="Other eligible priority findings"
-                className="space-y-3"
-              >
-                {visibleSecondary.map((finding, idx) => (
-                  <li key={finding.id} className="min-w-0">
-                    <PriorityFindingCard
-                      finding={finding}
-                      rank={idx + 2}
-                      isPrimary={false}
-                      onInvestigate={openRoute}
-                    />
-                  </li>
-                ))}
-              </ol>
+        >
+          {/* Left Panel: Detected issues */}
+          <div
+            className="min-w-0 overflow-hidden rounded-2xl border border-[#E8ECF3] bg-white"
+            style={{
+              boxShadow:
+                "0 1px 2px rgba(12, 10, 29, 0.03), 0 12px 26px -22px rgba(12, 10, 29, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.96)",
+            }}
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-[#EEF0F4] px-5 py-3.5">
+              <span className="text-[13.5px] font-semibold tracking-[-0.01em] text-[#172033]">
+                Detected issues
+              </span>
+              <span className="text-[12px] tabular-nums text-[#98A2B3]">
+                {(visiblePrimary ? 1 : 0) + visibleSecondary.length} open
+              </span>
             </div>
-          )}
 
-          {!visiblePrimary && visibleSecondary.length === 0 && (
-            <div className="rounded-xl border border-[#E4E6F0] bg-white p-6 text-center">
-              <p className="text-sm font-medium text-[#17191F]">
-                No findings in this severity category.
-              </p>
-              <button
-                type="button"
-                onClick={() => setActiveTier("all")}
-                className={cn(
-                  "mt-3 inline-flex min-h-10 items-center justify-center rounded-lg border border-[#D8D7FA] bg-[#F0EDFF]/60 px-3.5 text-xs font-semibold text-[#3525B8] hover:bg-[#F0EDFF]",
-                  cc.focus,
+            {visiblePrimary || visibleSecondary.length > 0 ? (
+              <div>
+                {visiblePrimary && (
+                  <PriorityFindingCard
+                    finding={visiblePrimary}
+                    rank={1}
+                    isPrimary
+                    onInvestigate={openRoute}
+                  />
                 )}
-              >
-                Show all priorities
-              </button>
-            </div>
-          )}
 
-          {/* Scenario 7: Always disclose partial signal coverage alongside verified findings */}
-          {signalEvaluation && signalEvaluation.incomplete && (
-            <SignalCoveragePanel evaluation={signalEvaluation} compact />
+                {visibleSecondary.length > 0 && (
+                  <div className={cn(visiblePrimary && "border-t border-[#EEF0F4]")}>
+                    <div className="flex items-center justify-between gap-2 bg-[#FCFCFD] px-5 py-2">
+                      <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#98A2B3]">
+                        Other eligible findings
+                      </span>
+                      <span className="text-[11px] tabular-nums text-[#98A2B3]">
+                        {visibleSecondary.length}{" "}
+                        {visibleSecondary.length === 1 ? "item" : "items"}
+                      </span>
+                    </div>
+
+                    <ol
+                      aria-label="Other eligible priority findings"
+                      className="divide-y divide-[#F0F2F5] border-t border-[#F0F2F5]"
+                    >
+                      {visibleSecondary.map((finding, idx) => (
+                        <li key={finding.id} className="min-w-0">
+                          <PriorityFindingCard
+                            finding={finding}
+                            rank={idx + 2}
+                            isPrimary={false}
+                            onInvestigate={openRoute}
+                          />
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-6 text-center">
+                <p className="text-sm font-medium text-[#172033]">
+                  No findings in this severity category.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTier("all")}
+                  className={cn(
+                    "mt-3 inline-flex min-h-9 items-center justify-center rounded-lg border border-[#D8D7FA] bg-[#F7F8FF] px-3.5 text-xs font-semibold text-[#1F06AC] hover:bg-[#EEEBFF]",
+                    cc.focus,
+                  )}
+                >
+                  Show all priorities
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Right Panel: Recent signals (exact Landing Command Center counterpart) */}
+          {signalEvaluation && signalEvaluation.signals.length > 0 && (
+            <RecentSignalsPanel evaluation={signalEvaluation} />
           )}
         </div>
       ) : isIncompleteAssessment && signalEvaluation ? (
