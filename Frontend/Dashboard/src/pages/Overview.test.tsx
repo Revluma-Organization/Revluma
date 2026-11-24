@@ -52,12 +52,15 @@ async function renderPage(data: CommandCenterData) { mockApi(data); render(<Memo
 describe("Task 216 Command Center", () => {
   afterEach(() => { vi.restoreAllMocks(); navigate.mockReset(); });
 
-  it("places the operational briefing before supporting business sections", async () => {
+  it("orders Welcome, Top Priorities, Operational Briefing, and Supporting Intelligence", async () => {
     await renderPage(fixture());
-    const briefing = screen.getByRole("heading", { name: "Your latest synchronized business picture" });
-    const business = screen.getByRole("heading", { name: "Business health" });
-    expect(briefing.compareDocumentPosition(business) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /^Good (morning|afternoon|evening)/, level: 1 })).toBeInTheDocument();
+    const welcome = screen.getByRole("heading", { name: /^Good (morning|afternoon|evening)/, level: 1 });
+    const priorities = screen.getByRole("heading", { name: "Top priorities", level: 2 });
+    const briefing = screen.getByRole("heading", { name: "Your latest synchronized business picture", level: 2 });
+    const supporting = screen.getByRole("heading", { name: "Supporting intelligence", level: 2 });
+    expect(welcome.compareDocumentPosition(priorities) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(priorities.compareDocumentPosition(briefing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(briefing.compareDocumentPosition(supporting) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("revluma-test-store-v1.myshopify.com")).toBeInTheDocument();
     expect(screen.getByText(/^Last synchronized:/)).toBeInTheDocument();
   });
@@ -78,7 +81,6 @@ describe("Task 216 Command Center", () => {
   it("inventory authorization failure is local and never zero stock", async () => {
     const limited = resource({ resource: "inventory.levels", label: "inventory levels", availability: "unauthorized", reason: "The required Shopify permission is unavailable.", coverage: "unknown" });
     await renderPage(fixture({ evidence: { ...fixture().evidence, resources: [resource() as CommandCenterData["evidence"]["resources"][number], limited as CommandCenterData["evidence"]["resources"][number]] } }));
-    fireEvent.click(screen.getByText("Review resource freshness and coverage"));
     expect(screen.getAllByText("Limited access").length).toBeGreaterThan(0);
     expect(screen.getAllByText("The required Shopify permission is unavailable.").length).toBeGreaterThan(0);
     expect(screen.queryByText(/zero inventory|0 in stock/i)).not.toBeInTheDocument();
@@ -99,7 +101,7 @@ describe("Task 216 Command Center", () => {
 
   it("no findings language is bounded by evidence and detector scope", async () => {
     await renderPage(fixture());
-    expect(screen.getByText(/not proof that the store has no problems/)).toBeInTheDocument();
+    expect(screen.getByText(/This doesn't mean there are no business problems/)).toBeInTheDocument();
     expect(screen.queryByText(/Everything is healthy/i)).not.toBeInTheDocument();
   });
 
@@ -161,10 +163,10 @@ describe("Task 216 Command Center", () => {
 
   it("resource evidence is accessible through a keyboard-native disclosure", async () => {
     await renderPage(fixture());
-    const disclosure = screen.getByText("Review resource freshness and coverage");
+    const disclosure = screen.getByText("How this briefing was prepared");
     expect(disclosure.tagName).toBe("SUMMARY");
     fireEvent.click(disclosure);
-    expect(screen.getByText(/^Last success /)).toBeInTheDocument();
+    expect(screen.getByText("Briefing generated")).toBeInTheDocument();
   });
 
   it("page sections fit a single-column mobile hierarchy without horizontal tables", async () => {
@@ -220,8 +222,9 @@ describe("Task 217 priority finding evidence and next step", () => {
   });
   it("shows an honest no-priority state instead of a generic healthy alert", async () => {
     await renderPage(fixture());
-    expect(screen.getByText("No sufficiently supported priority is currently available")).toBeInTheDocument();
-    expect(screen.queryByText(/no business problems|everything is healthy/i)).not.toBeInTheDocument();
+    expect(screen.getByText("No verified priorities right now")).toBeInTheDocument();
+    expect(screen.getByText(/This doesn't mean there are no business problems/)).toBeInTheDocument();
+    expect(screen.queryByText(/everything is healthy/i)).not.toBeInTheDocument();
   });
   it("retains lower eligible findings without another top-priority card", async () => {
     const first = finding() as CommandCenterData["findings"][number];
@@ -285,7 +288,7 @@ describe("Task 218 contracts consolidated by Task 219", () => {
 
   it("renders one store-bound health and activity presentation from the authoritative response", async () => {
     await renderPage(fixture({ business_health: businessHealthFixture(), operational_activity: operationalActivityFixture() }));
-    expect(screen.getByRole("heading", { name: "Business health" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Supporting intelligence" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Operational activity" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Operational history" })).not.toBeInTheDocument();
     expect(screen.getByText("$42,510.50")).toBeInTheDocument();
@@ -297,7 +300,7 @@ describe("Task 218 contracts consolidated by Task 219", () => {
 
   it("keeps unknown health domains visible without inventing a store-scoped contract", async () => {
     await renderPage(fixture({ context: { ...fixture().context, store: null } }));
-    expect(screen.getByRole("heading", { name: "Business health" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Supporting intelligence" })).toBeInTheDocument();
     expect(document.querySelectorAll("[data-health-domain]")).toHaveLength(5);
     expect(screen.getByText("No store connected")).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledTimes(1);

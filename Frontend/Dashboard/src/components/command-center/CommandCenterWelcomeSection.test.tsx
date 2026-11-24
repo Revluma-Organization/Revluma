@@ -111,7 +111,7 @@ describe("Command Center Welcome Section", () => {
       });
 
       const heading = screen.getByRole("heading", { level: 1 });
-      expect(heading).toHaveTextContent("Good morning, Ada 👋");
+      expect(heading).toHaveTextContent("Good morning, Ada.");
       expect(screen.getByText(WELCOME_SUPPORTING_COPY)).toBeInTheDocument();
     });
 
@@ -156,30 +156,24 @@ describe("Command Center Welcome Section", () => {
         nowOverride: new Date("2026-11-08T14:00:00Z"),
       });
       const heading = screen.getByRole("heading", { level: 1 });
-      expect(heading.textContent).toBe("Good morning");
+      expect(heading.textContent).toBe("Good morning.");
     });
   });
 
   describe("2. Compact Connected Store Status", () => {
-    it("displays the compact store connection badge on the greeting row with white header background", () => {
-      const { container } = renderWelcome();
-      const header = container.querySelector("header");
-      expect(header?.className).toContain("bg-white");
+    it("displays the compact horizontal store identity, connection badge, sync timestamp, and refresh control", () => {
+      renderWelcome();
 
       const storeRegion = screen.getByRole("region", { name: "Connected store" });
-      expect(storeRegion.className).toContain("w-fit");
-      expect(storeRegion.parentElement?.className).toContain("sm:flex-row");
+      expect(storeRegion.className).toContain("bg-white");
+      expect(storeRegion.className).toContain("flex-wrap");
 
       const badge = screen.getByText("Connected");
       expect(badge).toBeInTheDocument();
       expect(badge.parentElement?.className).toContain("text-[#067647]");
       expect(screen.getByText("acme-apparel.myshopify.com")).toBeInTheDocument();
-
-      // Status badge appears above the Shopify icon + store URL row.
-      const badgePosition = badge.compareDocumentPosition(
-        screen.getByText("acme-apparel.myshopify.com"),
-      );
-      expect(badgePosition & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(screen.getByText(/^Last synchronized:/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Refresh briefing" })).toBeInTheDocument();
     });
 
     it("does NOT render a fake store dropdown/chevron when only a single store exists", () => {

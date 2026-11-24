@@ -66,7 +66,7 @@ export interface ResolvedLastSynchronized {
 }
 
 export const WELCOME_SUPPORTING_COPY =
-  "Let's see what's happening in your business today, discover what needs attention, and see what is costing your store revenue.";
+  "Here's what's happening across your business today.";
 
 function isValidIanaTimezone(tz: string): boolean {
   try {

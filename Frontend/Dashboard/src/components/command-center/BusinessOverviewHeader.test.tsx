@@ -156,7 +156,9 @@ describe("Section 01 — Business Overview header", () => {
     );
     expect(screen.getByText("Last 7 days")).toBeInTheDocument();
     expect(screen.getAllByText(/New York \((EST|EDT)\)/)).toHaveLength(2);
-    expect(screen.getByText(/Five operational domains · Last 7 days · New York \((EST|EDT)\)/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Verified operational indicators · Last 7 days · New York \((EST|EDT)\)/),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Today & yesterday · UTC/)).not.toBeInTheDocument();
   });
 
