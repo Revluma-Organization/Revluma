@@ -59,12 +59,12 @@ export function Hero() {
             {HERO.body}
           </p>
 
-          <div className="mt-9 lg:mt-[clamp(1.1rem,4svh,2.25rem)] flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3.5">
+          <div className="mt-9 lg:mt-[clamp(1.1rem,4svh,2.25rem)] flex flex-row flex-nowrap items-center gap-3 sm:gap-x-3.5">
             <a
               href={joinHref}
               onClick={onJoin}
               style={at(820)}
-              className="m-pop m-shine group relative isolate overflow-hidden inline-flex min-h-[2.275rem] items-center gap-[0.7rem] self-start whitespace-nowrap rounded-full text-left bg-ink py-[0.2625rem] pl-[1.05rem] pr-[0.2625rem] text-[0.665rem] font-semibold text-white transition-colors hover:bg-indigo-deep"
+              className="m-pop m-shine group relative isolate overflow-hidden inline-flex min-h-[2.275rem] shrink-0 items-center gap-[0.7rem] whitespace-nowrap rounded-full text-left bg-ink py-[0.2625rem] pl-[1.05rem] pr-[0.2625rem] text-[0.665rem] font-semibold text-white transition-colors hover:bg-indigo-deep"
             >
               {CTA.primary.label}
               {/* Arrow swap on hover: one arrow leaves top-right as the next arrives. */}
@@ -73,7 +73,7 @@ export function Hero() {
                 <ArrowUpRight size={13} aria-hidden="true" className="absolute -translate-x-[180%] translate-y-[180%] transition-transform duration-300 ease-out group-hover:translate-x-0 group-hover:translate-y-0" />
               </span>
             </a>
-            <a href={signUpHref} style={at(900)} className="m-pop group inline-flex min-h-12 items-center gap-3 self-start whitespace-nowrap text-[0.95rem] font-semibold text-ink sm:self-auto">
+            <a href={signUpHref} style={at(900)} className="m-pop group inline-flex min-h-12 shrink-0 items-center gap-3 whitespace-nowrap text-[0.95rem] font-semibold text-ink">
               <span className="grid h-11 w-11 place-items-center rounded-full border border-line bg-white shadow-[0_6px_18px_-8px_rgba(12,10,29,0.25)] transition-[transform,background-color,color,border-color,box-shadow] duration-300 ease-out group-hover:-translate-y-0.5 group-hover:border-ink group-hover:bg-ink group-hover:text-white group-hover:shadow-[0_10px_22px_-10px_rgba(12,10,29,0.55)]">
                 <UserPlus size={18} aria-hidden="true" />
               </span>
