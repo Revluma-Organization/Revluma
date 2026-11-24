@@ -10,7 +10,6 @@ export const SIGN_UP_URL = "/auth/signup";
 export const NAV_LINKS = [
   { label: "Platform", href: "#platform" },
   { label: "How It Works", href: "#how-it-works" },
-  { label: "Why Revluma", href: "#why-revluma" },
   { label: "FAQ", href: "#faq" },
 ] as const;
 
@@ -177,57 +176,5 @@ export const MEET_REV = {
       note: "Recommendations only — nothing was changed or sent.",
       followUp: "Start over",
     },
-  },
-} as const;
-
-// Section 7: why a store needs Revluma. Three reasons, each a merchant problem
-// Revluma addresses as it works today: it reads Shopify data, explains it with
-// evidence and recommends; the merchant decides. No metrics, competitor names,
-// setup-time, automation or recovery claims. Replaces the old comparison table.
-export const WHY_REVLUMA = {
-  eyebrow: "Why Revluma",
-  headline: { lead: "Three reasons your store", accent: "needs Revluma." },
-  description: "Running a store means making decisions with incomplete information. Revluma closes the gap between your numbers and what to do about them.",
-  reasons: [
-    {
-      id: "why",
-      kicker: "Reason 01",
-      title: "Your reports show what happened. Not why.",
-      body: "Sales are down, but the dashboard can't tell you where or why. Revluma investigates your orders, checkouts, products and customers to explain what changed.",
-      proof: "Answers in plain language, with the evidence behind them.",
-    },
-    {
-      id: "hidden",
-      kicker: "Reason 02",
-      title: "Leaks hide in details you don't have time to check.",
-      body: "Abandoned checkouts, rising refunds, bestsellers running low, customers who stop coming back. Revluma looks across your store data and surfaces what deserves attention.",
-      proof: "Findings come to you. No digging through reports.",
-    },
-    {
-      id: "first",
-      kicker: "Reason 03",
-      title: "Know what to fix first, and that it's real.",
-      body: "Every finding is ranked by impact, urgency and evidence. Rev separates verified facts from assumptions, names what's missing and recommends practical next steps.",
-      proof: "Read-only. Your store stays unchanged, and you decide.",
-    },
-  ],
-  visuals: {
-    why: {
-      metric: "Sales",
-      change: "Down vs last week",
-      question: "Why did sales drop?",
-      answer: "Fewer mobile checkouts were completed, starting Wednesday.",
-    },
-    hidden: [
-      { label: "Abandoned checkouts", state: "Rising", tone: "warn" },
-      { label: "Refunds", state: "Rising", tone: "warn" },
-      { label: "Bestseller stock", state: "Running low", tone: "alert" },
-      { label: "Repeat customers", state: "Steady", tone: "ok" },
-    ],
-    first: [
-      { label: "Mobile checkout completion fell", pill: "Evidence verified", tone: "ok" },
-      { label: "Bestseller close to selling out", pill: "Evidence verified", tone: "ok" },
-      { label: "Refunds rising on one product", pill: "Partial evidence", tone: "warn" },
-    ],
   },
 } as const;
