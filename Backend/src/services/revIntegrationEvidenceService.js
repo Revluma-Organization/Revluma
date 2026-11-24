@@ -43,25 +43,30 @@ const INTEGRATION_RESOURCES = Object.freeze([
   { id: 'inventory.locations', domain: 'locations', scopes: ['read_locations'], approval: 'none', critical: false, category: 'inventory', note: 'Fulfillment and inventory locations.' },
   { id: 'order.transactions', domain: 'transactions', scopes: ['read_orders'], approval: 'none', critical: false, category: 'orders', note: 'Payment transaction ledger (captured money attribution).' },
   { id: 'order.fulfillments', domain: 'fulfillments', scopes: ['read_orders'], approval: 'none', critical: false, category: 'orders', note: 'Fulfillment status and tracking.' },
-  { id: 'order.returns', domain: null, scopes: ['read_returns'], approval: 'none', critical: false, category: 'orders', note: 'Returns synchronized with order enrichment; no dedicated ledger.' },
+  { id: 'order.returns', domain: 'order.returns', scopes: ['read_returns'], approval: 'none', critical: false, category: 'orders', note: 'Returns synchronized via authorized order-return ledger.' },
   { id: 'customers', domain: 'customers', scopes: ['read_customers'], approval: 'protected_customer_data', critical: false, category: 'customers', note: 'Customer profiles; protected customer data requires separate Shopify app approval beyond the OAuth scope.' },
   { id: 'abandoned-checkouts', domain: 'abandoned_checkouts', scopes: ['read_checkouts'], approval: 'none', critical: false, category: 'checkouts', note: 'Abandoned checkout activity.' },
-  { id: 'discount-nodes', domain: null, scopes: ['read_discounts'], approval: 'none', critical: false, category: 'discounts', note: 'Discount nodes and codes (read-only).' },
-  { id: 'collections', domain: null, scopes: ['read_products'], approval: 'none', critical: false, category: 'catalogue', note: 'Collections; synchronized with product enrichment.' },
-  { id: 'content.pages', domain: null, scopes: ['read_content'], approval: 'none', critical: false, category: 'content', note: 'Store pages.' },
-  { id: 'content.blogs', domain: null, scopes: ['read_content'], approval: 'none', critical: false, category: 'content', note: 'Blogs and articles.' },
-  { id: 'themes', domain: null, scopes: ['read_themes'], approval: 'none', critical: false, category: 'content', note: 'Theme list and roles.' },
-  { id: 'shop.shipping_configuration', domain: null, scopes: ['read_shipping'], approval: 'none', critical: false, category: 'store_configuration', note: 'Delivery profiles and shipping rate data.' },
-  { id: 'shop.taxes', domain: null, scopes: ['read_products'], approval: 'none', critical: false, category: 'store_configuration', note: 'Tax configuration visibility.' },
+  { id: 'discount-nodes', domain: 'discount-nodes', scopes: ['read_discounts'], approval: 'none', critical: false, category: 'discounts', note: 'Discount nodes and codes (read-only).' },
+  { id: 'collections', domain: 'collections', scopes: ['read_products'], approval: 'none', critical: false, category: 'catalogue', note: 'Collections synchronized via authorized catalogue ledger.' },
+  { id: 'content.pages', domain: 'content.pages', scopes: ['read_content'], approval: 'none', critical: false, category: 'content', note: 'Store pages.' },
+  { id: 'content.blogs', domain: 'content.blogs', scopes: ['read_content'], approval: 'none', critical: false, category: 'content', note: 'Blogs and articles.' },
+  { id: 'themes', domain: 'themes', scopes: ['read_themes'], approval: 'none', critical: false, category: 'content', note: 'Theme list and roles.' },
+  { id: 'shop.shipping_configuration', domain: 'shop.shipping_configuration', scopes: ['read_shipping'], approval: 'none', critical: false, category: 'store_configuration', note: 'Delivery profiles and shipping rate data.' },
+  { id: 'shop.taxes', domain: 'shop.taxes', scopes: ['read_products'], approval: 'none', critical: false, category: 'store_configuration', note: 'Tax configuration visibility.' },
 ]);
 const RESOURCE_BY_ID = Object.fromEntries(INTEGRATION_RESOURCES.map(entry => [entry.id, entry]));
 const SYNC_DOMAINS = [...new Set(INTEGRATION_RESOURCES.map(entry => entry.domain).filter(Boolean))];
 
 const DOMAIN_FRESH_SECONDS = Object.freeze({
-  orders: 3600, transactions: 3600, refunds: 3600, inventory: 1800,
+  orders: 3600, transactions: 3600, refunds: 3600, 'order.returns': 3600,
+  inventory: 1800,
   customers: 4 * 3600, products: 2 * 3600, variants: 2 * 3600,
-  content: 24 * 3600, discounts: 3600, abandoned_checkouts: 1800,
+  collections: 2 * 3600,
+  content: 24 * 3600, 'content.pages': 24 * 3600, 'content.blogs': 24 * 3600,
+  themes: 24 * 3600,
+  discounts: 3600, 'discount-nodes': 3600, abandoned_checkouts: 1800,
   fulfillments: 4 * 3600, locations: 24 * 3600, store_domains: 24 * 3600,
+  'shop.shipping_configuration': 24 * 3600, 'shop.taxes': 24 * 3600,
   webhooks: 24 * 3600,
 });
 const DEFAULT_FRESH_SECONDS = 2 * 3600;

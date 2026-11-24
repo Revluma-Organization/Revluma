@@ -27,8 +27,10 @@ ORG = "11111111-1111-4111-8111-111111111111"
 
 ALL_DOMAINS = (
     "store_domains", "products", "variants", "orders", "refunds", "inventory",
-    "locations", "transactions", "fulfillments", "customers",
-    "abandoned_checkouts", "webhooks",
+    "locations", "transactions", "fulfillments", "order.returns", "customers",
+    "abandoned_checkouts", "discount-nodes", "collections", "content.pages",
+    "content.blogs", "themes", "shop.shipping_configuration", "shop.taxes",
+    "webhooks",
 )
 FULL_SCOPES = ("read_products,read_orders,read_inventory,read_customers,"
                "read_checkouts,read_locations,read_discounts,read_content,"

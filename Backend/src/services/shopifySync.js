@@ -573,8 +573,32 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     // Webhook setup and read-only commerce ingestion are independent.
     // A failed subscription must remain visible but must not prevent a
     // merchant from receiving verified data via an authorized initial sync.
+    // Even when a periodic/manual sync passes reconcileWebhooks: false, refresh
+    // the webhooks domain ledger if it has never been recorded or is older than
+    // half its 24h freshness window (when BACKEND_URL is configured).
     let webhookSetupError = null;
-    if (reconcileWebhooks) {
+    let shouldReconcileWebhooks = Boolean(reconcileWebhooks);
+    if (!shouldReconcileWebhooks && /^https:\/\//i.test(String(process.env.BACKEND_URL || ''))) {
+      try {
+        const webhookRow = prisma.store_sync_domain_states && typeof prisma.store_sync_domain_states.findUnique === 'function'
+          ? await prisma.store_sync_domain_states.findUnique({
+              where: { store_id_domain: { store_id: store.id, domain: 'webhooks' } },
+              select: { status: true, last_succeeded_at: true },
+            })
+          : null;
+        const lastOkMs = webhookRow?.last_succeeded_at ? new Date(webhookRow.last_succeeded_at).getTime() : 0;
+        const webhookRefreshWindowMs = 12 * 3600 * 1000;
+        if (!webhookRow || webhookRow.status !== 'ok' || !lastOkMs || (Date.now() - lastOkMs) >= webhookRefreshWindowMs) {
+          shouldReconcileWebhooks = true;
+        }
+      } catch (checkError) {
+        logger.warn('shopify_webhook_ledger_check_failed', {
+          store_id: store.id,
+          error_type: checkError?.code || checkError?.name || 'ledger_check_error',
+        });
+      }
+    }
+    if (shouldReconcileWebhooks) {
       try {
         const webhookResult = await reconcileShopifyWebhooks(store);
         logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', registered: webhookResult.required });

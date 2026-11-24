@@ -22,7 +22,21 @@ function installMocks({ failTopic = null, failTopicOnce = false, failPersistence
   const rows = new Map();
   const logs = [];
   let topicFailureUsed = false;
+  const domainRows = new Map();
   const prisma = {
+    store_sync_domain_states: {
+      async upsert(args) {
+        const key = `${args.where.store_id_domain.store_id}:${args.where.store_id_domain.domain}`;
+        const prev = domainRows.get(key) || {};
+        const next = Object.keys(prev).length ? { ...prev, ...args.update } : { ...args.create };
+        domainRows.set(key, next);
+        return next;
+      },
+      async findUnique(args) {
+        const key = `${args.where.store_id_domain.store_id}:${args.where.store_id_domain.domain}`;
+        return domainRows.get(key) || null;
+      },
+    },
     webhook_registrations: {
       async upsert(args) {
         const externalId = args.where.store_id_external_id.external_id;
@@ -90,7 +104,7 @@ function installMocks({ failTopic = null, failTopicOnce = false, failPersistence
   };
   delete require.cache[require.resolve('../shopifyWebhookService')];
   const service = require('../shopifyWebhookService');
-  return { service, attempts, rows, logs };
+  return { service, attempts, rows, logs, domainRows };
 }
 
 const store = { id: 'store-test', shop_domain: 'example.myshopify.com', access_token: 'encrypted-token' };
@@ -211,6 +225,27 @@ async function verifyPersistenceFailureDoesNotBlockRemainingTopics() {
   assert.ok(thrown.webhookFailures.some((item) => item.topic === 'ORDERS_CREATE'));
 }
 
+async function verifyDomainLedgerRecordsWebhookSuccessAndFailure() {
+  const { service, domainRows } = installMocks();
+  const result = await service.reconcileShopifyWebhooks(store);
+  assert.strictEqual(result.required, REQUIRED.length);
+  const okRow = domainRows.get(`${store.id}:webhooks`);
+  assert.ok(okRow, 'successful webhook reconciliation must write webhooks row to store_sync_domain_states');
+  assert.strictEqual(okRow.status, 'ok');
+  assert.strictEqual(okRow.pagination_complete, true);
+  assert.strictEqual(okRow.records_discovered, REQUIRED.length);
+
+  const failing = installMocks({ failTopic: 'ORDERS_CREATE' });
+  await assert.rejects(
+    failing.service.reconcileShopifyWebhooks(store),
+    (error) => error.code === 'SHOPIFY_WEBHOOK_RECONCILIATION_INCOMPLETE',
+  );
+  const failRow = failing.domainRows.get(`${store.id}:webhooks`);
+  assert.ok(failRow, 'failed webhook reconciliation must record failed webhooks row in store_sync_domain_states');
+  assert.strictEqual(failRow.status, 'failed');
+  assert.strictEqual(failRow.error_code, 'SHOPIFY_WEBHOOK_RECONCILIATION_INCOMPLETE');
+}
+
 (async () => {
   await verifyTopicRejectionDoesNotStopOtherTopics();
   await verifyInitialSubscriptionListFailureIsLoggedAndPreserved();
@@ -219,6 +254,7 @@ async function verifyPersistenceFailureDoesNotBlockRemainingTopics() {
   await verifyExactUriMatchDoesNotCreate();
   await verifyLegacyUriIsAdoptedNotDuplicated();
   await verifyMissingTopicIsCreatedAtCurrentUri();
+  await verifyDomainLedgerRecordsWebhookSuccessAndFailure();
   console.log('shopifyWebhookService.test.js: all assertions passed');
 })().catch((error) => {
   console.error(error);

@@ -120,6 +120,7 @@ export function OperationalBriefingSection({
   // Track manual briefing refresh completion honestly (only after backend settles).
   const [refreshFeedback, setRefreshFeedback] = useState<"succeeded" | "failed" | null>(null);
   const [expandedOverview, setExpandedOverview] = useState(false);
+  const [showAllEvidenceCategories, setShowAllEvidenceCategories] = useState(false);
   const refreshRequestedRef = useRef(false);
   const prevRefreshingRef = useRef(refreshing);
 
@@ -151,7 +152,20 @@ export function OperationalBriefingSection({
   });
 
   const { timestamp, assessment, featured, developments, context } = briefing;
-  const limitedCategoryCount = context.categories.filter((c) => c.tone !== "positive").length;
+  const limitedCategories = context.categories.filter((c) => c.tone !== "positive");
+  const verifiedCategories = context.categories.filter((c) => c.tone === "positive");
+  const limitedCategoryCount = limitedCategories.length;
+  // Always surface every limited/attention source first so gaps are never hidden;
+  // collapse excess verified sources behind progressive disclosure when a store
+  // reports many sources so the right rail stays balanced with the briefing.
+  const orderedCategories = [...limitedCategories, ...verifiedCategories];
+  const defaultVisibleEvidenceCount = Math.max(6, limitedCategories.length);
+  const hasCollapsibleEvidence = orderedCategories.length > Math.max(8, limitedCategories.length);
+  const visibleCategories =
+    !hasCollapsibleEvidence || showAllEvidenceCategories
+      ? orderedCategories
+      : orderedCategories.slice(0, defaultVisibleEvidenceCount);
+  const hiddenVerifiedCount = Math.max(0, orderedCategories.length - visibleCategories.length);
   const baseCoverageAppState = mapDataQualityToAppState(assessment.dataQuality, refreshing);
   const coverageAppState: CommandCenterAppState =
     baseCoverageAppState === "current" && limitedCategoryCount > 0
@@ -641,37 +655,63 @@ export function OperationalBriefingSection({
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#707582]">
                 Evidence categories examined
               </p>
-              {context.categories.length > 0 ? (
-                <ul className="mt-2.5 divide-y divide-[#E7E9EF]">
-                  {context.categories.map((cat) => (
-                    <li key={cat.id} className="py-2.5 first:pt-0 last:pb-0">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-medium text-[#17191F]">{cat.name}</span>
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-1.5 font-medium",
-                            TONE_TEXT[cat.tone],
-                          )}
-                        >
+              {visibleCategories.length > 0 ? (
+                <>
+                  <ul className="mt-2.5 divide-y divide-[#E7E9EF]">
+                    {visibleCategories.map((cat) => (
+                      <li key={cat.id} className="py-2.5 first:pt-0 last:pb-0">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-medium text-[#17191F]">{cat.name}</span>
                           <span
-                            aria-hidden="true"
-                            className={cn("h-1.5 w-1.5 rounded-full", TONE_DOT[cat.tone])}
-                          />
-                          {cat.statusLabel}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 text-[11px] text-[#707582] tabular-nums">
-                        {cat.freshnessDetail}
-                        {cat.coverageDetail ? ` · ${cat.coverageDetail}` : ""}
-                      </p>
-                      {cat.merchantNote && (
-                        <p className="mt-1 text-[11px] leading-4 text-[#343844]">
-                          {cat.merchantNote}
+                            className={cn(
+                              "inline-flex items-center gap-1.5 font-medium",
+                              TONE_TEXT[cat.tone],
+                            )}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={cn("h-1.5 w-1.5 rounded-full", TONE_DOT[cat.tone])}
+                            />
+                            {cat.statusLabel}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-[#707582] tabular-nums">
+                          {cat.freshnessDetail}
+                          {cat.coverageDetail ? ` · ${cat.coverageDetail}` : ""}
                         </p>
+                        {cat.merchantNote && (
+                          <p className="mt-1 text-[11px] leading-4 text-[#343844]">
+                            {cat.merchantNote}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  {hasCollapsibleEvidence && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllEvidenceCategories((prev) => !prev)}
+                      aria-expanded={showAllEvidenceCategories}
+                      className={cn(
+                        "mt-3 inline-flex items-center gap-1 rounded-md text-xs font-semibold text-[#4438E8] transition-colors hover:text-[#372CD1]",
+                        cc.focus,
                       )}
-                    </li>
-                  ))}
-                </ul>
+                    >
+                      <ChevronDown
+                        className={cn(
+                          "h-3.5 w-3.5 shrink-0 transition-transform duration-150 motion-reduce:transition-none",
+                          showAllEvidenceCategories && "rotate-180",
+                        )}
+                        aria-hidden="true"
+                      />
+                      <span>
+                        {showAllEvidenceCategories
+                          ? "Show fewer sources"
+                          : `Show all ${orderedCategories.length} sources (+${hiddenVerifiedCount} verified)`}
+                      </span>
+                    </button>
+                  )}
+                </>
               ) : (
                 <p className="mt-2 text-[#707582]">
                   No verified store evidence sources are recorded for this briefing yet.

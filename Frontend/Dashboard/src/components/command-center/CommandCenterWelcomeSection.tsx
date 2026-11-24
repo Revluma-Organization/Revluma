@@ -345,9 +345,9 @@ export function CommandCenterWelcomeSection({
 
   return (
     <header aria-labelledby="command-center-welcome-heading" className="min-w-0">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between lg:gap-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between xl:gap-6">
         {/* Greeting + contextual introduction */}
-        <div className="min-w-0">
+        <div className="min-w-0 shrink-0">
           <h1
             id="command-center-welcome-heading"
             className="text-[1.75rem] font-semibold leading-[1.18] tracking-[-0.03em] text-[#17191F] sm:text-[2rem]"
@@ -360,11 +360,11 @@ export function CommandCenterWelcomeSection({
         </div>
 
         {/* Compact horizontal store identity, connection, sync timestamp & refresh bar */}
-          <div
-            role="region"
-            aria-label="Connected store"
-            className="flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-[#E7E9EF] bg-white px-3.5 py-2.5"
-          >
+        <div
+          role="region"
+          aria-label="Connected store"
+          className="flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-[#E7E9EF] bg-white px-3.5 py-2.5 xl:flex-nowrap"
+        >
           {/* Store identity */}
           <div className="flex min-w-0 max-w-full items-center gap-2">
             <span
@@ -395,7 +395,7 @@ export function CommandCenterWelcomeSection({
               <span
                 title={storeDisplayTitle}
                 className={cn(
-                  "max-w-[210px] truncate text-xs font-semibold sm:max-w-[240px]",
+                  "max-w-[200px] truncate text-xs font-semibold sm:max-w-[220px] xl:max-w-[190px]",
                   storeIdentity.hasStore ? "text-[#17191F]" : "text-[#707582]",
                 )}
               >
@@ -413,7 +413,9 @@ export function CommandCenterWelcomeSection({
           </div>
 
           {/* Connection status */}
-          <WelcomeConnectionBadge status={connection} inRouter={inRouter} />
+          <div className="shrink-0">
+            <WelcomeConnectionBadge status={connection} inRouter={inRouter} />
+          </div>
 
           <span
             aria-hidden="true"
@@ -423,7 +425,7 @@ export function CommandCenterWelcomeSection({
           {/* Last successful synchronization timestamp */}
           <span
             title={lastSynced.title ?? undefined}
-            className="inline-flex min-w-0 items-center gap-1.5 text-xs text-[#707582] tabular-nums"
+            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-[#707582] tabular-nums"
           >
             <Clock3 className="h-3.5 w-3.5 shrink-0 text-[#98A2B3]" aria-hidden="true" />
             <span>{lastSynced.label}</span>

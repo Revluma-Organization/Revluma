@@ -2,6 +2,7 @@ const { prisma } = require('../configs/database');
 const { shopifyGraphql } = require('./shopifyGraphql');
 const logger = require('../utils/logger');
 const { REQUIRED_SUBSCRIPTIONS } = require('./shopifyWebhookTopics');
+const { beginAttempt, recordSuccess, recordFailure } = require('./syncDomainState');
 
 async function listSubscriptions(store) {
   const query = `
@@ -109,9 +110,21 @@ async function persistTopicFailure({ store, topic, uri, failureRecordId, safeMes
 async function reconcileShopifyWebhooks(store) {
   const baseUrl = String(process.env.BACKEND_URL || '').replace(/\/$/, '');
   if (!/^https:\/\//i.test(baseUrl)) throw new Error('backend_public_url_required');
+  const trackDomainState = Boolean(prisma && prisma.store_sync_domain_states && typeof prisma.store_sync_domain_states.upsert === 'function');
+  if (trackDomainState) {
+    await beginAttempt(store.id, 'webhooks', prisma);
+  }
   // Listing is a global prerequisite: if Shopify cannot return its subscriptions, no topic
   // can be safely reconciled. Let the caller surface this as a setup-level failure.
-  const existing = await listSubscriptions(store);
+  let existing;
+  try {
+    existing = await listSubscriptions(store);
+  } catch (error) {
+    if (trackDomainState) {
+      await recordFailure(store.id, 'webhooks', error, {}, prisma);
+    }
+    throw error;
+  }
   let created = 0;
   const failures = [];
 
@@ -214,7 +227,22 @@ async function reconcileShopifyWebhooks(store) {
     const error = new Error('shopify_webhook_reconciliation_incomplete');
     error.code = 'SHOPIFY_WEBHOOK_RECONCILIATION_INCOMPLETE';
     error.webhookFailures = failures;
+    if (trackDomainState) {
+      await recordFailure(store.id, 'webhooks', error, {
+        discovered: REQUIRED_SUBSCRIPTIONS.length,
+        inserted: created,
+      }, prisma);
+    }
     throw error;
+  }
+  if (trackDomainState) {
+    await recordSuccess(store.id, 'webhooks', {
+      discovered: REQUIRED_SUBSCRIPTIONS.length,
+      inserted: created,
+      updated: Math.max(0, REQUIRED_SUBSCRIPTIONS.length - created),
+      pagesCompleted: 1,
+      paginationComplete: true,
+    }, prisma);
   }
   return { required: REQUIRED_SUBSCRIPTIONS.length, created, failures: [] };
 }

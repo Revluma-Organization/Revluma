@@ -141,9 +141,15 @@ function domainCoverage(domains, domainSet, now) {
   const perDomain = domainSet.map((domain) => {
     const st = hasAnyDomain && isObj(domains[domain]) ? domains[domain] : null;
     const state = st && typeof st.state === 'string' ? st.state : 'never_synchronized';
-    const freshness = st && isObj(st.freshness) && typeof st.freshness.state === 'string'
-      ? st.freshness.state
-      : 'never_synchronized';
+    // rev-integration-state-v1 emits `synchronization.domains[d].freshness` as a
+    // canonical freshness string ('fresh' | 'aging' | 'stale' | 'never_synchronized'
+    // | 'synchronizing'), while lower-level evidence helpers emit `{ state }`.
+    // Accept both shapes so live canonical states never degrade to unavailable.
+    const freshness = st && typeof st.freshness === 'string'
+      ? st.freshness
+      : (st && isObj(st.freshness) && typeof st.freshness.state === 'string'
+        ? st.freshness.state
+        : 'never_synchronized');
     const usable = freshness === 'fresh' || freshness === 'aging';
     return {
       domain, state, freshness, usable,
