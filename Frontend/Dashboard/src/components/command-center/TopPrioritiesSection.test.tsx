@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import axe from "axe-core";
 import { TopPrioritiesSection } from "./TopPrioritiesSection";
-import { ccFinding, ccFixture } from "@/test/commandCenterFixtures";
+import { ccFinding, ccFixture, ccResource } from "@/test/commandCenterFixtures";
 import type { CommandCenterData, Finding } from "./types";
 
 const navigate = vi.hoisted(() => vi.fn());
@@ -58,17 +58,39 @@ function multiPriorityFixture(): CommandCenterData {
       context_contract: "rev-selected-finding-v1",
       revalidate_on_open: true,
     },
+    next_step: {
+      label: "Investigate with Rev",
+      route: "/dashboard/rev-intell?finding=finding-2",
+    },
   }) as Finding;
 
   const third = ccFinding({
     id: "finding-3",
     severity: "high",
-    title: "Inventory stockout risk on top seller",
-    description: "Available inventory fell below recent recorded unit velocity.",
+    title: "Storefront still uses default myshopify.com domain",
+    description: "Primary storefront domain is unconfigured with zero custom domains connected.",
+    evidence: {
+      classification: "verified_observation",
+      source: "shopify_store_profile",
+      observations: [
+        {
+          label: "Primary domain",
+          value: "example-store.myshopify.com",
+          unit: "status",
+          currency: null,
+          period: "current",
+          availability: "available",
+        },
+      ],
+      references: [
+        { id: "ref-domain-1", source_type: "store_domains", source_record_id: "store-1" },
+      ],
+      duplicate_finding_ids: [],
+    },
     priority: {
       method_version: "finding-priority-v1",
       classification: "high",
-      rationale: ["Recorded severity: high.", "Current inventory snapshot verified."],
+      rationale: ["Recorded severity: high.", "Current domain state verified."],
       tie: null,
     },
     investigation: {
@@ -76,6 +98,10 @@ function multiPriorityFixture(): CommandCenterData {
       route: "/dashboard/rev-intell?finding=finding-3",
       context_contract: "rev-selected-finding-v1",
       revalidate_on_open: true,
+    },
+    next_step: {
+      label: "Investigate with Rev",
+      route: "/dashboard/rev-intell?finding=finding-3",
     },
   }) as Finding;
 
@@ -93,142 +119,147 @@ function multiPriorityFixture(): CommandCenterData {
   });
 }
 
-describe("TopPrioritiesSection — Priority List UI patterns", () => {
-  it("renders factual priority tier summary and progressive ranking guide in the empty state", () => {
+describe("TopPrioritiesSection — Premium Hybrid Redesign", () => {
+  it("renders the restrained empty state with factual counts, coverage, and working Rev Intelligence CTA", () => {
     render(
       <MemoryRouter>
         <TopPrioritiesSection data={ccFixture()} />
       </MemoryRouter>,
     );
 
+    expect(screen.getByRole("heading", { name: "Top priorities", level: 2 })).toBeInTheDocument();
+    expect(screen.getByText("0 active findings")).toBeInTheDocument();
     expect(screen.getByText("Critical & High")).toBeInTheDocument();
     expect(screen.getByText("Medium")).toBeInTheDocument();
     expect(screen.getByText("Low & Watch")).toBeInTheDocument();
-    expect(screen.getByText("3 sources monitored")).toBeInTheDocument();
 
-    const guideBtn = screen.getByRole("button", { name: /How priorities are ranked/i });
-    expect(guideBtn).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(guideBtn);
-    expect(guideBtn).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("1. Evidence-threshold gated")).toBeInTheDocument();
-    expect(screen.getByText("3. Progressive triage queue")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No verified priorities right now", level: 3 })).toBeInTheDocument();
+    expect(screen.getByText("What this means")).toBeInTheDocument();
+    expect(screen.getByText("3 monitored sources")).toBeInTheDocument();
+    expect(screen.queryByText(/22 monitored sources/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Explore with Rev Intelligence" }));
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell"));
   });
 
-  it("supports one-click priority filtering, sorting, compact density, and keyboard reordering with reset", () => {
+  it("renders populated ranked findings with severity summary filtering, clean status observations, and Rev handoffs", () => {
     render(
       <MemoryRouter>
         <TopPrioritiesSection data={multiPriorityFixture()} />
       </MemoryRouter>,
     );
 
-    // Filter to High: hides #1 (critical) with recovery banner and keeps #3 (high) in queue
-    fireEvent.click(screen.getByRole("button", { name: /High 1/i }));
-    expect(screen.getByText(/is hidden by the/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Inventory stockout risk on top seller", level: 4 })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Refund volume rose on core SKU" })).not.toBeInTheDocument();
+    expect(screen.getByText("3 active findings")).toBeInTheDocument();
 
-    // Reset filter back to All
-    fireEvent.click(screen.getByRole("button", { name: "Show all priorities" }));
-    expect(screen.getByRole("heading", { name: "Checkout conversion dropped sharply", level: 3 })).toBeInTheDocument();
+    // Preserves backend order: #1 critical primary, then #2 medium and #3 high in secondary list
+    expect(
+      screen.getByRole("heading", { name: "Checkout conversion dropped sharply", level: 3 }),
+    ).toBeInTheDocument();
 
-    // Default authoritative order: Refund volume (#2) before Inventory stockout (#3)
     const queue = screen.getByRole("list", { name: "Other eligible priority findings" });
-    const initialTitles = within(queue)
+    const secondaryTitles = within(queue)
       .getAllByRole("heading", { level: 4 })
       .map((el) => el.textContent);
-    expect(initialTitles).toEqual([
+    expect(secondaryTitles).toEqual([
       "Refund volume rose on core SKU",
-      "Inventory stockout risk on top seller",
+      "Storefront still uses default myshopify.com domain",
     ]);
 
-    // One-click sort by Severity puts High (#3) ahead of Medium (#2)
-    fireEvent.click(screen.getByRole("button", { name: /Sort secondary priorities/i }));
-    const sortedTitles = within(queue)
-      .getAllByRole("heading", { level: 4 })
-      .map((el) => el.textContent);
-    expect(sortedTitles).toEqual([
-      "Inventory stockout risk on top seller",
-      "Refund volume rose on core SKU",
-    ]);
+    // Status-unit observations render cleanly without appending "status"
+    expect(screen.getByText("example-store.myshopify.com")).toBeInTheDocument();
+    expect(screen.queryByText(/example-store\.myshopify\.com status/i)).not.toBeInTheDocument();
 
-    // Move bottom item up switches to Custom order and reveals Reset order
-    fireEvent.click(screen.getByRole("button", { name: "Move Refund volume rose on core SKU up" }));
-    expect(screen.getByText("Sorted: Custom")).toBeInTheDocument();
-    const customTitles = within(queue)
-      .getAllByRole("heading", { level: 4 })
-      .map((el) => el.textContent);
-    expect(customTitles).toEqual([
-      "Refund volume rose on core SKU",
-      "Inventory stockout risk on top seller",
-    ]);
+    // Severity summary card toggles filtering and recovers via Show all priorities
+    fireEvent.click(screen.getByRole("button", { name: /Medium/i }));
+    expect(screen.queryByRole("heading", { name: "Checkout conversion dropped sharply" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Refund volume rose on core SKU", level: 4 })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Reset order/i }));
-    expect(screen.getByText("Sorted: Rank")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all priorities" }));
+    expect(
+      screen.getByRole("heading", { name: "Checkout conversion dropped sharply", level: 3 }),
+    ).toBeInTheDocument();
 
-    // Toggle Compact single-line density
-    const compactBtn = screen.getByRole("button", { name: "Compact single-line rows" });
-    fireEvent.click(compactBtn);
-    expect(compactBtn).toHaveAttribute("aria-pressed", "true");
+    // Clicking secondary View investigation button navigates to that exact finding
+    const viewButtons = screen.getAllByRole("button", { name: "View investigation" });
+    fireEvent.click(viewButtons[0]);
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=finding-2"));
+
+    // Clicking a priority card body also opens its investigation without interfering with buttons
+    fireEvent.click(screen.getByText("Primary storefront domain is unconfigured with zero custom domains connected."));
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=finding-3"));
   });
 
-  it("provides progressive disclosure drawers and quick-review check toggles on priority items", () => {
+  it("renders a loading skeleton without flashing the empty state", () => {
     render(
       <MemoryRouter>
-        <TopPrioritiesSection data={multiPriorityFixture()} />
+        <TopPrioritiesSection data={null} loading />
       </MemoryRouter>,
     );
 
-    // Secondary row keeps deep rationale and suggested next step collapsed until expanded
-    expect(screen.queryByText(/Inspect refund reason codes for the affected SKU/i)).not.toBeInTheDocument();
-
-    const expandBtn = screen.getByRole("button", {
-      name: "Show details for Refund volume rose on core SKU",
-    });
-    fireEvent.click(expandBtn);
-    expect(expandBtn).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText(/Inspect refund reason codes for the affected SKU/i)).toBeInTheDocument();
-
-    // Quick-review check toggle marks an item reviewed locally without removing Investigate action
-    const reviewBtn = screen.getByRole("button", {
-      name: "Mark Checkout conversion dropped sharply as reviewed",
-    });
-    expect(reviewBtn).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(reviewBtn);
-    expect(screen.getByRole("button", { name: "Unmark Checkout conversion dropped sharply as reviewed" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.getByText("Reviewed")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading top priorities" })).toBeInTheDocument();
+    expect(screen.queryByText("No verified priorities right now")).not.toBeInTheDocument();
+    expect(screen.queryByText("0 active findings")).not.toBeInTheDocument();
   });
 
-  it("passes automated axe-core structural accessibility checks in both multi-item and empty states", async () => {
-    const { container, rerender } = render(
+  it("renders a concise error state with functional Retry instead of zero findings", () => {
+    const onRetry = vi.fn();
+    render(
       <MemoryRouter>
-        <TopPrioritiesSection data={multiPriorityFixture()} />
+        <TopPrioritiesSection
+          data={null}
+          error="Could not reach the intelligence service."
+          onRetry={onRetry}
+        />
       </MemoryRouter>,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Show details for Refund volume rose on core SKU",
-      }),
-    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Unable to load verified priorities");
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not reach the intelligence service.");
+    expect(screen.queryByText("0 active findings")).not.toBeInTheDocument();
 
-    const multiResults = await axe.run(container, {
-      rules: { "color-contrast": { enabled: false } },
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("communicates stale data and partial evidence coverage accurately", () => {
+    const stalePartial = ccFixture({
+      business_state: {
+        ...ccFixture().business_state,
+        stale: true,
+        presentation_status: "stale",
+      },
+      evidence: {
+        ...ccFixture().evidence,
+        resources: [
+          ccResource({ resource: "orders", availability: "available" }),
+          ccResource({ resource: "inventory.levels", availability: "unauthorized" }),
+        ],
+      },
     });
-    expect(multiResults.violations).toEqual([]);
 
-    rerender(
+    render(
       <MemoryRouter>
-        <TopPrioritiesSection data={ccFixture()} />
+        <TopPrioritiesSection data={stalePartial} />
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByRole("button", { name: /How priorities are ranked/i }));
 
-    const emptyResults = await axe.run(container, {
-      rules: { "color-contrast": { enabled: false } },
-    });
-    expect(emptyResults.violations).toEqual([]);
+    expect(screen.getByRole("status")).toHaveTextContent(/Underlying store data is stale/i);
+    expect(screen.getByText(/1 limited/)).toBeInTheDocument();
+  });
+
+  it("passes automated axe-core accessibility checks across populated, empty, loading, and error states", async () => {
+    const cases = [
+      <TopPrioritiesSection key="pop" data={multiPriorityFixture()} />,
+      <TopPrioritiesSection key="empty" data={ccFixture()} />,
+      <TopPrioritiesSection key="load" data={null} loading />,
+      <TopPrioritiesSection key="err" data={null} error="Network error" onRetry={() => {}} />,
+    ];
+
+    for (const element of cases) {
+      const { container, unmount } = render(<MemoryRouter>{element}</MemoryRouter>);
+      const results = await axe.run(container, { rules: { "color-contrast": { enabled: false } } });
+      expect(results.violations).toEqual([]);
+      unmount();
+    }
   });
 });
