@@ -1068,11 +1068,11 @@
         /* Landing hero host (see #revluma-hero). Reserve space until the embed mounts. */
         #revluma-hero { display: block; position: relative; background: #FBFAF8; }
         #revluma-hero[data-pending] { min-height: 100svh; }
-        /* Rebuilt landing sections rendered by the same embed (see #problem). */
+        /* Rebuilt landing sections rendered by the same embed (see #platform). */
         .revluma-section { display: block; position: relative; background: #FBFAF8; }
         .revluma-section[data-pending] { min-height: 60rem; }
         /* The landing nav is pinned to the top (fixed, inside the hero embed), so in-page
-           links like #problem stop just below it instead of underneath it. */
+           links like #platform stop just below it instead of underneath it. */
         html { scroll-padding-top: 5rem; }
     </style>
 </head>
@@ -1529,17 +1529,17 @@
         </div>
     </section>
 
-    <!-- ── The problem (section 3) ──
+    <!-- ── What Revluma does (section 3) ──
          Built from Frontend/Landing (React) into /landing-hero/ with the hero and rendered in its
-         own shadow root. Takes the place of the old capabilities (features) section.
+         own shadow root: four showcases (Detect, Investigate, Prioritize, Advise &amp; Monitor).
          The light-DOM text below is the no-JS / pre-load fallback; it is replaced once it mounts. -->
-    <div id="problem" class="revluma-section" data-pending>
-        <h2 style="position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">Your store generates data. But does it explain what's going wrong?</h2>
+    <div id="platform" class="revluma-section" data-pending>
+        <h2 style="position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">Everything affecting your revenue. Finally, understood.</h2>
         <ul style="position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">
-            <li>Information without answers: you can see orders, products, inventory and customer activity, and still struggle to understand what is driving a problem.</li>
-            <li>Disconnected evidence: important clues can sit across different areas of the store, which makes it hard to investigate a problem in context.</li>
-            <li>Unclear priorities: you may notice several issues at once, without a clear way to decide which one deserves attention first.</li>
-            <li>This is the problem Revluma is designed to address.</li>
+            <li>Detect: catch revenue problems before they become bigger losses.</li>
+            <li>Investigate: don't just see what's wrong. Understand why.</li>
+            <li>Prioritize: know what deserves your attention first.</li>
+            <li>Advise &amp; Monitor: turn business insights into measurable next steps.</li>
         </ul>
     </div>
 

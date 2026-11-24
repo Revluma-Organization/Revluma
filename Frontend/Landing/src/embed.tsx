@@ -1,11 +1,12 @@
 /**
  * Embed build of the rebuilt landing sections for the current homepage
- * (Frontend/index.html): the nav + hero, and section 3 (the problem).
+ * (Frontend/index.html): the nav + hero, and the features section ("What
+ * Revluma does").
  *
  * The homepage still runs on the Tailwind CDN with a dark global theme, so each
  * section renders inside its own shadow root on its host element: page styles
  * cannot restyle the sections and their Tailwind reset cannot leak into the
- * rest of the page. Hosts keep their ids, so in-page links (#problem) work.
+ * rest of the page. Hosts keep their ids, so in-page links (#platform) work.
  *
  * Built by `npm run build:embed` into Frontend/landing-hero/ (see vercel.json).
  */
@@ -17,14 +18,14 @@ import appCss from "./index.css?inline";
 import { LandingConfigProvider, type LandingConfig } from "./config";
 import { Hero } from "./components/Hero";
 import { Navbar } from "./components/Navbar";
-import { ProblemSection } from "./components/ProblemSection";
+import { FeaturesSection } from "./components/features/FeaturesSection";
 
 // Only sections that exist on the current homepage. "Why Revluma" and "FAQ"
-// return once those sections are rebuilt. "Platform" leads to the problem
-// section until the capabilities section (blueprint section 5) is rebuilt.
+// return once those sections are rebuilt. "Platform" leads to the features
+// section (what Revluma does).
 export const EMBED_CONFIG: LandingConfig = {
   navLinks: [
-    { label: "Platform", href: "#problem" },
+    { label: "Platform", href: "#platform" },
     { label: "How It Works", href: "#how-it-works" },
   ],
   signInHref: "/login",
@@ -45,7 +46,7 @@ export const SECTIONS: Record<string, () => ReactNode> = {
       <Hero />
     </>
   ),
-  problem: () => <ProblemSection />,
+  platform: () => <FeaturesSection />,
 };
 
 function mountSection(hostId: string, render: () => ReactNode) {
