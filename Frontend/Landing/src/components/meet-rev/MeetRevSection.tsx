@@ -7,7 +7,8 @@ import orbAnimated from "@/assets/rev-orb.webp";
 
 /**
  * "Meet Rev": the intelligence interface, shown through one worked
- * interaction from a clearly labelled sample store, in a dark Rev window.
+ * interaction from a clearly labelled sample store: a dark Rev window on the
+ * same light canvas as the other landing sections.
  * The answer mirrors the real Rev layout (evidence state, checks that ran,
  * facts with numbered sources, hypotheses marked as not verified, unknowns
  * and limits, recommendations that change nothing).
@@ -257,14 +258,14 @@ export function MeetRevSection({ id }: { id?: string }) {
           </p>
           <h2
             id="mr-title"
-            className="fx-up mt-4 font-headline text-[clamp(1.6rem,6vw,2.1rem)] font-black leading-[1.08] tracking-[-0.03em] text-white [font-synthesis:none] [text-wrap:balance] sm:text-[clamp(2rem,3.6vw,2.6rem)]"
+            className="fx-up mt-4 font-headline text-[clamp(1.6rem,6vw,2.1rem)] font-black leading-[1.08] tracking-[-0.03em] text-ink [font-synthesis:none] [text-wrap:balance] sm:text-[clamp(2rem,3.6vw,2.6rem)]"
             style={vars({ "--i": 1 })}
           >
             <span className="block">{MEET_REV.headline.lead}</span>
             <span className="mr-accent block">{MEET_REV.headline.accent}</span>
           </h2>
           <p
-            className="fx-up mx-auto mt-3 max-w-[36rem] text-[0.92rem] leading-relaxed text-white/65 [text-wrap:pretty] sm:text-[0.98rem]"
+            className="fx-up mx-auto mt-3 max-w-[36rem] text-[0.92rem] leading-relaxed text-ink-muted [text-wrap:pretty] sm:text-[0.98rem]"
             style={vars({ "--i": 2 })}
           >
             {MEET_REV.description}
