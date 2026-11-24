@@ -25,11 +25,11 @@ export const HERO = {
   subline: "Understand why. Know what deserves attention.",
   body:
     "Revluma investigates your Shopify store data to uncover potential revenue leaks, explain the evidence behind them, and help you decide what to address first.",
-  // Replaces the reference design's numeric stats row: these are product
-  // facts, not performance figures.
-  facts: [
-    { title: "Shopify", label: "Built for Shopify stores" },
-    { title: "Read-only", label: "Your store stays unchanged" },
-    { title: "Evidence", label: "Behind every finding" },
-  ],
+  // The data hub under the CTAs: what Revluma reads from Shopify. Only data the
+  // store sync actually reads (Backend/src/services/shopifySync.js), and no
+  // other integrations: Revluma is Shopify only.
+  sources: {
+    label: "Revluma reads your Shopify orders, products, customers, refunds and abandoned checkouts. Read-only: your store stays unchanged.",
+    items: ["Shopify", "Orders", "Products", "Customers", "Refunds", "Abandoned checkouts"],
+  },
 } as const;

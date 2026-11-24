@@ -86,9 +86,21 @@ describe("Landing hero", () => {
     expect(document.body).toHaveTextContent("Sample investigation");
   });
 
+  it("replaces the facts row with the Shopify data hub", () => {
+    const { container } = render(<App />);
+    expect(container.querySelector("dl")).toBeNull();
+    const hub = screen.getByRole("img", { name: HERO.sources.label });
+    expect(hub.querySelector(".source-hub__core")).not.toBeNull();
+    const tiles = [...hub.querySelectorAll(".source-hub__tile")].map((tile) => tile.getAttribute("title"));
+    expect(tiles).toEqual([...HERO.sources.items]);
+    // Shopify only: the hub must not suggest any other integration.
+    expect(tiles.filter((name) => /shopify/i.test(name ?? ""))).toEqual(["Shopify"]);
+    expect(HERO.sources.label).toMatch(/read-only/i);
+  });
+
   it("contains none of the banned claims", () => {
     const { container } = render(<App />);
-    const text = container.textContent ?? "";
+    const text = [container.textContent ?? "", HERO.sources.label, ...HERO.sources.items].join(" ");
     for (const pattern of BANNED) {
       expect(text).not.toMatch(pattern);
     }
