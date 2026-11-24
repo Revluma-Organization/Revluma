@@ -595,8 +595,43 @@ def test_s32_stale_syncing_heartbeat():
 
 
 def test_s33_webhook_registered_but_not_flowing():
+    # Registrations with a failed topic and zero recent deliveries remain
+    # limited_access (never silently treated as connected).
+    rec = _records()
+    rec["webhook_registrations"] = [
+        {"topic": t, "status": "failed" if t == "orders/create" else "active",
+         "last_error": "unreachable" if t == "orders/create" else None,
+         "attempt_count": 2 if t == "orders/create" else 1}
+        for t in TOPICS
+    ]
+    rec["webhook_deliveries"] = []
+    r = _state(rec)
+    assert r["webhooks"]["state"] == "unknown"
+    assert r["overall_status"] == "limited_access"
+
+
+def test_s33b_quiet_store_verified_webhooks_connected():
+    # A quiet/low-traffic store with active subscriptions, zero failed topics,
+    # zero delivery failures, and a fresh webhooks reconciliation ledger is
+    # connected while still honestly disclosing webhooks.state == "unknown".
     rec = _records()
     rec["webhook_deliveries"] = []
+    r = _state(rec)
+    assert r["webhooks"]["state"] == "unknown"
+    assert r["overall_status"] == "connected"
+    assert r["status_reason"] == "all_verified"
+
+
+def test_s33c_stale_webhook_ledger_not_flowing_remains_limited():
+    # If the webhooks reconciliation ledger is stale and no deliveries arrived,
+    # quiet-store tolerance must NOT apply.
+    rec = _records()
+    rec["webhook_deliveries"] = []
+    rec["domain_states"] = [
+        _dom("webhooks", "ok", NOW - timedelta(days=3))
+        if d["domain"] == "webhooks" else d
+        for d in rec["domain_states"]
+    ]
     r = _state(rec)
     assert r["webhooks"]["state"] == "unknown"
     assert r["overall_status"] == "limited_access"

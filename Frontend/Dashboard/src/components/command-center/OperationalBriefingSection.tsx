@@ -171,6 +171,20 @@ export function OperationalBriefingSection({
     baseCoverageAppState === "current" && limitedCategoryCount > 0
       ? "partial"
       : baseCoverageAppState;
+  // The Evidence & data coverage card badge describes the examined source list
+  // itself: when every examined source is verified (e.g. 22 of 22 verified),
+  // never contradict it with "Partial coverage" due to a non-source restriction
+  // (such as quiet/unverified webhooks, which belong in Operational data health).
+  const allExaminedSourcesVerified =
+    !refreshing &&
+    context.categories.length > 0 &&
+    limitedCategoryCount === 0 &&
+    (baseCoverageAppState === "current" || baseCoverageAppState === "partial");
+  const evidencePanelAppState: CommandCenterAppState = allExaminedSourcesVerified
+    ? "current"
+    : coverageAppState;
+  const evidencePanelLabel = allExaminedSourcesVerified ? "All sources verified" : undefined;
+
   const integrationStatus = resolveWelcomeConnectionStatus(data, false, failure);
   const integrationAppState: CommandCenterAppState = refreshing
     ? "updating"
@@ -183,6 +197,28 @@ export function OperationalBriefingSection({
           : integrationStatus.tone === "negative"
             ? "unavailable"
             : "empty";
+
+  const webhookBlock = data.integration?.webhooks;
+  const webhookState = typeof webhookBlock?.state === "string" ? webhookBlock.state : null;
+  const rawWebhookNote =
+    typeof webhookBlock?.note === "string" && webhookBlock.note.trim().length > 0
+      ? webhookBlock.note.trim()
+      : null;
+  const statusExplanationText =
+    data.integration?.status_explanation || integrationStatus.description || "";
+  const showWebhookNote = Boolean(
+    rawWebhookNote &&
+      webhookState &&
+      ["unknown", "degraded", "failed", "not_registered"].includes(webhookState) &&
+      !statusExplanationText.toLowerCase().includes(rawWebhookNote.toLowerCase()),
+  );
+  const webhookNoteIsWarning = Boolean(
+    showWebhookNote &&
+      (data.integration?.overall_status !== "connected" ||
+        webhookState === "degraded" ||
+        webhookState === "failed" ||
+        webhookState === "not_registered"),
+  );
 
   const hasExtendedOverview = Boolean(
     data.briefing.observation || data.briefing.implication,
@@ -646,7 +682,7 @@ export function OperationalBriefingSection({
                 <p className="mt-0.5 text-[11px] text-[#707582]">{context.summaryPreview}</p>
               </div>
             </div>
-            <StateBadge state={coverageAppState} />
+            <StateBadge state={evidencePanelAppState} label={evidencePanelLabel} />
           </div>
 
           <div className="space-y-4 px-5 py-4 text-xs">
@@ -849,6 +885,19 @@ export function OperationalBriefingSection({
             <p className="leading-5 text-[#343844]">
               {data.integration?.status_explanation || integrationStatus.description}
             </p>
+
+            {showWebhookNote && rawWebhookNote && (
+              <p
+                role={webhookNoteIsWarning ? "status" : undefined}
+                className={
+                  webhookNoteIsWarning
+                    ? "rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-xs leading-5 text-[#92400E]"
+                    : "text-[11px] leading-5 text-[#707582]"
+                }
+              >
+                {rawWebhookNote}
+              </p>
+            )}
 
             {data.business_state.stale && (
               <p

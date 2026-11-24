@@ -55,6 +55,15 @@ export interface IntegrationSynchronizationBlock {
   last_succeeded_at: string | null;
 }
 
+export interface IntegrationWebhooksBlock {
+  state?: string;
+  note?: string | null;
+  active_topics?: string[];
+  failed_topics?: string[];
+  failures_last_7d?: number;
+  delivered_last_7d?: number;
+}
+
 export interface IntegrationState {
   contract_version: string;
   organization_id: string;
@@ -67,8 +76,9 @@ export interface IntegrationState {
   recommended_next_step: string | null;
   authorization: IntegrationAuthorizationBlock;
   synchronization: IntegrationSynchronizationBlock;
+  webhooks?: IntegrationWebhooksBlock | null;
   evaluated_at: string;
-  /** Additional contract blocks (capabilities, webhooks, coverage, last_error). */
+  /** Additional contract blocks (capabilities, coverage, last_error). */
   [key: string]: unknown;
 }
 
