@@ -6,7 +6,8 @@
  * headline's story.
  *
  * Drawn in SVG so it stays crisp and scales with the scene. The funnel body is
- * modelled at y 0-430 and lifted by LIFT so it hovers clear of the laptop,
+ * modelled at y 0-430, lifted by LIFT and slid left by SHIFT, so its spout
+ * disappears behind the laptop lid while the hole stays in view,
  * while the floor (plinth top) stays at FLOOR_Y; the viewBox covers both.
  * Motion lives in motion.css. With reduced motion the escaping balls are shown
  * frozen mid-fall instead.
@@ -19,6 +20,14 @@ const R = 12.5;
 
 /** How far the body is lifted above its modelled position (viewBox units). */
 const LIFT = 110;
+/**
+ * How far the body is slid left (viewBox units), so the bottom of the spout
+ * tucks behind the laptop lid: the spout reads as flowing on behind the
+ * laptop rather than ending in a closed tip, and only the leak is on show.
+ * The bucket and the floor stay where they are. The svg has overflow visible,
+ * so the rim's left end (now left of x 0) is not clipped.
+ */
+const SHIFT = 84;
 /** Plinth top, where the leaked balls come to rest (viewBox units). */
 const FLOOR_Y = 572;
 const VIEW_TOP = -120;
@@ -73,7 +82,7 @@ const BUCKET_TOP = 462;
 const BUCKET_RX = 75;
 
 /** Where escaping balls leave the hole, in viewBox coordinates. */
-const EXIT = { x: 238, y: 214 - LIFT };
+const EXIT = { x: 238 - SHIFT, y: 214 - LIFT };
 
 function Sphere({
   x,
@@ -185,7 +194,7 @@ export function LeakFunnel() {
         opacity="0.08"
       />
 
-      <g transform={`translate(0 ${-LIFT})`}>
+      <g transform={`translate(${-SHIFT} ${-LIFT})`}>
         <g className="hv-funnel__body">
           {/* Far half of the rim and the opening, seen from slightly above. */}
           <ellipse
@@ -387,9 +396,9 @@ export function LeakFunnel() {
 
       {/* Escaping balls. Frozen mid-fall without motion, animated otherwise. */}
       <g className="hv-funnel__leak-still">
-        <Sphere x={EXIT.x + 2} y={EXIT.y + 2} r={11.5} />
-        <Sphere x={EXIT.x + 6} y={EXIT.y + 196} r={11.5} light />
-        <Sphere x={EXIT.x + 9} y={BUCKET_TOP + 2} r={11} />
+        <Sphere x={EXIT.x + 3} y={EXIT.y + 2} r={11.5} />
+        <Sphere x={EXIT.x + 33} y={EXIT.y + 196} r={11.5} light />
+        <Sphere x={EXIT.x + 44} y={BUCKET_TOP + 2} r={11} />
       </g>
       <g className="hv-funnel__leak">
         {[0, 1, 2, 3].map((i) => (
