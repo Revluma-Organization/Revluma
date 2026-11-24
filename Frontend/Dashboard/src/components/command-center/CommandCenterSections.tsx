@@ -83,58 +83,261 @@ function observationText(item: CommandCenterData["findings"][number]["evidence"]
 
 export function PriorityFindings({ data }: { data: CommandCenterData }) {
   const openRoute = useWorkspaceNavigation();
-  const finding = data.priority_finding;
-  const lower = data.findings.filter(item => item.id !== finding?.id);
-  const critical = finding && ["critical", "high"].includes(finding.severity);
-  return <section id="priority-finding" aria-labelledby="priority-findings-heading" className={cn(cc.intelligence, "scroll-mt-24")}>
-    <SectionHeader id="priority-findings-heading" title="Top priority" description="The highest-priority defensible finding, selected from current verified evidence" aside={<span className={cc.metadata}>{data.priority_selection.eligible_count} eligible · {data.priority_selection.method_version}</span>} />
-    {finding ? <article className={cn("border-l-4 p-5 sm:p-6", critical ? "border-l-[#b42318]" : "border-l-[#1F06AC]")} aria-labelledby="current-priority-title">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] font-semibold">
-        <span className={critical ? cc.negative : "text-[#1F06AC]"}>{finding.priority.classification} priority</span>
-        <span className={cc.muted}>{finding.confidence.classification.replaceAll("_", " ")} confidence</span>
-        <span className={cc.muted}>{finding.evidence_freshness.state} evidence · {finding.coverage.state} coverage</span>
-      </div>
-      <h3 id="current-priority-title" className="mt-3 text-xl font-semibold tracking-[-0.02em] text-[#111827]">{finding.title}</h3>
-      <p className={cn("mt-2 max-w-4xl", cc.body)}>{finding.description}</p>
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <div>
-          <h4 className={cc.cardTitle}>Why this is the priority</h4>
-          <ul className={cn("mt-2 space-y-1.5", cc.metadata)}>{finding.priority.rationale.map(reason => <li key={reason}>• {reason}</li>)}</ul>
-          <h4 className={cn("mt-4", cc.cardTitle)}>Confidence</h4>
-          <ul className={cn("mt-2 space-y-1.5", cc.metadata)}>{finding.confidence.rationale.map(reason => <li key={reason}>• {reason}</li>)}</ul>
-          {finding.priority.tie && <p className={cn("mt-3", cc.metadata)}>{finding.priority.tie.statement}</p>}
+  const selected = data.priority_finding;
+  // The API owns eligibility and ranking. Keep its selected finding first and
+  // preserve the returned order for the remaining eligible findings.
+  const priorities = selected
+    ? [selected, ...data.findings.filter(item => item.id !== selected.id)].slice(0, 3)
+    : [];
+  const eligibleCount = data.priority_selection.eligible_count;
+  const hiddenCount = Math.max(0, eligibleCount - priorities.length);
+
+  return (
+    <section
+      id="priority-finding"
+      aria-labelledby="priority-findings-heading"
+      className={cn(cc.intelligence, "scroll-mt-24 overflow-hidden")}
+    >
+      <SectionHeader
+        id="priority-findings-heading"
+        title="Top priorities"
+        description="The issues Revluma believes deserve attention first, based on current eligible evidence"
+        aside={
+          <span className="inline-flex items-center gap-2 rounded-full border border-[#DCE3F2] bg-[#F7F8FC] px-3 py-1.5 text-[11px] font-semibold text-[#475467]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#1F06AC]" aria-hidden="true" />
+            {priorities.length > 0 ? priorities.length + " shown" : "No ranked priorities"}
+          </span>
+        }
+      />
+
+      {priorities.length > 0 ? (
+        <div className="divide-y divide-[#E8ECF3]">
+          {priorities.map((item, index) => {
+            const urgent = item.severity === "critical" || item.severity === "high";
+            const severityClass = urgent
+              ? "border-[#F3C7C3] bg-[#FFF5F4] text-[#A12A22]"
+              : item.severity === "medium"
+                ? "border-[#F2DDB8] bg-[#FFFAF0] text-[#925B13]"
+                : "border-[#E3E7EF] bg-[#F8F9FB] text-[#475467]";
+            const confidenceLabel = item.confidence.classification.replaceAll("_", " ");
+            const freshnessLabel = item.evidence_freshness.state.replaceAll("_", " ");
+            const coverageLabel = item.coverage.state.replaceAll("_", " ");
+
+            return (
+              <article
+                key={item.id}
+                aria-labelledby={"priority-title-" + item.id}
+                className={cn(
+                  "relative grid gap-5 p-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_minmax(250px,0.42fr)] xl:gap-7",
+                  index === 0 ? "bg-[linear-gradient(105deg,#F7F8FF_0%,#FFFFFF_62%)]" : "bg-white",
+                )}
+              >
+                <div className="flex min-w-0 gap-4">
+                  <div className="flex shrink-0 flex-col items-center gap-2">
+                    <span className={cn(
+                      "flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold tabular-nums",
+                      index === 0 ? "bg-[#1E2B61] text-white shadow-[0_4px_12px_rgba(30,43,97,0.18)]" : "border border-[#E1E6F0] bg-[#F8F9FC] text-[#667085]",
+                    )}>
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    {index === 0 && <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#4655A4]">First</span>}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em]", severityClass)}>
+                        {item.severity} priority
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E4E7EC] bg-white px-2.5 py-1 text-[10px] font-semibold capitalize text-[#475467]">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#667085]" aria-hidden="true" />
+                        {confidenceLabel} confidence
+                      </span>
+                      <span className="text-[10px] font-medium capitalize text-[#667085]">
+                        {freshnessLabel} evidence · {coverageLabel} coverage
+                      </span>
+                    </div>
+
+                    <h3 id={"priority-title-" + item.id} className="mt-3 text-[17px] font-semibold leading-6 tracking-[-0.025em] text-[#172033] sm:text-lg">
+                      {item.title}
+                    </h3>
+                    <p className="mt-2 max-w-3xl text-[13px] leading-6 text-[#596579]">
+                      {item.description}
+                    </p>
+
+                    {item.priority.rationale.length > 0 && (
+                      <div className="mt-4 rounded-xl border border-[#E7EAF3] bg-white/85 px-4 py-3">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#667085]">Why this is ranked here</p>
+                        <ul className="mt-2 space-y-1.5 text-xs leading-5 text-[#475467]">
+                          {item.priority.rationale.slice(0, 2).map(reason => (
+                            <li key={reason} className="flex gap-2">
+                              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#4655A4]" aria-hidden="true" />
+                              <span>{reason}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#667085]">Evidence snapshot</h4>
+                        <span className="text-[10px] text-[#98A2B3]">{item.evidence.observations.length} observations</span>
+                      </div>
+                      {item.evidence.observations.length > 0 ? (
+                        <dl className="mt-2 grid gap-2 min-[480px]:grid-cols-2">
+                          {item.evidence.observations.slice(0, 4).map(observation => (
+                            <div key={observation.period + "-" + observation.label} className="min-w-0 rounded-lg border border-[#E8ECF3] bg-white px-3 py-2.5">
+                              <dt className="truncate text-[10px] font-medium text-[#667085]" title={observation.label}>{observation.label}</dt>
+                              <dd className="mt-1 break-words text-sm font-semibold tabular-nums text-[#172033]">{observationText(observation)}</dd>
+                              <dd className="mt-0.5 truncate text-[10px] text-[#98A2B3]" title={observation.period}>{observation.period.replaceAll("_", " ")}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      ) : (
+                        <p className="mt-2 rounded-lg border border-dashed border-[#D9DFEA] px-3 py-3 text-xs text-[#667085]">
+                          No supporting observations are available to display in this summary.
+                        </p>
+                      )}
+                    </div>
+
+                    <p className="mt-3 text-[10px] leading-5 text-[#7A8495]">
+                      {item.reporting_period.kind.replaceAll("_", " ")} · {item.reporting_period.timezone} · Last verified {dateTime(item.last_verified_at)}
+                    </p>
+                  </div>
+                </div>
+
+                <aside className="flex min-w-0 flex-col rounded-xl border border-[#E2E7F0] bg-white p-4 shadow-[0_2px_8px_rgba(16,24,40,0.025)]">
+                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#4655A4]">
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    Recommended next step
+                  </div>
+                  {item.recommendation.available && item.recommendation.step ? (
+                    <>
+                      <p className="mt-3 text-[13px] font-semibold leading-5 text-[#172033]">{item.recommendation.step}</p>
+                      {item.recommendation.rationale && (
+                        <p className="mt-2 text-xs leading-5 text-[#667085]">{item.recommendation.rationale}</p>
+                      )}
+                      {item.recommendation.expected_result && (
+                        <p className="mt-3 border-t border-[#EEF0F4] pt-3 text-[11px] leading-5 text-[#667085]">
+                          <span className="font-semibold text-[#475467]">What to verify: </span>
+                          {item.recommendation.expected_result}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="mt-3 text-xs leading-5 text-[#667085]">
+                      {item.recommendation.prerequisites.length > 0
+                        ? item.recommendation.prerequisites.join(" ")
+                        : "More evidence is needed before Revluma can recommend a specific next step."}
+                    </p>
+                  )}
+
+                  <div className="mt-auto pt-5">
+                    <button
+                      type="button"
+                      onClick={() => openRoute(item.investigation.route)}
+                      className={cn(
+                        "inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors",
+                        index === 0
+                          ? "bg-[#1E2B61] text-white hover:bg-[#293B7A]"
+                          : "border border-[#DCE2EC] bg-white text-[#344054] hover:bg-[#F8F9FC]",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F06AC] focus-visible:ring-offset-2",
+                      )}
+                    >
+                      Investigate in Rev Intelligence
+                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                    <p className="mt-2 text-center text-[10px] text-[#98A2B3]">Review only · Revluma will not change your store</p>
+                  </div>
+                </aside>
+
+                <div className="xl:col-span-2">
+                  <details className="group border-t border-[#E9ECF2] pt-3">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[11px] font-semibold text-[#667085] transition-colors hover:text-[#344054] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F06AC] focus-visible:ring-offset-2">
+                      <span>Evidence, limitations and ranking details</span>
+                      <span className="text-[#98A2B3] transition-transform group-open:rotate-180" aria-hidden="true">⌄</span>
+                    </summary>
+                    <div className="mt-4 grid gap-5 rounded-xl border border-[#E8ECF3] bg-[#F8F9FC] p-4 sm:grid-cols-2">
+                      <div>
+                        <h4 className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#667085]">Confidence and limitations</h4>
+                        <p className="mt-2 text-xs leading-5 text-[#475467]">{item.confidence.rationale.join(" ") || "No additional confidence explanation is available."}</p>
+                        {item.limitations.length > 0 && (
+                          <ul className="mt-3 space-y-1.5 text-xs leading-5 text-[#667085]">
+                            {item.limitations.map(limit => <li key={limit}>• {limit}</li>)}
+                          </ul>
+                        )}
+                        {item.unknowns.length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#667085]">Still unknown</p>
+                            <ul className="mt-1 space-y-1 text-xs leading-5 text-[#667085]">
+                              {item.unknowns.map(unknown => <li key={unknown}>• {unknown}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        {item.priority.tie && <p className="mt-3 text-xs leading-5 text-[#667085]">{item.priority.tie.statement}</p>}
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#667085]">Source references</h4>
+                        {item.evidence.references.length > 0 ? (
+                          <ul className="mt-2 space-y-2 text-xs text-[#475467]">
+                            {item.evidence.references.map(reference => (
+                              <li key={reference.id} className="break-all rounded-lg border border-[#E5E9F1] bg-white p-2.5">
+                                <span className="font-semibold">{reference.source_type}</span>
+                                <span className="mt-0.5 block font-mono text-[10px] text-[#7A8495]">{reference.source_record_id}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : <p className="mt-2 text-xs text-[#667085]">No source references were attached to this finding.</p>}
+                        <p className="mt-3 text-[10px] leading-5 text-[#667085]">
+                          {item.lifecycle.state.replaceAll("_", " ")} · {item.lifecycle.current_validity.replaceAll("_", " ")} · Detected {dateTime(item.detected_at)}
+                        </p>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </article>
+            );
+          })}
         </div>
-        <div>
-          <h4 className={cc.cardTitle}>Supporting observations</h4>
-          <dl className="mt-2 grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">{finding.evidence.observations.map(item => <div key={`${item.period}-${item.label}`} className="min-w-0 border-l-2 border-[#cbd5f3] pl-3">
-            <dt className={cc.metadata}>{item.label}</dt><dd className="mt-1 break-words text-base font-semibold text-[#172033]">{observationText(item)}</dd>
-          </div>)}</dl>
-          <p className={cn("mt-3", cc.metadata)}>{finding.reporting_period.kind.replaceAll("_", " ")} · {finding.reporting_period.timezone}<br />Last verified {dateTime(finding.last_verified_at)}</p>
+      ) : (
+        <div className="bg-[linear-gradient(115deg,#F8F9FC_0%,#FFFFFF_70%)] p-6 sm:p-8">
+          <div className="mx-auto max-w-2xl text-center">
+            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-[#E2E7F0] bg-white text-[#667085] shadow-sm">
+              <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <p className="mt-4 text-base font-semibold tracking-[-0.02em] text-[#172033]">
+              No priority currently meets Revluma’s evidence threshold
+            </p>
+            <p className="mx-auto mt-2 max-w-xl text-xs leading-6 text-[#667085]">
+              {data.priority_selection.reason || "There is not enough current, valid evidence to rank a finding as a priority."}
+              {" "}This does not mean the store has no problems; it means Revluma cannot responsibly rank one from the evidence currently available.
+            </p>
+            {data.priority_selection.exclusions.length > 0 && (
+              <details className="mt-5 text-left">
+                <summary className="cursor-pointer text-xs font-semibold text-[#4655A4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F06AC] focus-visible:ring-offset-2">
+                  Why {data.priority_selection.exclusions.length} finding(s) were not ranked
+                </summary>
+                <ul className="mt-3 space-y-2">
+                  {data.priority_selection.exclusions.map(item => (
+                    <li key={item.finding_id} className="rounded-lg border border-[#E8ECF3] bg-white p-3 text-xs leading-5 text-[#667085]">
+                      <span className="font-semibold text-[#344054]">{item.title}</span>
+                      <span className="block">Not current: {item.reason.replaceAll("_", " ")}. Historical evidence is not presented as a current condition.</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
         </div>
-      </div>
-      {finding.limitations.length > 0 && <div className={cn("mt-5 border-t pt-4", cc.divider)}><h4 className={cc.cardTitle}>Limits of this conclusion</h4><ul className={cn("mt-2 space-y-1.5", cc.metadata)}>{finding.limitations.map(limit => <li key={limit}>• {limit}</li>)}</ul></div>}
-      <div className="mt-5 rounded-lg bg-[#f5f6fc] p-4">
-        <h4 className={cc.cardTitle}>Recommended next step <span className={cn("font-normal", cc.muted)}>· merchant action, not executed by Revluma</span></h4>
-        {finding.recommendation.available ? <>
-          <p className={cn("mt-2", cc.body)}>{finding.recommendation.step}</p>
-          <p className={cn("mt-2", cc.metadata)}><span className="font-semibold text-[#344054]">Why: </span>{finding.recommendation.rationale}</p>
-          <p className={cn("mt-1", cc.metadata)}><span className="font-semibold text-[#344054]">Look for: </span>{finding.recommendation.expected_result}</p>
-        </> : <p className={cn("mt-2", cc.metadata)}>{finding.recommendation.prerequisites.join(" ")}</p>}
-      </div>
-      <details className="mt-4">
-        <summary className={cc.disclosure}>Inspect evidence, provenance and uncertainty</summary>
-        <div className={cn("mt-4 grid gap-5 rounded-lg border p-4 sm:grid-cols-2", cc.surfaceSubtle)}>
-          <div><h4 className={cc.cardTitle}>Authoritative references</h4><ul className={cn("mt-2 space-y-2 break-all", cc.metadata)}>{finding.evidence.references.map(ref => <li key={ref.id}><span className="font-semibold text-[#344054]">{ref.source_type}</span><br />{ref.source_record_id}</li>)}</ul></div>
-          <div><h4 className={cc.cardTitle}>Lifecycle and unknowns</h4><p className={cn("mt-2", cc.metadata)}>{finding.lifecycle.state} · {finding.lifecycle.current_validity.replaceAll("_", " ")}<br />Detected {dateTime(finding.detected_at)}</p><ul className={cn("mt-2 space-y-1", cc.metadata)}>{finding.unknowns.map(item => <li key={item}>• {item}</li>)}</ul>{finding.evidence.duplicate_finding_ids.length > 0 && <p className={cn("mt-2", cc.metadata)}>Deduplicated records retained: {finding.evidence.duplicate_finding_ids.join(", ")}</p>}</div>
-        </div>
-      </details>
-      <div className={cn("mt-5 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between", cc.divider)}>
-        <p className={cc.metadata}>{finding.recommendation.validation_method || "Further evidence is required before a current recommendation."}</p>
-        <button type="button" onClick={() => openRoute(finding.investigation.route)} className={cc.primary}>Investigate in Rev Intelligence <ArrowRight className="h-3.5 w-3.5" /></button>
-      </div>
-    </article> : <div className="p-5 sm:p-6"><p className="text-sm font-semibold">No sufficiently supported priority is currently available</p><p className={cn("mt-1.5 max-w-3xl", cc.metadata)}>{data.priority_selection.reason || "No current finding meets the validity and evidence requirements."} This is not proof that the store has no problems.</p>{data.priority_selection.exclusions.length > 0 && <ul className={cn("mt-3 space-y-1", cc.metadata)} aria-label="Findings excluded from current priority">{data.priority_selection.exclusions.map(item => <li key={item.finding_id}><span className="font-semibold text-[#344054]">{item.title}</span> — not current: {item.reason.replaceAll("_", " ")}. Historical evidence is not presented as a current condition.</li>)}</ul>}</div>}
-    {lower.length > 0 && <div className={cn("border-t p-5", cc.divider)}><h3 className={cc.cardTitle}>Other eligible findings</h3><div className={cn("mt-3 divide-y", cc.divider)}>{lower.map(item => <article key={item.id} className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="text-xs font-semibold">{item.title}</h4><p className={cn("mt-1", cc.metadata)}>{item.severity} · {item.confidence.classification.replaceAll("_", " ")} confidence · {item.evidence_freshness.state}</p></div><button type="button" onClick={() => openRoute(item.investigation.route)} className={cc.secondary}>Investigate <ArrowRight className="h-3.5 w-3.5" /></button></article>)}</div></div>}
-  </section>;
+      )}
+
+      {hiddenCount > 0 && (
+        <p className="border-t border-[#E8ECF3] bg-[#F8F9FC] px-5 py-3 text-[11px] text-[#667085]">
+          Showing the 3 highest-ranked priorities from {eligibleCount} eligible findings. Open Rev Intelligence to review the broader finding set.
+        </p>
+      )}
+    </section>
+  );
 }
 
 type HealthItem = { id: string; label: string; value: React.ReactNode; availability: string; detail: string; freshness: string; icon: React.ElementType };
