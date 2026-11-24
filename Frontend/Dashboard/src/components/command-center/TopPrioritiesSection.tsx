@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Clock,
   Database,
-  Eye,
   Info,
   Layers,
   MinusCircle,
@@ -21,6 +20,7 @@ import {
 import { useInRouterContext, useNavigate } from "react-router-dom";
 import { investigationRoute } from "@/lib/workspaceNavigation";
 import { cn } from "@/lib/utils";
+import { SeveritySummaryDeck, type SeverityFilterTier } from "./SeveritySummaryDeck";
 import { StateBadge, type CommandCenterAppState } from "./StateBadge";
 import { cc } from "./tokens";
 import type {
@@ -40,7 +40,13 @@ export interface TopPrioritiesSectionProps {
   onRetry?: () => void;
 }
 
-type SeverityTier = "all" | "critical_high" | "medium" | "low";
+type SeverityTier = SeverityFilterTier;
+
+const TIER_LABELS: Record<Exclude<SeverityTier, "all">, string> = {
+  critical_high: "Critical & High",
+  medium: "Medium",
+  low: "Low & Watch",
+};
 
 const SIGNAL_CATEGORY_LABELS: Record<SignalCategoryId, string> = {
   storefront_readiness: "Storefront readiness",
@@ -851,42 +857,6 @@ export function TopPrioritiesSection({
 
   const revExploreRoute = data.briefing?.next_investigation?.route || "/dashboard/rev-intell";
 
-  const summaryTiers = [
-    {
-      id: "critical_high" as const,
-      label: "Critical & High",
-      count: severityCounts.criticalHigh,
-      note: "requires immediate attention",
-      cardClass: "border-[#F7D6C4] bg-gradient-to-br from-[#FFF9F6] to-white",
-      activeRingClass: "ring-2 ring-[#E5484D]/25 border-[#E5484D]",
-      barClass: "bg-gradient-to-b from-[#E5484D] to-[#F07832]",
-      iconWrapClass: "bg-[#FFF0EA] text-[#D9383E]",
-      Icon: AlertCircle,
-    },
-    {
-      id: "medium" as const,
-      label: "Medium",
-      count: severityCounts.medium,
-      note: "should be reviewed soon",
-      cardClass: "border-[#F3E2B6] bg-gradient-to-br from-[#FFFDF5] to-white",
-      activeRingClass: "ring-2 ring-[#E5A126]/30 border-[#E5A126]",
-      barClass: "bg-[#E5A126]",
-      iconWrapClass: "bg-[#FEF3C7] text-[#92400E]",
-      Icon: AlertTriangle,
-    },
-    {
-      id: "low" as const,
-      label: "Low & Watch",
-      count: severityCounts.low,
-      note: "early signal to monitor",
-      cardClass: "border-[#DCD9FB] bg-gradient-to-br from-[#F6F4FF] to-white",
-      activeRingClass: "ring-2 ring-[#4438E8]/25 border-[#4438E8]",
-      barClass: "bg-[#6475E8]",
-      iconWrapClass: "bg-[#F0EDFF] text-[#4438E8]",
-      Icon: Eye,
-    },
-  ];
-
   const toggleTier = (tier: Exclude<SeverityTier, "all">) => {
     setActiveTier((current) => (current === tier ? "all" : tier));
   };
@@ -938,68 +908,13 @@ export function TopPrioritiesSection({
         </div>
       </div>
 
-      {/* B. Compact severity summary row */}
-      <div className="grid gap-3 sm:grid-cols-3" role="group" aria-label="Priority counts by severity">
-        {summaryTiers.map((tier) => {
-          const Icon = tier.Icon;
-          const isSelected = effectiveTier === tier.id;
-          const canFilter = eligibleCount > 0;
-          const cardContent = (
-            <div className="flex min-w-0 items-stretch gap-3">
-              <span
-                className={cn("w-1 shrink-0 rounded-full", tier.barClass)}
-                aria-hidden="true"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-[#4B5563]">{tier.label}</span>
-                  <span
-                    className={cn(
-                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-                      tier.iconWrapClass,
-                    )}
-                    aria-hidden="true"
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                  </span>
-                </div>
-                <p className="mt-1 text-[1.375rem] font-semibold leading-7 tracking-[-0.02em] tabular-nums text-[#17191F]">
-                  {tier.count}
-                </p>
-                <p className="mt-0.5 text-[11px] leading-4 text-[#707582]">{tier.note}</p>
-              </div>
-            </div>
-          );
-
-          if (canFilter) {
-            return (
-              <button
-                key={tier.id}
-                type="button"
-                aria-pressed={isSelected}
-                onClick={() => toggleTier(tier.id)}
-                className={cn(
-                  "min-w-0 rounded-xl border px-3.5 py-3 text-left transition-all hover:border-[#C9C7FA]",
-                  tier.cardClass,
-                  isSelected && tier.activeRingClass,
-                  cc.focus,
-                )}
-              >
-                {cardContent}
-              </button>
-            );
-          }
-
-          return (
-            <div
-              key={tier.id}
-              className={cn("min-w-0 rounded-xl border px-3.5 py-3", tier.cardClass)}
-            >
-              {cardContent}
-            </div>
-          );
-        })}
-      </div>
+      {/* B. Landing-inspired severity summary deck */}
+      <SeveritySummaryDeck
+        counts={severityCounts}
+        totalCount={eligibleCount}
+        activeTier={effectiveTier}
+        onToggleTier={toggleTier}
+      />
 
       {/* Inline error notice when background refresh failed alongside cached data */}
       {error && (
@@ -1040,7 +955,7 @@ export function TopPrioritiesSection({
           <span>
             Showing{" "}
             <strong className="font-semibold text-[#17191F]">
-              {summaryTiers.find((t) => t.id === effectiveTier)?.label}
+              {TIER_LABELS[effectiveTier]}
             </strong>{" "}
             priorities.
           </span>
@@ -1054,7 +969,7 @@ export function TopPrioritiesSection({
         </div>
       )}
 
-      {/* C. Populated State — Ranked verified priorities (+ partial coverage transparency) */}
+      {/* C. Populated State: Ranked verified priorities (+ partial coverage transparency) */}
       {eligibleCount > 0 ? (
         <div className="space-y-4">
           {visiblePrimary && (
@@ -1174,7 +1089,7 @@ export function TopPrioritiesSection({
           </div>
         </div>
       ) : (
-        /* D2. Legitimate Clean Empty State — Calm, analytical, non-celebratory */
+        /* D2. Legitimate Clean Empty State: Calm, analytical, non-celebratory */
         <div className="rounded-2xl border border-[#E3E1FA] bg-white px-5 py-8 sm:px-8 sm:py-9">
           <div className="mx-auto max-w-[680px]">
             <div
