@@ -37,18 +37,18 @@
 }
 
 /* ---- Leaking funnel (behind the laptop) ----------------------------- */
+/* Sized by width W (cqw): height = 2.4W (viewBox 300 x 720), and the top is
+   placed so the floor line (viewBox y 572) meets the plinth top at 55cqw:
+   top = 55 - 2.3067W. The left edge keeps the spout (viewBox x 128) just right
+   of the laptop lid (about 90.5cqw) and the rim inside the page margin. */
 .hv-funnel {
   position: absolute;
-  left: 78cqw;
-  top: -6cqw;
-  width: 32cqw;
-  height: 64cqw;
+  left: 80.5cqw;
+  top: -7.28cqw;
+  width: 27cqw;
+  height: 64.8cqw;
   overflow: visible;
   filter: drop-shadow(1cqw 1.6cqw 1.4cqw rgba(12, 10, 29, 0.1));
-}
-/* Wide single-column layouts (tablets) have a slimmer right margin. */
-@container (min-width: 600px) {
-  .hv-funnel { left: 76cqw; }
 }
 /* The escaping balls only exist as motion; reduced motion shows them frozen. */
 .hv-funnel__leak { display: none; }
@@ -382,7 +382,7 @@
   .hv-card--evidence { left: 34cqw; right: auto; top: 3cqw; }
   /* Smaller funnel, kept inside the frame; its floor still meets the plinth
      (top + 572/300 x width = 55cqw). */
-  .hv-funnel { left: 79cqw; top: 9.2cqw; width: 24cqw; height: 48cqw; }
+  .hv-funnel { left: 82.6cqw; top: 4.25cqw; width: 22cqw; height: 52.8cqw; }
   .hv-card--facts { left: -1cqw; top: 31cqw; gap: 1.8cqw; }
   .hv-arrow { left: 6cqw; top: 11cqw; }
 }

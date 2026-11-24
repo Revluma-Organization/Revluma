@@ -108,7 +108,8 @@ describe("Landing hero", () => {
     // Balls in the funnel, a crack, and escaping balls (frozen and animated).
     expect(funnel!.querySelectorAll(".hv-funnel__ball").length).toBeGreaterThan(20);
     expect(funnel!.querySelector(".hv-funnel__crack")).not.toBeNull();
-    expect(funnel!.querySelectorAll(".hv-funnel__drop")).toHaveLength(3);
+    // Balls escape in pairs: two pairs of drops.
+    expect(funnel!.querySelectorAll(".hv-funnel__drop")).toHaveLength(4);
     expect(funnel!.querySelector(".hv-funnel__leak-still")).not.toBeNull();
   });
 

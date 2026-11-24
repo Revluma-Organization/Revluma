@@ -1,19 +1,28 @@
 /**
  * The hero's "losing revenue" metaphor: a glass funnel full of indigo balls
- * (the store's revenue) flowing down the spout, with a crack on one side that
- * lets a few slip out and fall onto the plinth. It replaces the decorative
- * plant from the original reference and tells the headline's story.
+ * (the store's revenue) flowing down the spout, with a hole broken in one side
+ * that lets balls slip out, two at a time, and fall onto the plinth. It
+ * replaces the decorative plant from the original reference and tells the
+ * headline's story.
  *
- * Drawn in SVG (user units, viewBox 300 x 600) so it stays crisp and scales
- * with the scene. Motion lives in motion.css: balls flow down the spout and
- * every few seconds one escapes the crack and drops. With reduced motion the
- * escaping balls are shown frozen mid-fall instead.
+ * Drawn in SVG so it stays crisp and scales with the scene. The funnel body is
+ * modelled at y 0-430 and lifted by LIFT so it hovers clear of the laptop,
+ * while the floor (plinth top) stays at FLOOR_Y; the viewBox covers both.
+ * Motion lives in motion.css. With reduced motion the escaping balls are shown
+ * frozen mid-fall instead.
  */
 
 const CX = 150;
 const RIM_Y = 40;
 const SPOUT_Y = 330;
 const R = 12.5;
+
+/** How far the body is lifted above its modelled position (viewBox units). */
+const LIFT = 110;
+/** Plinth top, where the leaked balls come to rest (viewBox units). */
+const FLOOR_Y = 572;
+const VIEW_TOP = -120;
+const VIEW_HEIGHT = 720;
 
 /** Half-width of the cone (inner wall) at height y, for packing the balls. */
 const halfWidth = (y: number) =>
@@ -49,8 +58,14 @@ function packBalls(): Ball[] {
 const BALLS = packBalls();
 const SPOUT_BALLS = [318, 344, 370, 396, 422];
 
-/** Where the crack sits on the right wall, and the floor (plinth top). */
-const CRACK = { x: 214, y: 214 };
+/**
+ * The broken hole in the right wall (body coordinates). It reaches past the
+ * wall's edge, so the glass outline is visibly broken there.
+ */
+const HOLE =
+  "M197 192 L 212 181 L 222 191 L 236 181 L 247 197 L 240 209 L 252 222 L 243 239 L 227 236 L 217 249 L 201 236 L 205 220 L 192 207 Z";
+/** Where escaping balls leave the hole, in viewBox coordinates. */
+const EXIT = { x: 238, y: 214 - LIFT };
 
 function Sphere({
   x,
@@ -87,7 +102,7 @@ export function LeakFunnel() {
   return (
     <svg
       className="hv-funnel"
-      viewBox="0 0 300 600"
+      viewBox={`0 ${VIEW_TOP} 300 ${VIEW_HEIGHT}`}
       fill="none"
       aria-hidden="true"
       focusable="false"
@@ -129,171 +144,214 @@ export function LeakFunnel() {
         <clipPath id="lf-spout-clip">
           <path d={SPOUT} />
         </clipPath>
+        {/* Knocks the hole out of the glass, so the balls show through it. */}
+        <mask
+          id="lf-hole-mask"
+          maskUnits="userSpaceOnUse"
+          x="-20"
+          y="-20"
+          width="340"
+          height="480"
+        >
+          <rect x="-20" y="-20" width="340" height="480" fill="#fff" />
+          <path d={HOLE} fill="#000" />
+        </mask>
       </defs>
 
       {/* Soft contact shadow on the plinth where the leaked balls land. */}
-      <ellipse cx="236" cy="575" rx="54" ry="6" fill="#0c0a1d" opacity="0.08" />
+      <ellipse
+        cx="236"
+        cy={FLOOR_Y + 3}
+        rx="50"
+        ry="6"
+        fill="#0c0a1d"
+        opacity="0.08"
+      />
 
-      <g className="hv-funnel__body">
-        {/* Far half of the rim and the opening, seen from slightly above. */}
-        <ellipse
-          cx={CX}
-          cy={RIM_Y}
-          rx="136"
-          ry="24"
-          fill="#eeebff"
-          fillOpacity="0.55"
-        />
-        <path
-          d={RIM_BACK}
-          stroke="#1a078f"
-          strokeWidth="11"
-          strokeLinecap="round"
-        />
+      <g transform={`translate(0 ${-LIFT})`}>
+        <g className="hv-funnel__body">
+          {/* Far half of the rim and the opening, seen from slightly above. */}
+          <ellipse
+            cx={CX}
+            cy={RIM_Y}
+            rx="136"
+            ry="24"
+            fill="#eeebff"
+            fillOpacity="0.55"
+          />
+          <path
+            d={RIM_BACK}
+            stroke="#1a078f"
+            strokeWidth="11"
+            strokeLinecap="round"
+          />
 
-        {/* The revenue: balls packed in the cone, and a stream in the spout. */}
-        <g clipPath="url(#lf-cone-clip)">
-          {BALLS.map((b) => (
-            <Sphere
-              key={b.k}
-              x={b.x}
-              y={b.y}
-              light={b.light}
-              className={`hv-funnel__ball hv-funnel__ball--${b.k % 4}`}
-            />
-          ))}
-        </g>
-        <g clipPath="url(#lf-spout-clip)">
-          <g className="hv-funnel__stream">
-            {SPOUT_BALLS.map((y, i) => (
-              <Sphere key={y} x={CX} y={y} r={10} light={i === 2} />
+          {/* The revenue: balls packed in the cone, and a stream in the spout. */}
+          <g clipPath="url(#lf-cone-clip)">
+            {BALLS.map((b) => (
+              <Sphere
+                key={b.k}
+                x={b.x}
+                y={b.y}
+                light={b.light}
+                className={`hv-funnel__ball hv-funnel__ball--${b.k % 4}`}
+              />
             ))}
           </g>
-        </g>
+          <g clipPath="url(#lf-spout-clip)">
+            <g className="hv-funnel__stream">
+              {SPOUT_BALLS.map((y, i) => (
+                <Sphere key={y} x={CX} y={y} r={10} light={i === 2} />
+              ))}
+            </g>
+          </g>
 
-        {/* Glass walls over the balls. */}
-        <path
-          d={CONE}
-          fill="url(#lf-glass)"
-          stroke="#a99ff0"
-          strokeOpacity="0.8"
-          strokeWidth="1.8"
-        />
-        <path
-          d={SPOUT}
-          fill="url(#lf-glass)"
-          stroke="#b9b0f5"
-          strokeOpacity="0.55"
-          strokeWidth="1.5"
-        />
-        {/* Light streaks along the left wall and spout, a shadowed right edge. */}
-        <path
-          d="M30 62 C 48 150, 104 252, 128 326"
-          stroke="#fff"
-          strokeWidth="5"
-          strokeLinecap="round"
-          opacity="0.85"
-        />
-        <path
-          d="M44 66 C 58 130, 84 186, 100 222"
-          stroke="#fff"
-          strokeWidth="2"
-          strokeLinecap="round"
-          opacity="0.6"
-        />
-        <path
-          d="M138 346 L 140 404"
-          stroke="#fff"
-          strokeWidth="3"
-          strokeLinecap="round"
-          opacity="0.8"
-        />
-        <path
-          d="M270 62 C 252 150, 196 252, 172 326"
-          stroke="#7460ff"
-          strokeWidth="2"
-          strokeLinecap="round"
-          opacity="0.35"
-        />
-
-        {/* The crack the revenue escapes through. */}
-        <g
-          className="hv-funnel__crack"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          {/* A chipped hole where the wall gave way, then hairlines running from it. */}
+          {/* Glass walls over the balls, with the hole knocked out. */}
+          <g mask="url(#lf-hole-mask)">
+            <path
+              d={CONE}
+              fill="url(#lf-glass)"
+              stroke="#a99ff0"
+              strokeOpacity="0.8"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M270 62 C 252 150, 196 252, 172 326"
+              stroke="#7460ff"
+              strokeWidth="2"
+              strokeLinecap="round"
+              opacity="0.35"
+            />
+          </g>
           <path
-            d="M222 206 L 212 210 L 210 220 L 218 226 L 224 222 Z"
-            fill="#fff"
-            fillOpacity="0.85"
-            stroke="#8d7bff"
-            strokeWidth="1"
-          />
-          <g stroke="#fff">
-            <path
-              d="M212 210 L 198 196 L 203 180 L 188 162"
-              strokeWidth="2.4"
-            />
-            <path d="M198 196 L 180 203 L 170 192" strokeWidth="1.8" />
-            <path d="M203 180 L 216 172" strokeWidth="1.5" />
-            <path
-              d="M210 220 L 196 234 L 202 250 L 188 268"
-              strokeWidth="2.2"
-            />
-            <path d="M196 234 L 178 238 L 170 250" strokeWidth="1.6" />
-            <path d="M202 250 L 214 258" strokeWidth="1.4" />
-          </g>
-          <g
-            stroke="#4a33e8"
+            d={SPOUT}
+            fill="url(#lf-glass)"
+            stroke="#b9b0f5"
             strokeOpacity="0.55"
-            strokeWidth="0.9"
-            transform="translate(1.4 1.2)"
-          >
-            <path d="M212 210 L 198 196 L 203 180 L 188 162 M 210 220 L 196 234 L 202 250 L 188 268" />
-          </g>
-        </g>
+            strokeWidth="1.5"
+          />
+          {/* Light streaks along the left wall and spout. */}
+          <path
+            d="M30 62 C 48 150, 104 252, 128 326"
+            stroke="#fff"
+            strokeWidth="5"
+            strokeLinecap="round"
+            opacity="0.85"
+          />
+          <path
+            d="M44 66 C 58 130, 84 186, 100 222"
+            stroke="#fff"
+            strokeWidth="2"
+            strokeLinecap="round"
+            opacity="0.6"
+          />
+          <path
+            d="M138 346 L 140 404"
+            stroke="#fff"
+            strokeWidth="3"
+            strokeLinecap="round"
+            opacity="0.8"
+          />
 
-        {/* Spout tip and the near half of the rim, glossy indigo. */}
-        <path
-          d="M134 410 L 166 410 L 165 428 Q 150 434 135 428 Z"
-          fill="url(#lf-tip)"
-        />
-        <path
-          d="M137 412 L 139 425"
-          stroke="#fff"
-          strokeWidth="2"
-          strokeLinecap="round"
-          opacity="0.6"
-        />
-        <path
-          d={RIM_FRONT}
-          stroke="url(#lf-rim)"
-          strokeWidth="12"
-          strokeLinecap="round"
-        />
-        <path
-          d="M26 46 C 60 66, 110 70, 150 70"
-          stroke="#fff"
-          strokeWidth="2.6"
-          strokeLinecap="round"
-          opacity="0.7"
-        />
+          {/* The hole's broken edge, and the cracks running out from it. */}
+          <g
+            className="hv-funnel__crack"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d={HOLE} stroke="#fff" strokeOpacity="0.45" strokeWidth="8" />
+            <path
+              d={HOLE}
+              stroke="#3a22e0"
+              strokeOpacity="0.6"
+              strokeWidth="1.4"
+              transform="translate(1.6 1.8)"
+            />
+            <path d={HOLE} stroke="#fff" strokeWidth="3.2" />
+            <g stroke="#fff">
+              <path
+                d="M212 181 L 203 166 L 209 152 L 195 132"
+                strokeWidth="2.4"
+              />
+              <path d="M203 166 L 185 170 L 175 158" strokeWidth="1.8" />
+              <path d="M209 152 L 221 142" strokeWidth="1.5" />
+              <path d="M192 207 L 176 202 L 163 210" strokeWidth="2" />
+              <path
+                d="M217 249 L 205 264 L 211 280 L 197 298"
+                strokeWidth="2.2"
+              />
+              <path d="M205 264 L 187 268 L 179 282" strokeWidth="1.6" />
+              <path d="M211 280 L 221 290" strokeWidth="1.4" />
+            </g>
+            <g
+              stroke="#4a33e8"
+              strokeOpacity="0.5"
+              strokeWidth="0.9"
+              transform="translate(1.4 1.2)"
+            >
+              <path d="M212 181 L 203 166 L 209 152 L 195 132 M 217 249 L 205 264 L 211 280 L 197 298 M 192 207 L 176 202 L 163 210" />
+            </g>
+          </g>
+
+          {/* Shards of the broken glass, caught just outside the hole. */}
+          <g
+            fill="#fff"
+            stroke="#a99ff0"
+            strokeWidth="0.8"
+            strokeLinejoin="round"
+          >
+            <path d="M256 196 L 266 190 L 262 203 Z" opacity="0.9" />
+            <path d="M259 236 L 270 241 L 260 248 Z" opacity="0.8" />
+            <path d="M250 182 L 256 174 L 258 184 Z" opacity="0.75" />
+          </g>
+
+          {/* Spout tip and the near half of the rim, glossy indigo. */}
+          <path
+            d="M134 410 L 166 410 L 165 428 Q 150 434 135 428 Z"
+            fill="url(#lf-tip)"
+          />
+          <path
+            d="M137 412 L 139 425"
+            stroke="#fff"
+            strokeWidth="2"
+            strokeLinecap="round"
+            opacity="0.6"
+          />
+          <path
+            d={RIM_FRONT}
+            stroke="url(#lf-rim)"
+            strokeWidth="12"
+            strokeLinecap="round"
+          />
+          <path
+            d="M26 46 C 60 66, 110 70, 150 70"
+            stroke="#fff"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            opacity="0.7"
+          />
+        </g>
       </g>
 
       {/* Revenue that has already leaked out and come to rest. */}
-      <Sphere x={218} y={561} />
-      <Sphere x={246} y={562} r={11.5} light />
+      <Sphere x={204} y={FLOOR_Y - 11} />
+      <Sphere x={229} y={FLOOR_Y - 10} r={11.5} light />
 
       {/* Escaping balls. Frozen mid-fall without motion, animated otherwise. */}
       <g className="hv-funnel__leak-still">
-        <Sphere x={CRACK.x + 12} y={CRACK.y + 10} r={11} />
-        <Sphere x={CRACK.x + 30} y={CRACK.y + 118} r={11.5} />
+        <Sphere x={EXIT.x + 2} y={EXIT.y + 2} r={11.5} />
+        <Sphere x={EXIT.x + 22} y={EXIT.y + 150} r={11.5} light />
+        <Sphere x={EXIT.x + 12} y={EXIT.y + 176} r={11} />
       </g>
       <g className="hv-funnel__leak">
-        {[0, 1, 2].map((i) => (
+        {[0, 1, 2, 3].map((i) => (
           <g key={i} className={`hv-funnel__drop hv-funnel__drop--${i}`}>
-            <Sphere x={CRACK.x + 4} y={CRACK.y + 4} r={11} light={i === 1} />
+            <Sphere
+              x={EXIT.x}
+              y={EXIT.y}
+              r={i % 2 ? 11 : 11.5}
+              light={i === 1 || i === 2}
+            />
           </g>
         ))}
       </g>
@@ -301,7 +359,7 @@ export function LeakFunnel() {
   );
 }
 
-/* Shapes (viewBox units). The cone's walls bow in slightly, like real glass. */
+/* Shapes (body coordinates). The cone's walls bow in slightly, like real glass. */
 const CONE = `M14 ${RIM_Y} C 34 140, 104 252, 128 ${SPOUT_Y} L 172 ${SPOUT_Y} C 196 252, 266 140, 286 ${RIM_Y} Z`;
 const SPOUT = `M128 ${SPOUT_Y - 2} L 134 412 L 166 412 L 172 ${SPOUT_Y - 2} Z`;
 const RIM_BACK = `M14 ${RIM_Y} C 30 22, 90 16, 150 16 C 210 16, 270 22, 286 ${RIM_Y}`;
