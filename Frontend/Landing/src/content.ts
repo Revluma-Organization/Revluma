@@ -33,3 +33,31 @@ export const HERO = {
     items: ["Shopify", "Orders", "Products", "Customers", "Refunds", "Abandoned checkouts"],
   },
 } as const;
+
+// Section 3: the problem, before the solution. Worded so it never claims that
+// every Shopify merchant has these problems; it is the problem Revluma is
+// designed to address. The mini illustrations use labels only, no figures.
+export const PROBLEM = {
+  eyebrow: "The problem",
+  headline: { lead: "Your store generates data.", accent: "But does it explain what's going wrong?" },
+  intro:
+    "Orders, products, inventory and customer activity are all there to look at. Working out what they mean together, and what to do about it, is a different job.",
+  items: [
+    {
+      id: "answers",
+      title: "Information without answers",
+      body: "You can see orders, products, inventory and customer activity, and still struggle to understand what is driving a problem.",
+    },
+    {
+      id: "evidence",
+      title: "Disconnected evidence",
+      body: "Important clues can sit across different areas of the store, which makes it hard to investigate a problem in context.",
+    },
+    {
+      id: "priorities",
+      title: "Unclear priorities",
+      body: "You may notice several issues at once, without a clear way to decide which one deserves attention first.",
+    },
+  ],
+  closing: "This is the problem Revluma is designed to address.",
+} as const;

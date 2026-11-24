@@ -1,0 +1,504 @@
+/* Section 3, "The problem" (ProblemSection.tsx).
+ * Static styles first; all movement is in the prefers-reduced-motion block at
+ * the end, so with reduced motion the section is simply shown. */
+
+/* ---- Card hover (lift) ------------------------------------------------- */
+.pr-card {
+  transition:
+    box-shadow 0.5s ease-out,
+    border-color 0.5s ease-out,
+    transform 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+}
+.pr-card:hover {
+  transform: translateY(-4px);
+}
+
+/* ---- Illustration panel ------------------------------------------------ */
+.pr-art {
+  container-type: inline-size;
+  border: 1px solid rgba(43, 19, 207, 0.07);
+  background:
+    radial-gradient(rgba(43, 19, 207, 0.09) 1px, transparent 1.2px) 0 0 / 14px
+      14px,
+    radial-gradient(120% 90% at 50% 0%, #f2efff 0%, #f6f5fb 55%, #faf9f7 100%);
+}
+
+/* Shared chip look for the small white UI pieces inside the illustrations. */
+.pr-tile,
+.pr-clue,
+.pr-issue,
+.pr-ask__a {
+  background: #fff;
+  border: 1px solid #ebe9f2;
+  box-shadow: 0 8px 18px -12px rgba(12, 10, 29, 0.3);
+}
+
+/* ---- 1. Information without answers ------------------------------------ */
+.pr-answers {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+.pr-answers__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.pr-tile {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 6px 8px 6px 6px;
+  border-radius: 11px;
+}
+.pr-tile__icon,
+.pr-issue__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: #eeebff;
+  color: #2b13cf;
+}
+.pr-tile__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #3f3d4e;
+}
+.pr-tile__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+  flex: none;
+}
+.pr-tile__bars i {
+  width: 3px;
+  height: calc(var(--h) * 1.5px);
+  border-radius: 2px;
+  background: #c9c1ff;
+  transform-origin: 50% 100%;
+}
+.pr-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+}
+.pr-ask__q {
+  align-self: flex-end;
+  padding: 7px 12px;
+  border-radius: 14px 14px 4px 14px;
+  background: #1f06ac;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: 0 10px 20px -12px rgba(31, 6, 172, 0.7);
+}
+/* The reply that never comes: thinking dots only. */
+.pr-ask__a {
+  align-self: flex-start;
+  display: inline-flex;
+  gap: 4px;
+  padding: 9px 12px;
+  border-radius: 14px 14px 14px 4px;
+}
+.pr-ask__a i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #a3a1ae;
+}
+
+/* On the narrowest phones the labels need the room more than the bars do. */
+@container (max-width: 300px) {
+  .pr-tile__bars {
+    display: none;
+  }
+}
+
+/* ---- 2. Disconnected evidence ------------------------------------------ */
+.pr-evidence {
+  position: absolute;
+  inset: 0;
+}
+.pr-evidence__links {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.pr-evidence__links path {
+  fill: none;
+  stroke: #7460ff;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 3 5;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.55;
+}
+.pr-evidence__case {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(43, 19, 207, 0.35);
+  background: #fff;
+  color: #2b13cf;
+  box-shadow: 0 12px 24px -14px rgba(31, 6, 172, 0.45);
+}
+.pr-evidence__case b {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #1f06ac;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.pr-clue {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #3f3d4e;
+}
+.pr-clue svg {
+  color: #2b13cf;
+}
+
+/* ---- 3. Unclear priorities --------------------------------------------- */
+.pr-priorities {
+  position: absolute;
+  inset: 0;
+  padding: 12px 14px;
+}
+.pr-priorities__list {
+  position: relative;
+  height: calc(2.15rem * 3 + 0.4rem * 2);
+}
+.pr-issue {
+  position: absolute;
+  /* Room on the right for the lift-aside during swaps (see pr-shuffle-0). */
+  inset: 0 12px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 2.15rem;
+  padding: 0 7px;
+  border-radius: 11px;
+  transform: translateY(calc(var(--n) * 2.55rem));
+}
+.pr-issue--0 {
+  z-index: 2;
+}
+.pr-issue__icon {
+  background: color-mix(in srgb, var(--tone) 12%, #fff);
+  color: var(--tone);
+}
+.pr-issue__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: #3f3d4e;
+}
+/* Where a rank would be: nothing decided. */
+.pr-issue__rank {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px dashed #c9c1ff;
+  color: #7460ff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.pr-which {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px 6px 9px;
+  border-radius: 999px;
+  background: #1f06ac;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  box-shadow: 0 10px 20px -12px rgba(31, 6, 172, 0.7);
+}
+
+/* ---- Motion ------------------------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  /* Scroll-in: rise out of a soft blur, staggered by --i (useReveal adds
+     is-in). Uses `translate` so it never fights the hover `transform`. */
+  .pr-reveal {
+    opacity: 0;
+    translate: 0 26px;
+    filter: blur(6px);
+    transition:
+      opacity 0.9s cubic-bezier(0.25, 1, 0.5, 1) calc(var(--i, 0) * 140ms),
+      translate 1.2s cubic-bezier(0.16, 1, 0.3, 1) calc(var(--i, 0) * 140ms),
+      filter 0.9s ease-out calc(var(--i, 0) * 140ms);
+  }
+  .pr-reveal.is-in {
+    opacity: 1;
+    translate: 0 0;
+    filter: none;
+  }
+  .pr-card.pr-reveal {
+    transition:
+      opacity 0.9s cubic-bezier(0.25, 1, 0.5, 1) calc(var(--i, 0) * 160ms),
+      translate 1.2s cubic-bezier(0.16, 1, 0.3, 1) calc(var(--i, 0) * 160ms),
+      filter 0.9s ease-out calc(var(--i, 0) * 160ms),
+      box-shadow 0.5s ease-out,
+      border-color 0.5s ease-out,
+      transform 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+  /* 1. The data keeps moving; the question pops in, the answer never comes. */
+  .pr-card.is-in .pr-tile__bars i {
+    animation: pr-bar 2.4s ease-in-out var(--bd) infinite alternate;
+  }
+  @keyframes pr-bar {
+    from {
+      transform: scaleY(0.45);
+    }
+    to {
+      transform: scaleY(1.15);
+    }
+  }
+  .pr-ask__q,
+  .pr-ask__a {
+    opacity: 0;
+  }
+  .pr-card.is-in .pr-ask__q {
+    transform-origin: 100% 100%;
+    animation: pr-bubble 0.8s cubic-bezier(0.34, 1.45, 0.64, 1) 0.7s both;
+  }
+  .pr-card.is-in .pr-ask__a {
+    transform-origin: 0 100%;
+    animation: pr-bubble 0.8s cubic-bezier(0.34, 1.45, 0.64, 1) 1.3s both;
+  }
+  @keyframes pr-bubble {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.7);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .pr-card.is-in .pr-ask__a i {
+    animation: pr-dot 0.9s ease-in-out infinite alternate;
+  }
+  .pr-card.is-in .pr-ask__a i:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  .pr-card.is-in .pr-ask__a i:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+  @keyframes pr-dot {
+    from {
+      transform: translateY(2px);
+      opacity: 0.4;
+    }
+    to {
+      transform: translateY(-2px);
+      opacity: 1;
+    }
+  }
+
+  /* 2. Clues drift apart, their broken links shimmer, the search hunts. */
+  .pr-card.is-in .pr-clue--0 {
+    animation: pr-drift-a 6s ease-in-out infinite alternate;
+  }
+  .pr-card.is-in .pr-clue--1 {
+    animation: pr-drift-b 7s ease-in-out -2s infinite alternate;
+  }
+  .pr-card.is-in .pr-clue--2 {
+    animation: pr-drift-b 6.5s ease-in-out -4s infinite alternate;
+  }
+  .pr-card.is-in .pr-clue--3 {
+    animation: pr-drift-a 7.5s ease-in-out -1s infinite alternate;
+  }
+  @keyframes pr-drift-a {
+    from {
+      transform: translate(0, 0);
+    }
+    to {
+      transform: translate(-5px, -4px);
+    }
+  }
+  @keyframes pr-drift-b {
+    from {
+      transform: translate(0, 0);
+    }
+    to {
+      transform: translate(5px, 4px);
+    }
+  }
+  .pr-card.is-in .pr-evidence__links path {
+    animation: pr-dash 1.8s linear infinite;
+  }
+  @keyframes pr-dash {
+    to {
+      stroke-dashoffset: -16;
+    }
+  }
+  .pr-card.is-in .pr-evidence__case svg {
+    animation: pr-search 4.5s ease-in-out infinite;
+  }
+  @keyframes pr-search {
+    0%,
+    100% {
+      transform: translate(0, 0) rotate(0deg);
+    }
+    25% {
+      transform: translate(3px, -2px) rotate(8deg);
+    }
+    50% {
+      transform: translate(-2px, 2px) rotate(-6deg);
+    }
+    75% {
+      transform: translate(-3px, -2px) rotate(4deg);
+    }
+  }
+
+  /* 3. The issues keep swapping places; nothing settles into an order.
+     Rows are 2.55rem apart. Row 0 is in every swap and lifts aside as it
+     passes the other row, so the rows never just slide through each other. */
+  .pr-card.is-in .pr-issue--0 {
+    animation: pr-shuffle-0 9s cubic-bezier(0.65, 0, 0.35, 1) 1s infinite;
+  }
+  .pr-card.is-in .pr-issue--1 {
+    animation: pr-shuffle-1 9s cubic-bezier(0.65, 0, 0.35, 1) 1s infinite;
+  }
+  .pr-card.is-in .pr-issue--2 {
+    animation: pr-shuffle-2 9s cubic-bezier(0.65, 0, 0.35, 1) 1s infinite;
+  }
+  @keyframes pr-shuffle-0 {
+    0%,
+    24% {
+      transform: translateY(0);
+      animation-timing-function: cubic-bezier(0.45, 0, 0.8, 0.6);
+    }
+    28.5% {
+      transform: translate(9px, 1.275rem) scale(1.02);
+      animation-timing-function: cubic-bezier(0.2, 0.4, 0.55, 1);
+    }
+    33%,
+    57% {
+      transform: translateY(2.55rem);
+      animation-timing-function: cubic-bezier(0.45, 0, 0.8, 0.6);
+    }
+    61.5% {
+      transform: translate(9px, 3.825rem) scale(1.02);
+      animation-timing-function: cubic-bezier(0.2, 0.4, 0.55, 1);
+    }
+    66%,
+    88% {
+      transform: translateY(5.1rem);
+      animation-timing-function: cubic-bezier(0.45, 0, 0.8, 0.6);
+    }
+    94% {
+      transform: translate(9px, 2.55rem) scale(1.02);
+      animation-timing-function: cubic-bezier(0.2, 0.4, 0.55, 1);
+    }
+    100% {
+      transform: translateY(0);
+    }
+  }
+  @keyframes pr-shuffle-1 {
+    0%,
+    24% {
+      transform: translateY(2.55rem);
+    }
+    33%,
+    88% {
+      transform: translateY(0);
+    }
+    100% {
+      transform: translateY(2.55rem);
+    }
+  }
+  @keyframes pr-shuffle-2 {
+    0%,
+    57% {
+      transform: translateY(5.1rem);
+    }
+    66%,
+    88% {
+      transform: translateY(2.55rem);
+    }
+    100% {
+      transform: translateY(5.1rem);
+    }
+  }
+  .pr-card.is-in .pr-issue__rank {
+    animation: pr-rank 2.2s ease-in-out infinite;
+  }
+  .pr-card.is-in .pr-issue--1 .pr-issue__rank {
+    animation-delay: 0.7s;
+  }
+  .pr-card.is-in .pr-issue--2 .pr-issue__rank {
+    animation-delay: 1.4s;
+  }
+  @keyframes pr-rank {
+    0%,
+    100% {
+      transform: scale(1);
+      border-color: #c9c1ff;
+    }
+    50% {
+      transform: scale(1.15);
+      border-color: #7460ff;
+    }
+  }
+  .pr-card.is-in .pr-which {
+    animation: pr-float 4s ease-in-out infinite alternate;
+  }
+  @keyframes pr-float {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(-4px);
+    }
+  }
+}
