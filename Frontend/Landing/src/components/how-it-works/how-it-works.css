@@ -28,7 +28,7 @@
 
 .hiw-body {
   position: relative;
-  margin-top: 2.75rem;
+  margin-top: 2rem;
 }
 
 /* ---- Circle (shared) -------------------------------------------------------- */
@@ -67,15 +67,15 @@
   --c: var(--c3);
 }
 .hiw-step__kicker {
-  font-size: 0.74rem;
+  font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--c);
 }
 .hiw-step__label {
-  margin-top: 0.35rem;
-  font-size: 1.1rem;
+  margin-top: 0.25rem;
+  font-size: 0.98rem;
   font-weight: 700;
   line-height: 1.3;
   letter-spacing: -0.012em;
@@ -83,17 +83,17 @@
   text-wrap: balance;
 }
 .hiw-step__title {
-  margin-top: 0.4rem;
-  font-size: 0.92rem;
+  margin-top: 0.3rem;
+  font-size: 0.84rem;
   font-weight: 700;
   line-height: 1.4;
   color: #3f3d4e;
   text-wrap: balance;
 }
 .hiw-step__body {
-  margin-top: 0.45rem;
-  font-size: 0.9rem;
-  line-height: 1.6;
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  line-height: 1.55;
   color: #6e6c7a;
   text-wrap: pretty;
 }
@@ -103,13 +103,13 @@
   display: none;
 }
 .hiw-steps {
-  --node: 84px;
+  --node: 64px;
   position: relative;
   display: grid;
-  gap: 2.25rem;
-  max-width: 34rem;
+  gap: 1.6rem;
+  max-width: 32rem;
   margin: 0 auto;
-  padding: 0 0 2.25rem;
+  padding: 0 0 1.9rem;
   list-style: none;
 }
 /* The gradient line runs through the circle centres and ends in an arrow. */
@@ -138,7 +138,7 @@
   position: relative;
   display: grid;
   grid-template-columns: var(--node) minmax(0, 1fr);
-  gap: 1.15rem;
+  gap: 1rem;
   align-items: start;
 }
 .hiw-step__node {
@@ -151,26 +151,26 @@
   height: 38cqw;
 }
 .hiw-step__copy {
-  padding-top: 0.6rem;
+  padding-top: 0.2rem;
 }
 
 @media (max-width: 380px) {
   .hiw-steps {
-    --node: 68px;
+    --node: 56px;
   }
   .hiw-step {
     gap: 0.9rem;
   }
   .hiw-step__copy {
-    padding-top: 0.25rem;
+    padding-top: 0;
   }
 }
 
 /* ---- From 900px: the infographic ---------------------------------------------- */
 @media (min-width: 900px) {
   .hiw-body {
-    max-width: 980px;
-    margin: 2.75rem auto 0;
+    max-width: 900px;
+    margin: 2rem auto 0;
   }
   .hiw-diagram {
     display: block;
@@ -185,7 +185,7 @@
     overflow: visible;
   }
   .hiw-path {
-    stroke-width: 5;
+    stroke-width: 6;
     stroke-linecap: round;
   }
   .hiw-dash {
@@ -203,7 +203,7 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0;
     max-width: none;
-    margin-top: 1rem;
+    margin-top: 0.75rem;
     padding: 0;
   }
   .hiw-steps::before,
@@ -216,7 +216,7 @@
     text-align: center;
   }
   .hiw-step__copy {
-    max-width: 19rem;
+    max-width: 18.5rem;
     margin: 0 auto;
     padding: 0 clamp(0.6rem, 1.4vw, 1.25rem);
   }
