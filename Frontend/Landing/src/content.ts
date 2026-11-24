@@ -121,23 +121,16 @@ export const MEET_REV = {
   eyebrow: "Meet Rev",
   headline: { lead: "Don't just look at the numbers.", accent: "Understand what they mean." },
   description:
-    "Ask about your store in plain language. Rev checks the data that's available, separates what it verified from what it suspects, says what's missing and recommends what to do next.",
+    "Ask Rev about your store in plain language. It answers one step at a time: what happened, how it knows, what might explain it and what to do next.",
   sampleLabel: "Sample store · demonstration data",
-  period: "last week (Mon – Sun)",
-  comparedTo: "the week before",
-  question: "Why did my sales drop last week?",
+  hint: "Tap the suggested reply to continue",
+  inputPlaceholder: "Ask Rev about your store…",
+  investigating: "Investigating your store evidence",
   checks: [
-    { label: "Orders and sales", status: "done" },
-    { label: "Checkouts by device", status: "done" },
-    { label: "Products and inventory", status: "done" },
-    { label: "Traffic and sessions", status: "unavailable", note: "not connected" },
-  ],
-  summary: "Sales fell 16.1% because fewer mobile checkouts were completed, starting on Wednesday.",
-  facts: [
-    { text: "Orders fell from 281 to 236 (sales −16.1%); average order value was unchanged.", cite: 1 },
-    { text: "Mobile checkout completion fell from 48.4% to 38.2%. Desktop held at 61.6%.", cite: 2 },
-    { text: "Mobile checkouts started held steady (345 → 340): mobile accounts for 37 of the 45 fewer orders.", cite: 2 },
-    { text: "No top sellers were out of stock.", cite: 3 },
+    { label: "Orders", status: "done" },
+    { label: "Checkouts", status: "done" },
+    { label: "Products", status: "done" },
+    { label: "Traffic", status: "unavailable", note: "not connected" },
   ],
   chart: {
     label: "Mobile checkout completion",
@@ -152,25 +145,42 @@ export const MEET_REV = {
     ],
     previousWeek: 48.4,
   },
-  hypotheses: ["A theme, app or payment change to mobile checkout on Wednesday.", "A payment method failing on mobile."],
-  unknowns: ["Theme, app and setting changes aren't visible to Revluma.", "Traffic isn't connected, so mobile visits can't be checked."],
   sources: [
     { n: 1, label: "Orders" },
     { n: 2, label: "Checkouts" },
-    { n: 3, label: "Products" },
   ],
-  recommendations: [
-    { label: "Place a test order on a phone", why: "Then watch mobile completion return toward 48%." },
-    { label: "Review what changed on Wednesday", why: "Theme publishes, new apps, payment settings." },
-    { label: "Connect your analytics", why: "So Rev can check mobile traffic too." },
-  ],
-  followUps: ["Show mobile checkouts by day", "Compare payment methods"],
-  steps: [
-    { id: "ask", title: "You ask" },
-    { id: "investigate", title: "Rev investigates" },
-    { id: "verify", title: "Verified facts" },
-    { id: "interpret", title: "Possible explanations" },
-    { id: "gaps", title: "What's missing" },
-    { id: "recommend", title: "Next steps" },
-  ],
+  // One exchange per step. Each Rev reply is short and does one job.
+  turns: {
+    ask: {
+      user: "Why did my sales drop last week?",
+      summary: "Sales fell 16.1% last week because fewer mobile checkouts were completed, starting on Wednesday.",
+    },
+    verify: {
+      user: "How do you know?",
+      lead: "Here's what your store records show, compared with the week before:",
+      facts: [
+        { text: "Orders fell from 281 to 236. Average order value didn't change.", cite: 1 },
+        { text: "Mobile checkout completion fell from 48.4% to 38.2%. Desktop held at 61.6%.", cite: 2 },
+        { text: "Mobile checkouts started held steady (345 → 340), so mobile accounts for 37 of the 45 fewer orders.", cite: 2 },
+      ],
+    },
+    interpret: {
+      user: "What could be causing it?",
+      lead: "I can't confirm the cause yet, so treat these as possibilities:",
+      hypotheses: ["A theme, app or payment change to mobile checkout on Wednesday", "A payment method failing on phones"],
+      gapsLead: "What I can't see:",
+      unknowns: ["Theme, app and setting changes", "Traffic, because it isn't connected"],
+    },
+    recommend: {
+      user: "What should I do?",
+      lead: "Here's where I'd start:",
+      recommendations: [
+        { label: "Place a test order on a phone", why: "then watch mobile completion return toward 48%." },
+        { label: "Check what changed on Wednesday", why: "theme publishes, new apps, payment settings." },
+        { label: "Connect your analytics", why: "so I can check mobile traffic too." },
+      ],
+      note: "Recommendations only. Nothing was changed or sent.",
+    },
+  },
+  restart: "Start over",
 } as const;

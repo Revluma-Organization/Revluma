@@ -5,13 +5,19 @@ import App from "@/App";
 import { MEET_REV } from "@/content";
 
 const homepage = readFileSync(resolve(__dirname, "../../../index.html"), "utf8");
+const T = MEET_REV.turns;
+const wait = { timeout: 3000 };
 
 function section() {
   render(<App />);
   return screen.getByRole("region", { name: `${MEET_REV.headline.lead} ${MEET_REV.headline.accent}` });
 }
 
-describe("Meet Rev (the intelligence interface)", () => {
+async function reply(el: HTMLElement, label: string) {
+  fireEvent.click(within(el).getByRole("button", { name: label }));
+}
+
+describe("Meet Rev (a conversation with Rev)", () => {
   it("renders the approved headline and intro", () => {
     const el = section();
     expect(within(el).getByRole("heading", { level: 2 }).textContent).toBe("Don't just look at the numbers.Understand what they mean.");
@@ -24,28 +30,52 @@ describe("Meet Rev (the intelligence interface)", () => {
     expect(within(windowEl).getByText(MEET_REV.sampleLabel)).toBeInTheDocument();
   });
 
-  it("walks through the whole interaction: question, checks, facts, hypotheses, unknowns, next steps", () => {
+  it("starts with one question and one short answer, plus the checks that ran", () => {
     const el = section();
-    expect(within(el).getByText(MEET_REV.question)).toBeInTheDocument();
-    expect(within(el).getByText(/Checks that ran/)).toBeInTheDocument();
-    for (const check of MEET_REV.checks) expect(within(el).getByText(check.label)).toBeInTheDocument();
-    expect(within(el).getByText("not connected")).toBeInTheDocument();
-    expect(within(el).getByText("Partial evidence")).toBeInTheDocument();
-    expect(within(el).getByRole("heading", { name: "Facts" })).toBeInTheDocument();
-    expect(within(el).getByRole("heading", { name: "Hypotheses · not verified" })).toBeInTheDocument();
-    expect(within(el).getByRole("heading", { name: "Unknowns and limits" })).toBeInTheDocument();
-    expect(within(el).getByRole("heading", { name: "Recommended next steps" })).toBeInTheDocument();
-    expect(within(el).getByText("Recommendations only. Nothing was changed or sent.")).toBeInTheDocument();
-    for (const rec of MEET_REV.recommendations) expect(within(el).getByText(rec.label)).toBeInTheDocument();
+    const log = within(el).getByRole("log", { name: "Conversation with Rev" });
+    expect(within(log).getByText(T.ask.user)).toBeInTheDocument();
+    expect(within(log).getByText(T.ask.summary)).toBeInTheDocument();
+    expect(within(log).getByText("Partial evidence")).toBeInTheDocument();
+    const checks = within(log).getByRole("list", { name: "Checks that ran" });
+    for (const c of MEET_REV.checks) expect(within(checks).getByText(c.label)).toBeInTheDocument();
+    expect(within(checks).getByText("not connected")).toBeInTheDocument();
+    // Nothing else yet: one thing at a time.
+    expect(within(log).queryByText(T.verify.lead)).toBeNull();
+    expect(within(el).getByRole("button", { name: T.verify.user })).toBeEnabled();
+  });
+
+  it("advances one exchange per suggested reply, ending with read-only next steps", async () => {
+    const el = section();
+    const log = within(el).getByRole("log");
+
+    await reply(el, T.verify.user);
+    expect(within(log).getByText(T.verify.user)).toBeInTheDocument();
+    expect(await within(log).findByText(T.verify.lead, {}, wait)).toBeInTheDocument();
+    const facts = log.querySelectorAll(".mr-list--facts li");
+    expect(facts).toHaveLength(T.verify.facts.length);
+    facts.forEach((li) => expect(li.querySelector(".mr-cite")).not.toBeNull());
+    expect(within(log).getByText("Evidence verified")).toBeInTheDocument();
+    expect(within(log).queryByText(T.interpret.lead)).toBeNull();
+
+    await reply(el, T.interpret.user);
+    expect(await within(log).findByText(T.interpret.lead, {}, wait)).toBeInTheDocument();
+    expect(within(log).getByText("Not verified")).toBeInTheDocument();
+    for (const h of T.interpret.hypotheses) expect(within(log).getByText(h)).toBeInTheDocument();
+    for (const u of T.interpret.unknowns) expect(within(log).getByText(u)).toBeInTheDocument();
+
+    await reply(el, T.recommend.user);
+    expect(await within(log).findByText(T.recommend.lead, {}, wait)).toBeInTheDocument();
+    for (const r of T.recommend.recommendations) expect(within(log).getByText(r.label)).toBeInTheDocument();
+    expect(within(log).getByText(T.recommend.note)).toBeInTheDocument();
+
+    await reply(el, MEET_REV.restart);
+    expect(within(log).queryByText(T.recommend.lead)).toBeNull();
+    expect(within(log).getByText(T.ask.user)).toBeInTheDocument();
   });
 
   it("cites a real source for every fact", () => {
     const sources = new Set(MEET_REV.sources.map((s) => s.n));
-    for (const fact of MEET_REV.facts) expect(sources.has(fact.cite)).toBe(true);
-    const el = section();
-    const facts = el.querySelectorAll(".mr-facts li");
-    expect(facts).toHaveLength(MEET_REV.facts.length);
-    facts.forEach((li) => expect(li.querySelector(".mr-cite")).not.toBeNull());
+    for (const fact of T.verify.facts) expect(sources.has(fact.cite)).toBe(true);
   });
 
   it("keeps the sample numbers internally consistent", () => {
@@ -70,23 +100,10 @@ describe("Meet Rev (the intelligence interface)", () => {
     expect(MEET_REV.chart.previousWeek).toBe(48.4);
   });
 
-  it("highlights the matching part of the answer from the guide", () => {
-    const el = section();
-    const guide = within(el).getByRole("list", { name: "What Rev does in this example" });
-    const items = within(guide).getAllByRole("button");
-    expect(items.map((b) => b.querySelector(".mr-guide__title")?.textContent)).toEqual(MEET_REV.steps.map((s) => s.title));
-    fireEvent.click(items[3]);
-    expect(items[3]).toHaveAttribute("aria-pressed", "true");
-    expect(el.querySelector('[data-step="interpret"]')).toHaveAttribute("data-focus", "on");
-    expect(el.querySelector('[data-step="verify"]')).toHaveAttribute("data-focus", "off");
-    fireEvent.click(items[3]);
-    expect(el.querySelector('[data-step="interpret"]')).not.toHaveAttribute("data-focus");
-  });
-
   it("stays read-only and makes no unverified claims", () => {
-    const text = section().textContent ?? "";
-    expect(text).not.toMatch(/automat|recover|guarantee|in minutes|brands active|revenue lift/i);
-    expect(text).not.toMatch(/[$€£₦]\s?\d/);
+    const all = JSON.stringify(MEET_REV);
+    expect(all).not.toMatch(/automat|recover|guarantee|in minutes|brands active|revenue lift/i);
+    expect(all).not.toMatch(/[$€£₦]\s?\d/);
   });
 
   it("replaces the old stats section on the homepage", () => {
