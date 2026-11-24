@@ -31,8 +31,13 @@ describe("Homepage hero embed", () => {
 
   it("mounts every rebuilt section into a host that exists on the homepage", async () => {
     const { SECTIONS } = await import("@/embed");
-    expect(Object.keys(SECTIONS)).toEqual(["revluma-hero", "platform", "how-it-works", "meet-rev", "why-revluma"]);
+    expect(Object.keys(SECTIONS)).toEqual(["revluma-hero", "platform", "how-it-works", "meet-rev"]);
     for (const id of Object.keys(SECTIONS)) expect(homepage).toContain(`<div id="${id}"`);
+  });
+
+  it("has no Why Revluma section and no comparison table", () => {
+    expect(homepage).not.toContain('id="why-revluma"');
+    expect(homepage).not.toMatch(/Why Revluma|The Honest Comparison|Why Smart Stores Choose Revluma|Typical\s+Tools|<table/);
   });
 
   it("is wired into the homepage and the removed hero pieces are gone", () => {
