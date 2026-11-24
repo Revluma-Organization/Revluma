@@ -130,13 +130,13 @@ export function OperationalBriefingSection({
   return (
     <section
       aria-labelledby="operational-briefing-heading"
-      className="min-w-0 overflow-hidden rounded-xl border border-[#DFE4EC] bg-white"
+      className="min-w-0 overflow-hidden rounded-2xl border border-[#E4E8F0] bg-white shadow-[0_12px_36px_rgba(16,24,40,0.045)]"
     >
       {/* 1. Briefing Header and Business Assessment */}
-      <div className="px-5 py-6 sm:px-8 sm:py-7">
+      <div className="bg-[linear-gradient(180deg,#FCFCFF_0%,#FFFFFF_100%)] px-6 py-7 sm:px-9 sm:py-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1F06AC]">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#4338CA]">
               Operational briefing
             </p>
             <p className="mt-1 text-xs text-[#667085]">
@@ -228,14 +228,14 @@ export function OperationalBriefingSection({
         </div>
 
         {/* Editorial Business Assessment */}
-        <div className="mt-5 max-w-3xl">
+        <div className="mt-7 max-w-[54rem]">
           <h2
             id="operational-briefing-heading"
-            className="text-[1.4rem] font-semibold leading-[1.24] tracking-[-0.025em] text-[#0F172A] sm:text-[1.65rem]"
+            className="text-[1.75rem] font-semibold leading-[1.16] tracking-[-0.04em] text-[#101828] sm:text-[2.15rem]"
           >
             {assessment.headline}
           </h2>
-          <p className="mt-2.5 text-sm leading-6 text-[#475467]">
+          <p className="mt-3 max-w-[48rem] text-[0.92rem] leading-7 text-[#475467]">
             {assessment.summary}
           </p>
           {assessment.noFindingsNote && (
@@ -278,7 +278,7 @@ export function OperationalBriefingSection({
       {/* 2. Featured Intelligence — "A closer look" (always rendered, never silently hidden) */}
       <div
         aria-labelledby="briefing-featured-heading"
-        className="border-t border-[#EAECF0] px-5 py-6 sm:px-8"
+        className="border-t border-[#EDF0F5] px-6 py-6 sm:px-9 sm:py-7"
       >
         <h3
           id="briefing-featured-heading"
@@ -288,7 +288,7 @@ export function OperationalBriefingSection({
         </h3>
 
         {featured.status === "qualified" && featured.item ? (
-          <article className="mt-3 rounded-xl border border-[#D8E0F7] border-l-[3px] border-l-[#1F06AC] bg-[#F8F9FE] p-5">
+          <article className="mt-4 overflow-hidden rounded-2xl border border-[#E2E7F5] bg-[#F8F9FF] p-5 sm:p-6">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span
                 className={cn(
@@ -316,44 +316,51 @@ export function OperationalBriefingSection({
               </span>
             </div>
 
-            <h4 className="mt-3 text-base font-semibold leading-snug tracking-[-0.015em] text-[#0F172A]">
-              {featured.item.title}
-            </h4>
+            <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_250px] lg:gap-7">
+              <div className="min-w-0">
+                <h4 className="text-xl font-semibold leading-tight tracking-[-0.03em] text-[#101828] sm:text-[1.4rem]">
+                  {featured.item.title}
+                </h4>
 
-            <p className="mt-1.5 max-w-3xl text-sm leading-6 text-[#344054]">
-              {featured.item.explanation}
-            </p>
+                <p className="mt-2.5 max-w-3xl text-sm leading-7 text-[#344054]">
+                  {featured.item.explanation}
+                </p>
 
-            {featured.item.why_it_matters && (
-              <p className="mt-2 max-w-3xl text-xs leading-5 text-[#475467]">
-                <span className="font-medium text-[#344054]">Why it matters: </span>
-                {featured.item.why_it_matters}
-              </p>
-            )}
-
-            <div className="mt-4 flex flex-col gap-3 border-t border-[#E4E9F7] pt-3.5 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-[#526071]">
-                <span className="font-medium text-[#344054]">Supporting evidence: </span>
-                {featured.item.evidence_summary}
-              </p>
-
-              <button
-                type="button"
-                onClick={() => openRoute(featured.item!.action_route)}
-                className={cn(
-                  "inline-flex min-h-9 shrink-0 items-center gap-1.5 self-start rounded-md text-xs font-semibold text-[#1F06AC] transition-colors hover:text-[#18058C] sm:self-auto",
-                  FOCUS_RING,
+                {featured.item.why_it_matters && (
+                  <p className="mt-3 max-w-3xl text-sm leading-6 text-[#475467]">
+                    <span className="font-semibold text-[#344054]">Why it matters </span>
+                    {featured.item.why_it_matters}
+                  </p>
                 )}
-              >
-                <span>{featured.item.action_label}</span>
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
+              </div>
+
+              <aside className="flex min-w-0 flex-col justify-between gap-4 rounded-xl border border-[#E6EAF4] bg-white/85 p-4">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#667085]">
+                    Supporting evidence
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-[#344054]">
+                    {featured.item.evidence_summary}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openRoute(featured.item!.action_route)}
+                  className={cn(
+                    "inline-flex min-h-10 items-center justify-between gap-2 rounded-lg bg-[#2413A5] px-3.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#1B0D86]",
+                    FOCUS_RING,
+                  )}
+                >
+                  <span>{featured.item.action_label}</span>
+                  <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </aside>
             </div>
           </article>
         ) : featured.empty ? (
           <div
             data-featured-empty-state={featured.empty.state}
-            className="mt-3 rounded-xl border border-[#EAECF0] bg-[#FAFBFD] p-5"
+            className="mt-4 rounded-2xl border border-[#E8EBF1] bg-[#FAFBFD] p-5 sm:p-6"
           >
             <div className="flex items-start gap-3">
               <span
@@ -430,7 +437,7 @@ export function OperationalBriefingSection({
       {/* 3. Recent Developments — compact editorial timeline */}
       <div
         aria-labelledby="briefing-developments-heading"
-        className="border-t border-[#EAECF0] px-5 py-6 sm:px-8"
+        className="border-t border-[#EDF0F5] px-6 py-6 sm:px-9 sm:py-7"
       >
         <div>
           <h3
@@ -445,9 +452,9 @@ export function OperationalBriefingSection({
         </div>
 
         {developments.items.length > 0 ? (
-          <ol className="mt-4 space-y-4 border-l border-[#EAECF0] pl-5">
+          <ol className="mt-5 space-y-0 border-l border-[#E6EAF1] pl-5">
             {developments.items.map((entry) => (
-              <li key={entry.id} className="relative">
+              <li key={entry.id} className="relative pb-5 last:pb-0">
                 <span
                   aria-hidden="true"
                   className={cn(
@@ -508,7 +515,7 @@ export function OperationalBriefingSection({
       </div>
 
       {/* 4. Expandable Briefing Evidence and Context */}
-      <div className="border-t border-[#EAECF0] bg-[#FAFBFD] px-5 py-4 sm:px-8">
+      <div className="border-t border-[#EDF0F5] bg-[#FBFCFE] px-6 py-4 sm:px-9">
         <details className="group">
           <summary
             className={cn(
