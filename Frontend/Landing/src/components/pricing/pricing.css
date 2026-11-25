@@ -1,0 +1,371 @@
+/* Pricing (PricingSection.tsx), after the approved reference: centred heading,
+ * a pill Monthly / Yearly switch, one white panel holding Starter and
+ * Enterprise, and Premium raised above it as an indigo card. Revluma palette
+ * and type throughout. Stacks into separate cards below 1024px. */
+
+.pr-section {
+  background: linear-gradient(180deg, #fbfaf8 0%, #f4f2fc 100%);
+  border-top: 1px solid #eeece7;
+}
+
+/* ---- Billing switch ----------------------------------------------------- */
+.pr-switch {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 0.3rem;
+  border: 1px solid #e6e4ee;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 6px 18px -12px rgba(12, 10, 29, 0.25);
+}
+.pr-switch__thumb {
+  position: absolute;
+  top: 0.3rem;
+  bottom: 0.3rem;
+  left: 0.3rem;
+  width: calc(50% - 0.3rem);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2b13cf, #1f06ac);
+  box-shadow: 0 8px 18px -8px rgba(31, 6, 172, 0.7);
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pr-switch__thumb[data-cycle="yearly"] {
+  transform: translateX(100%);
+}
+.pr-switch__opt {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.5rem;
+  padding: 0 1.15rem;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #6e6c7a;
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+.pr-switch__opt[aria-checked="true"] {
+  color: #fff;
+}
+.pr-switch__opt:focus-visible {
+  outline: 2px solid #1f06ac;
+  outline-offset: 2px;
+}
+.pr-switch__save {
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: #eeebff;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: #1f06ac;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+.pr-switch__opt[aria-checked="true"] .pr-switch__save {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+/* ---- Stage: panel + cards ---------------------------------------------- */
+.pr-stage {
+  position: relative;
+  max-width: 68rem;
+  margin: 3rem auto 0;
+}
+.pr-panel {
+  display: none;
+}
+.pr-grid {
+  position: relative;
+  display: grid;
+  gap: 1.25rem;
+  max-width: 30rem;
+  margin: 0 auto;
+}
+
+.pr-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 2rem 1.75rem;
+  border: 1px solid #eae8e3;
+  border-radius: 1.5rem;
+  background: #fff;
+  color: #0c0a1d;
+  box-shadow: 0 1px 2px rgba(12, 10, 29, 0.04);
+}
+.pr-card--featured {
+  border-color: transparent;
+  background:
+    radial-gradient(120% 70% at 85% 0%, rgba(150, 134, 255, 0.6) 0%, rgba(150, 134, 255, 0) 60%), linear-gradient(180deg, #6250f2 0%, #3b22df 50%, #2b13cf 100%);
+  color: #fff;
+  box-shadow:
+    0 30px 60px -28px rgba(31, 6, 172, 0.75),
+    0 12px 24px -16px rgba(31, 6, 172, 0.5);
+}
+
+@media (min-width: 1024px) {
+  .pr-stage {
+    margin-top: 3.5rem;
+  }
+  /* One white panel behind the side plans; Premium overhangs it top and bottom. */
+  .pr-panel {
+    position: absolute;
+    inset: 2.25rem 0;
+    display: block;
+    border-radius: 1.75rem;
+    background: #fff;
+    box-shadow:
+      0 1px 2px rgba(12, 10, 29, 0.04),
+      0 30px 60px -40px rgba(12, 10, 29, 0.22);
+  }
+  .pr-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.94fr) minmax(0, 1fr);
+    gap: 0;
+    max-width: none;
+  }
+  .pr-card:not(.pr-card--featured) {
+    padding: 4.5rem 2.75rem 4.75rem;
+    border: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .pr-card--featured {
+    padding: 2.5rem 2.25rem 2.5rem;
+    border-radius: 1.6rem;
+  }
+}
+
+/* ---- Card content ------------------------------------------------------- */
+.pr-badge {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.pr-price__row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-height: 3rem;
+  margin: 0;
+}
+.pr-price__amount {
+  display: inline-block;
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.pr-price__custom {
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+.pr-price__per {
+  font-size: 0.92rem;
+  color: #6e6c7a;
+}
+.pr-price__note {
+  margin: 0.3rem 0 0;
+  font-size: 0.76rem;
+  color: #8a8896;
+}
+.pr-card--featured .pr-price__per,
+.pr-card--featured .pr-price__note {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.pr-card__name {
+  margin: 1.35rem 0 0;
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.pr-card__desc {
+  margin: 0.5rem 0 0;
+  max-width: 19rem;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: #6e6c7a;
+}
+.pr-card--featured .pr-card__desc {
+  color: rgba(255, 255, 255, 0.8);
+}
+.pr-card__includes {
+  margin: 1.35rem 0 -0.4rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.pr-features {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: 0.7rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.pr-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: #3f3d4e;
+}
+.pr-card--featured .pr-features li {
+  color: rgba(255, 255, 255, 0.92);
+}
+.pr-check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.05rem;
+  border-radius: 50%;
+  background: #eeebff;
+  color: #1f06ac;
+}
+.pr-card--featured .pr-check {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.pr-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-height: 2.9rem;
+  margin-top: 2rem;
+  padding: 0 1.5rem;
+  border-radius: 999px;
+  background: #eeebff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1f06ac;
+  text-decoration: none;
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
+}
+.pr-btn:hover {
+  background: #1f06ac;
+  color: #fff;
+}
+.pr-btn:focus-visible {
+  outline: 2px solid #1f06ac;
+  outline-offset: 3px;
+}
+.pr-card--featured .pr-btn {
+  background: #fff;
+  color: #1f06ac;
+  box-shadow: 0 10px 22px -12px rgba(12, 10, 29, 0.55);
+}
+.pr-card--featured .pr-btn:hover {
+  background: #0c0a1d;
+  color: #fff;
+}
+.pr-card--featured .pr-btn:focus-visible {
+  outline-color: #fff;
+}
+@media (min-width: 1024px) {
+  /* As in the reference: the side plans' buttons size to their label. */
+  .pr-card:not(.pr-card--featured) .pr-btn {
+    align-self: flex-start;
+    min-width: 11rem;
+  }
+}
+
+/* ---- Footnote ----------------------------------------------------------- */
+.pr-foot {
+  margin-top: 2.75rem;
+  text-align: center;
+}
+.pr-foot__trial {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #0c0a1d;
+}
+.pr-foot__list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem 1.5rem;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: #6e6c7a;
+}
+.pr-foot__list li,
+.pr-foot__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.pr-foot__list svg {
+  color: #1f06ac;
+}
+.pr-foot__link {
+  font-weight: 600;
+  color: #1f06ac;
+  text-decoration: none;
+}
+.pr-foot__link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* Price change when switching billing period. */
+@media (prefers-reduced-motion: no-preference) {
+  .pr-price__amount {
+    animation: pr-price-in 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes pr-price-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pr-switch__thumb {
+    transition: none;
+  }
+}

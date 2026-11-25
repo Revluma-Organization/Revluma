@@ -126,7 +126,13 @@ describe("Landing hero", () => {
 
   it("contains none of the banned claims", () => {
     const { container } = render(<App />);
-    const text = [container.textContent ?? "", HERO.sources.label, ...HERO.sources.items].join(" ");
+    // Pricing is the one place money appears: the founder-approved plan prices
+    // (checked in pricing.test.tsx). Every other claim rule still applies to it.
+    const page = container.cloneNode(true) as HTMLElement;
+    const pricing = page.querySelector("#pricing");
+    const pricingText = (pricing?.textContent ?? "").replace(/\$\d+(\/year)?/g, "");
+    pricing?.remove();
+    const text = [page.textContent ?? "", pricingText, HERO.sources.label, ...HERO.sources.items].join(" ");
     for (const pattern of BANNED) {
       expect(text).not.toMatch(pattern);
     }

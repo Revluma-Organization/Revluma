@@ -5,6 +5,7 @@ import { HowItWorksSection } from "./components/how-it-works/HowItWorksSection";
 import { MeetRevSection } from "./components/meet-rev/MeetRevSection";
 import { FoundingSection } from "./components/founding/FoundingSection";
 import { FaqSection } from "./components/faq/FaqSection";
+import { PricingSection } from "./components/pricing/PricingSection";
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <MeetRevSection id="meet-rev" />
         <FoundingSection id="founding-merchants" />
         <FaqSection id="faq" />
+        <PricingSection id="pricing" />
       </main>
     </>
   );
