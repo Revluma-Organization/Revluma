@@ -93,6 +93,27 @@ export function confidenceTextFor(finding: Finding): string {
   return `${finding.confidence.classification.replaceAll("_", " ")} confidence`;
 }
 
+export function confidenceLabelFor(finding: Finding): string {
+  const text = finding.confidence.classification.replaceAll("_", " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * Evidence window derived from the finding's real reporting period dates,
+ * e.g. "7d window". Null when the period bounds are absent or invalid, in
+ * which case the card omits the window chip instead of inventing one.
+ */
+export function evidenceWindowLabelFor(finding: Finding): string | null {
+  const { current_start, current_end } = finding.reporting_period;
+  if (!current_start || !current_end) return null;
+  const start = new Date(current_start).getTime();
+  const end = new Date(current_end).getTime();
+  if (Number.isNaN(start) || Number.isNaN(end)) return null;
+  const days = Math.round((end - start) / 86_400_000);
+  if (!Number.isFinite(days) || days <= 0) return null;
+  return `${days}d window`;
+}
+
 export function periodLabelFor(finding: Finding): string {
   return `${finding.reporting_period.kind.replaceAll("_", " ")} · ${finding.reporting_period.timezone}`;
 }
