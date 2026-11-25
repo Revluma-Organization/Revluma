@@ -265,30 +265,43 @@ function PriorityCardSkeleton() {
         ))}
       </div>
 
-      <div className="space-y-3.5">
-        {Array.from({ length: 2 }, (_, idx) => (
-          <div
-            key={idx}
-            className="grid animate-pulse overflow-hidden rounded-2xl border border-[#E6E5EE] bg-white motion-reduce:animate-none lg:grid-cols-[minmax(0,1fr)_316px]"
-          >
-            <div className="space-y-3 p-5 sm:p-6">
-              <div className="flex items-center gap-2.5">
-                <div className="h-3.5 w-8 rounded bg-[#ECEBF3]" />
-                <div className="h-3.5 w-16 rounded bg-[#E3E1FA]" />
-                <div className="h-3.5 w-24 rounded bg-[#ECEBF3]" />
-              </div>
-              <div className="h-5 w-64 rounded bg-[#E3E1FA]" />
-              <div className="h-14 w-full rounded-xl bg-[#FAF9FC]" />
-              <div className="h-3.5 w-full max-w-lg rounded bg-[#EEF0F6]" />
-            </div>
-            <div className="border-t border-[#ECEBF3] bg-[#FAF9FC] p-5 sm:p-6 lg:border-l lg:border-t-0">
-              <div className="h-3 w-16 rounded bg-[#E3E1FA]" />
-              <div className="mt-3 h-4 w-48 rounded bg-[#E3E1FA]" />
-              <div className="mt-2 h-3.5 w-40 rounded bg-[#EEF0F6]" />
-              <div className="mt-6 h-10 w-full rounded-xl bg-[#E3E1FA]" />
-            </div>
+      <div className="space-y-4">
+        {/* Full-width Detected issues skeleton */}
+        <div className="animate-pulse overflow-hidden rounded-2xl border border-[#E6E5EE] bg-white motion-reduce:animate-none">
+          <div className="flex items-center justify-between gap-3 border-b border-[#EEF0F4] px-5 py-3.5">
+            <div className="h-4 w-32 rounded bg-[#E3E1FA]" />
+            <div className="h-3.5 w-16 rounded bg-[#EEF0F6]" />
           </div>
-        ))}
+          {Array.from({ length: 2 }, (_, idx) => (
+            <div key={idx} className="space-y-3 border-b border-[#F0F2F5] p-5 last:border-b-0">
+              <div className="flex items-center gap-2.5">
+                <div className="h-5 w-24 rounded-full bg-[#E3E1FA]" />
+                <div className="h-3.5 w-8 rounded bg-[#ECEBF3]" />
+              </div>
+              <div className="h-5 w-3/4 max-w-lg rounded bg-[#E3E1FA]" />
+              <div className="flex items-center justify-between gap-3">
+                <div className="h-3.5 w-48 rounded bg-[#EEF0F6]" />
+                <div className="h-2 w-24 rounded bg-[#EEF0F6]" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Recent signals skeleton below */}
+        <div className="animate-pulse overflow-hidden rounded-2xl border border-[#E6E5EE] bg-white motion-reduce:animate-none">
+          <div className="flex items-center justify-between gap-3 border-b border-[#EEF0F4] px-5 py-3.5">
+            <div className="h-4 w-28 rounded bg-[#E3E1FA]" />
+            <div className="h-3.5 w-20 rounded-full bg-[#EEF0F6]" />
+          </div>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }, (_, idx) => (
+              <div key={idx} className="border-b border-[#F0F2F5] px-5 py-3.5">
+                <div className="h-4 w-3/4 rounded bg-[#EEF0F6]" />
+                <div className="mt-2 h-3 w-1/2 rounded bg-[#F4F5FA]" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
       <span className="sr-only">Loading verified priority findings.</span>
     </div>
@@ -550,17 +563,10 @@ export function TopPrioritiesSection({
         </div>
       )}
 
-      {/* C. Populated State: Landing-inspired Detected issues + Recent signals dual panel */}
+      {/* C. Populated State: Full-width Detected issues with Recent signals below */}
       {eligibleCount > 0 ? (
-        <div
-          className={cn(
-            "grid items-start gap-4",
-            signalEvaluation && signalEvaluation.signals.length > 0
-              ? "lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]"
-              : "grid-cols-1",
-          )}
-        >
-          {/* Left Panel: Detected issues */}
+        <div className="space-y-4">
+          {/* Full-width Panel: Detected issues */}
           <div
             className="min-w-0 overflow-hidden rounded-2xl border border-[#E8ECF3] bg-white"
             style={{
@@ -637,7 +643,7 @@ export function TopPrioritiesSection({
             )}
           </div>
 
-          {/* Right Panel: Recent signals (exact Landing Command Center counterpart) */}
+          {/* Below Panel: Recent signals (full-width companion to Detected issues) */}
           {signalEvaluation && signalEvaluation.signals.length > 0 && (
             <RecentSignalsPanel evaluation={signalEvaluation} />
           )}
