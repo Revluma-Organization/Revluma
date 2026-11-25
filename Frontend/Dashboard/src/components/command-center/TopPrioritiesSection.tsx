@@ -272,19 +272,33 @@ function PriorityCardSkeleton() {
             <div className="h-4 w-32 rounded bg-[#E3E1FA]" />
             <div className="h-3.5 w-16 rounded bg-[#EEF0F6]" />
           </div>
-          {Array.from({ length: 2 }, (_, idx) => (
-            <div key={idx} className="space-y-3 border-b border-[#F0F2F5] p-5 last:border-b-0">
-              <div className="flex items-center gap-2.5">
-                <div className="h-5 w-24 rounded-full bg-[#E3E1FA]" />
-                <div className="h-3.5 w-8 rounded bg-[#ECEBF3]" />
+          <div className="space-y-3 bg-[#F7F8FF] px-3 py-3 sm:px-4">
+            {Array.from({ length: 2 }, (_, idx) => (
+              <div key={idx} className="space-y-3 rounded-[18px] border border-[#E8ECF3] bg-white p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-10 w-10 rounded-xl bg-[#E3E1FA]" />
+                    <div className="space-y-1.5">
+                      <div className="h-3.5 w-28 rounded bg-[#E3E1FA]" />
+                      <div className="h-3 w-40 rounded bg-[#EEF0F6]" />
+                    </div>
+                  </div>
+                  <div className="h-6 w-24 rounded-full bg-[#EEF0F6]" />
+                </div>
+                <div className="h-5 w-3/4 max-w-lg rounded bg-[#E3E1FA]" />
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="h-14 rounded-xl bg-[#F4F5FA]" />
+                  <div className="h-14 rounded-xl bg-[#F4F5FA]" />
+                  <div className="h-14 rounded-xl bg-[#F4F5FA]" />
+                </div>
+                <div className="h-16 rounded-xl bg-[#ECEBF3]" />
+                <div className="flex items-center justify-between gap-3">
+                  <div className="h-3.5 w-48 rounded bg-[#EEF0F6]" />
+                  <div className="h-9 w-40 rounded-xl bg-[#E3E1FA]" />
+                </div>
               </div>
-              <div className="h-5 w-3/4 max-w-lg rounded bg-[#E3E1FA]" />
-              <div className="flex items-center justify-between gap-3">
-                <div className="h-3.5 w-48 rounded bg-[#EEF0F6]" />
-                <div className="h-2 w-24 rounded bg-[#EEF0F6]" />
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         {/* Recent signals skeleton below */}
@@ -584,7 +598,13 @@ export function TopPrioritiesSection({
             </div>
 
             {visiblePrimary || visibleSecondary.length > 0 ? (
-              <div>
+              <div
+                className="space-y-3 px-3 py-3 sm:px-4 sm:py-4"
+                style={{
+                  background:
+                    "radial-gradient(720px 200px at 50% -80px, rgba(68, 56, 232, 0.05), transparent 70%), linear-gradient(180deg, #F7F8FF 0%, #FFFFFF 100%)",
+                }}
+              >
                 {visiblePrimary && (
                   <PriorityFindingCard
                     finding={visiblePrimary}
@@ -595,20 +615,24 @@ export function TopPrioritiesSection({
                 )}
 
                 {visibleSecondary.length > 0 && (
-                  <div className={cn(visiblePrimary && "border-t border-[#EEF0F4]")}>
-                    <div className="flex items-center justify-between gap-2 bg-[#FCFCFD] px-5 py-2">
-                      <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#98A2B3]">
-                        Other eligible findings
-                      </span>
-                      <span className="text-[11px] tabular-nums text-[#98A2B3]">
-                        {visibleSecondary.length}{" "}
-                        {visibleSecondary.length === 1 ? "item" : "items"}
-                      </span>
+                  <div className={cn(visiblePrimary && "pt-1")}>
+                    <div className="flex items-center gap-3 px-1 pb-2.5">
+                      <span className="h-px flex-1 bg-gradient-to-r from-transparent via-[#E2E4EC] to-transparent" aria-hidden="true" />
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#98A2B3]">
+                          Other eligible findings
+                        </span>
+                        <span className="rounded-full border border-[#E6E8F0] bg-white px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-[#667085]">
+                          {visibleSecondary.length}{" "}
+                          {visibleSecondary.length === 1 ? "item" : "items"}
+                        </span>
+                      </div>
+                      <span className="h-px flex-1 bg-gradient-to-r from-transparent via-[#E2E4EC] to-transparent" aria-hidden="true" />
                     </div>
 
                     <ol
                       aria-label="Other eligible priority findings"
-                      className="divide-y divide-[#F0F2F5] border-t border-[#F0F2F5]"
+                      className="space-y-3"
                     >
                       {visibleSecondary.map((finding, idx) => (
                         <li key={finding.id} className="min-w-0">

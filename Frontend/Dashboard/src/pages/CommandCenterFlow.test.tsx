@@ -36,7 +36,7 @@ describe("Task 219 route-level end-to-end intelligence handoffs", () => {
       throw new Error(`Unexpected request: ${url}`);
     });
     renderFlow();
-    fireEvent.click(await screen.findByRole("button", { name: "Investigate in Rev Intelligence" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Ask Rev about this" }));
     expect(await screen.findByText("Revenue fell")).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith("/rev/findings/finding-1");
     expect(document.body.textContent).not.toContain("must not be exposed");

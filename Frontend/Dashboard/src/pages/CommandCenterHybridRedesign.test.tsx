@@ -130,7 +130,7 @@ describe("Command Center — Premium Hybrid Redesign V1", () => {
     ).toBeInTheDocument();
 
     fireEvent.click(
-      within(prioritiesSection).getByRole("button", { name: /Investigate in Rev Intelligence/i }),
+      within(prioritiesSection).getByRole("button", { name: "Ask Rev about this" }),
     );
     expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=finding-1"));
   });

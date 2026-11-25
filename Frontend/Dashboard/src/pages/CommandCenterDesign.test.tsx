@@ -177,6 +177,7 @@ describe("Task 219 finding, activity and readiness governance", () => {
   });
   it("priority and confidence have separate explanations", () => {
     priority(ccPriorityFixture());
+    fireEvent.click(screen.getByText("Inspect evidence, provenance and uncertainty"));
     expect(screen.getByRole("heading", { name: "Why this is the priority" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Confidence" })).toBeInTheDocument();
   });
@@ -196,6 +197,7 @@ describe("Task 219 finding, activity and readiness governance", () => {
   });
   it("finding limitations remain adjacent to the conclusion", () => {
     priority(ccPriorityFixture());
+    fireEvent.click(screen.getByText("Inspect evidence, provenance and uncertainty"));
     expect(screen.getByRole("heading", { name: "Limits of this conclusion" })).toBeInTheDocument();
   });
   it("provenance is hidden behind a keyboard-native disclosure", () => {
@@ -207,7 +209,7 @@ describe("Task 219 finding, activity and readiness governance", () => {
   });
   it("Rev navigation preserves the exact finding route", () => {
     priority(ccPriorityFixture());
-    fireEvent.click(screen.getByRole("button", { name: /Investigate in Rev Intelligence/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask Rev about this" }));
     expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=finding-1"));
   });
   it("excluded stale findings remain historical, not current headings", () => {
