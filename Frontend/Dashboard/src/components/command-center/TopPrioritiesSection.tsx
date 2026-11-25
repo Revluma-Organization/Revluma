@@ -475,9 +475,25 @@ export function TopPrioritiesSection({
       aria-labelledby="priority-findings-heading"
       className="min-w-0 space-y-4"
     >
-      {/* A. Revluma Operational Intelligence Section Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
+      {/* A. Glass hero: section identity + live status pills */}
+      <div
+        className="relative flex min-w-0 flex-wrap items-start justify-between gap-3 overflow-hidden rounded-2xl border border-white/60 bg-white/70 px-5 py-5 backdrop-blur-xl sm:px-6"
+        style={{
+          background:
+            "radial-gradient(560px 200px at 12% -40px, rgba(68, 56, 232, 0.10), transparent 65%), radial-gradient(480px 180px at 88% -30px, rgba(20, 184, 166, 0.10), transparent 60%), linear-gradient(180deg, rgba(255,255,255,0.85) 0%, rgba(247,248,255,0.75) 100%)",
+          boxShadow:
+            "0 4px 24px -6px rgba(15, 23, 42, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.95)",
+        }}
+      >
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -left-16 -top-24 h-56 w-56 rounded-full bg-[#4438E8]/10 blur-3xl"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-12 -top-20 h-48 w-48 rounded-full bg-teal-400/10 blur-3xl"
+        />
+        <div className="relative flex min-w-0 items-start gap-3">
           <span
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#D8D7FA] bg-[#F0EDFF] text-[#4438E8]"
             aria-hidden="true"
@@ -497,7 +513,7 @@ export function TopPrioritiesSection({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex flex-wrap items-center gap-2">
           {refreshing && <StateBadge state="updating" />}
           {isStale && <StateBadge state="stale" />}
           {!isStale && isPartialCoverage && (
@@ -582,29 +598,25 @@ export function TopPrioritiesSection({
         <div className="space-y-4">
           {/* Full-width Panel: Detected issues */}
           <div
-            className="min-w-0 overflow-hidden rounded-2xl border border-[#E8ECF3] bg-white"
+            className="min-w-0 overflow-hidden rounded-2xl border border-white/60 bg-white/70 backdrop-blur-xl"
             style={{
+              background:
+                "radial-gradient(720px 220px at 50% -90px, rgba(68, 56, 232, 0.07), transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(247,248,255,0.8) 100%)",
               boxShadow:
-                "0 1px 2px rgba(12, 10, 29, 0.03), 0 12px 26px -22px rgba(12, 10, 29, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.96)",
+                "0 4px 24px -6px rgba(15, 23, 42, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.95)",
             }}
           >
-            <div className="flex items-center justify-between gap-2 border-b border-[#EEF0F4] px-5 py-3.5">
+            <div className="flex items-center justify-between gap-2 border-b border-white/60 bg-white/60 px-5 py-3.5 backdrop-blur-md">
               <span className="text-[13.5px] font-semibold tracking-[-0.01em] text-[#172033]">
                 Detected issues
               </span>
-              <span className="text-[12px] tabular-nums text-[#98A2B3]">
+              <span className="rounded-full border border-[#E2E4EC] bg-white/80 px-2.5 py-0.5 text-[12px] font-semibold tabular-nums text-[#475069]">
                 {(visiblePrimary ? 1 : 0) + visibleSecondary.length} open
               </span>
             </div>
 
             {visiblePrimary || visibleSecondary.length > 0 ? (
-              <div
-                className="space-y-3 px-3 py-3 sm:px-4 sm:py-4"
-                style={{
-                  background:
-                    "radial-gradient(720px 200px at 50% -80px, rgba(68, 56, 232, 0.05), transparent 70%), linear-gradient(180deg, #F7F8FF 0%, #FFFFFF 100%)",
-                }}
-              >
+              <div className="space-y-3 px-3 py-3 sm:px-4 sm:py-4">
                 {visiblePrimary && (
                   <PriorityFindingCard
                     finding={visiblePrimary}
@@ -649,7 +661,7 @@ export function TopPrioritiesSection({
                 )}
               </div>
             ) : (
-              <div className="p-6 text-center">
+              <div className="m-3 rounded-xl border border-white/60 bg-white/60 p-6 text-center backdrop-blur-md sm:m-4">
                 <p className="text-sm font-medium text-[#172033]">
                   No findings in this severity category.
                 </p>
