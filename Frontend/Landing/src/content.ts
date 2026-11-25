@@ -217,3 +217,109 @@ export const FOUNDING = {
     items: ["A Shopify store you actively run", "Time to share the challenges you face", "Honest feedback on what's useful and what isn't"],
   },
 } as const;
+
+// Section 11: FAQ. Answers describe the product as it is today, checked
+// against the code, not the roadmap:
+//  - Shopify only; OAuth requests read scopes only (Backend/src/utils/shopify.js
+//    buildInstallUrl); reauthorisation may only ever add read_* scopes.
+//  - Synced data: orders, refunds, customers, products, inventory, locations,
+//    abandoned checkouts, plus store policies and navigation. Storefront
+//    traffic is not collected (web pixel not implemented).
+//  - Rev's claim grades (python/src/intelligence/epistemics.py, rev-claim-v1):
+//    verified_fact, calculated_observation, hypothesis, unknown. Unknowns carry
+//    no value; a missing value is never treated as zero (evidence_quality).
+//  - Investigation runtime (python/src/agents/investigation.py): plan, run
+//    authorised read-only tools, validate evidence, separate facts from
+//    hypotheses; a failed tool degrades the answer instead of inventing one.
+//  - Access is early access, opened gradually via the Founding Merchants Program.
+export const FAQ = {
+  eyebrow: "FAQ",
+  headline: { lead: "Questions worth asking", accent: "before you join." },
+  description: "Straight answers about what Revluma is, what it can see in your store, and how Rev reaches its conclusions today.",
+  aside: {
+    title: "Still have a question?",
+    body: "Apply to the Founding Merchants Program and ask us directly. You'll talk with the people building Revluma.",
+  },
+  items: [
+    {
+      id: "what",
+      q: "What exactly is Revluma?",
+      a: [
+        "Revluma is store intelligence for Shopify. It reads your store's data, investigates potential revenue leaks, explains the evidence behind each one, and helps you decide what to address first.",
+        "Rev is how you work with it: ask a question about your store in plain language and Rev shows what happened, how it knows, and what to look at next.",
+      ],
+    },
+    {
+      id: "who",
+      q: "Who is Revluma built for?",
+      a: [
+        "Shopify merchants who want to understand what's affecting their store without digging through reports themselves: founders, operators and small teams who need to know where revenue may be slipping and what deserves attention first.",
+      ],
+    },
+    {
+      id: "shopify",
+      q: "Does Revluma work with Shopify?",
+      a: [
+        "Yes. Revluma is built for Shopify and works with Shopify stores only. You connect your store through Shopify's own authorization screen, which lists exactly what access is being requested before you approve it.",
+      ],
+    },
+    {
+      id: "data",
+      q: "What Shopify data can it access?",
+      a: [
+        "Only the data you authorize. Revluma reads the following, and doesn't request permission to edit any of it:",
+        "Your store's policies and navigation are read as well. Storefront traffic isn't collected today, and Rev tells you when that limits an answer.",
+      ],
+      data: ["Orders", "Refunds", "Customers", "Products", "Inventory", "Locations", "Abandoned checkouts"],
+    },
+    {
+      id: "changes",
+      q: "Does Revluma make changes to my store?",
+      a: [
+        "No. Revluma has read-only access. It analyzes your data and recommends next steps, but it doesn't edit products, prices, discounts or orders, and it doesn't contact your customers. Every change is your decision, made in Shopify.",
+      ],
+    },
+    {
+      id: "investigate",
+      q: "How does Rev investigate potential revenue leaks?",
+      a: [
+        "When you ask a question, Rev plans an investigation, retrieves the relevant evidence from your store records, checks its quality and runs the calculations.",
+        "It then explains what happened, cites the source and period behind each statement, sets out what might explain it, and recommends practical next steps, with what to watch to see whether things improve.",
+      ],
+    },
+    {
+      id: "facts",
+      q: "How does Revluma distinguish facts from assumptions?",
+      a: ["Every statement Rev makes is classified before you see it, and an answer that doesn't follow these rules is rejected rather than shown."],
+      grades: [
+        { label: "Verified fact", tone: "verified", body: "Taken directly from your store records." },
+        { label: "Calculated", tone: "verified", body: "Derived from those records, such as a rate or a change between periods." },
+        { label: "Hypothesis", tone: "partial", body: "A possible explanation the data doesn't confirm. Never presented as fact." },
+        { label: "Unknown", tone: "unknown", body: "Something the available data can't answer. Rev says so instead of guessing." },
+      ],
+    },
+    {
+      id: "unavailable",
+      q: "What happens when some data is unavailable?",
+      a: [
+        "Rev tells you. It shows which data was missing, partial or not yet synced and how that limits the answer, instead of filling the gap with an estimate. A missing value is never treated as zero.",
+        "If one source fails, Rev still answers from the evidence it has and marks what it couldn't check. Where authorizing more data would help, it points that out.",
+      ],
+    },
+    {
+      id: "availability",
+      q: "Is Revluma available to everyone yet?",
+      a: [
+        "Not yet. Revluma is in early access for Shopify merchants. We're opening it gradually, starting with the Founding Merchants Program, so we can work closely with each store and shape the product around what merchants actually need.",
+      ],
+    },
+    {
+      id: "founding",
+      q: "How can I become a founding merchant?",
+      a: [
+        "Apply through the Founding Merchants Program and tell us about your store and what's hard to understand today. We'll get in touch to learn about your challenges. Then you connect your store with read-only access and start using Revluma.",
+      ],
+      cta: true,
+    },
+  ],
+} as const;
