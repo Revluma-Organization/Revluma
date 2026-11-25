@@ -1,7 +1,7 @@
 /**
  * Embed build of the rebuilt landing sections for the current homepage
  * (Frontend/index.html): the nav + hero, the features section ("What
- * Revluma does"), how it works (three steps) and Meet Rev.
+ * Revluma does"), how it works (three steps), Meet Rev and the Founding Merchants Program.
  *
  * The homepage still runs on the Tailwind CDN with a dark global theme, so each
  * section renders inside its own shadow root on its host element: page styles
@@ -22,6 +22,7 @@ import { Navbar } from "./components/Navbar";
 import { FeaturesSection } from "./components/features/FeaturesSection";
 import { HowItWorksSection } from "./components/how-it-works/HowItWorksSection";
 import { MeetRevSection } from "./components/meet-rev/MeetRevSection";
+import { FoundingSection } from "./components/founding/FoundingSection";
 
 // Only sections that exist on the current homepage. "FAQ" returns once that
 // section is rebuilt. "Platform" leads to the features
@@ -52,6 +53,7 @@ export const SECTIONS: Record<string, () => ReactNode> = {
   platform: () => <FeaturesSection />,
   "how-it-works": () => <HowItWorksSection />,
   "meet-rev": () => <MeetRevSection />,
+  "founding-merchants": () => <FoundingSection />,
 };
 
 function mountSection(hostId: string, render: () => ReactNode) {
