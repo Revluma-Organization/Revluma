@@ -63,7 +63,7 @@ describe("Meet Rev (a mock of the Rev Intelligence chat)", () => {
 
     await reply(el, T.verify.followUp);
     expect(await within(log).findByText(T.interpret.lead, {}, wait)).toBeInTheDocument();
-    expect(within(log).getByText("Hypotheses — not verified")).toBeInTheDocument();
+    expect(within(log).getByText("Hypotheses (not verified)")).toBeInTheDocument();
     for (const h of T.interpret.hypotheses) expect(within(log).getByText(h)).toBeInTheDocument();
     for (const u of T.interpret.unknowns) expect(within(log).getByText(u)).toBeInTheDocument();
 

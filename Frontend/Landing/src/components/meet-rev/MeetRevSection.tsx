@@ -31,7 +31,7 @@ import revlumaIcon from "@/assets/revluma-icon.png";
  *
  * Same surfaces as the app: the dark workspace sidebar, the breadcrumb bar,
  * indigo user bubbles, Rev answers as plain text with the evidence pill,
- * "Facts" / "Hypotheses — not verified" / "Unknowns and limits" sections,
+ * "Facts" / "Hypotheses (not verified)" / "Unknowns and limits" sections,
  * citation markers, "Sources:", the "How I checked" disclosure,
  * "Recommended next steps", follow-up chips, the action row, the orb loader
  * with the investigation card, and the composer with its stop button.
@@ -322,7 +322,7 @@ function Answer({ id, onFollowUp }: { id: TurnId; onFollowUp?: () => void }) {
         <>
           <p className="mr-text">{t.interpret.lead}</p>
           <div className="mr-text">
-            <Section label="Hypotheses — not verified">
+            <Section label="Hypotheses (not verified)">
               {t.interpret.hypotheses.map((h) => (
                 <li key={h}>{h}</li>
               ))}

@@ -173,7 +173,7 @@ export const MEET_REV = {
         { label: "Review what changed on Wednesday", why: "Theme publishes, new apps and payment settings." },
         { label: "Connect your analytics", why: "So Rev can check mobile traffic too." },
       ],
-      note: "Recommendations only — nothing was changed or sent.",
+      note: "Recommendations only. Nothing was changed or sent.",
       followUp: "Start over",
     },
   },
