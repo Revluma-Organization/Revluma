@@ -77,7 +77,7 @@ describe("FAQ", () => {
   it("sits under the reviews on the homepage, with a fallback that matches the content", () => {
     const host = homepage.indexOf('<div id="faq"');
     expect(host).toBeGreaterThan(homepage.indexOf("<!-- ── Testimonials ── -->"));
-    expect(host).toBeLessThan(homepage.indexOf("<!-- ── Pricing Teaser ── -->"));
+    expect(host).toBeLessThan(homepage.indexOf('<div id="pricing"'));
     const fallback = decode(homepage.slice(host, homepage.indexOf("</div>\n    </div>", host)));
     for (const item of FAQ.items) {
       expect(fallback).toContain(item.q);

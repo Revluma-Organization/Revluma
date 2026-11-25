@@ -6,6 +6,7 @@
 @import "./components/meet-rev/meet-rev.css";
 @import "./components/founding/founding.css";
 @import "./components/faq/faq.css";
+@import "./components/pricing/pricing.css";
 @import "./motion.css";
 
 @tailwind base;

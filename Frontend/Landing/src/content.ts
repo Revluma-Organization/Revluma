@@ -323,3 +323,83 @@ export const FAQ = {
     },
   ],
 } as const;
+
+// Pricing: the plans, prices and feature lists exactly as approved by the
+// founder (2026-11-25). Yearly billing is 20% off the monthly price, rounded
+// down to the dollar ($29 -> $23, $79 -> $63). Starter and Premium start at
+// the real sign-up page; Starter and Premium include the backend's 7-day
+// trial, which starts without payment details (subscriptionController
+// startTrial). Enterprise goes to the team by email.
+export const PRICING = {
+  eyebrow: "Pricing",
+  headline: { lead: "Simple, transparent", accent: "pricing." },
+  description: "Every plan is read-only, built for Shopify and grounded in your store's evidence.",
+  billing: {
+    monthly: "Monthly",
+    yearly: "Yearly",
+    save: "Save 20%",
+    monthlyNote: "Billed monthly",
+  },
+  plans: [
+    {
+      id: "starter",
+      name: "Starter",
+      price: { monthly: 29, yearly: 23 },
+      description: "For merchants getting started with operational intelligence.",
+      features: [
+        "1 Shopify store",
+        "Core store intelligence",
+        "Automated signal monitoring",
+        "Ranked Top Priorities",
+        "Evidence and reasoning",
+        "Essential Rev Intelligence access",
+        "Basic historical findings",
+        "Standard support",
+      ],
+      cta: { label: "Start free trial", kind: "signup" },
+    },
+    {
+      id: "premium",
+      name: "Premium",
+      badge: "Recommended",
+      price: { monthly: 79, yearly: 63 },
+      description: "For growing merchants who want deeper intelligence.",
+      includes: "Everything in Starter, plus:",
+      features: [
+        "Deeper business investigations",
+        "Higher Rev Intelligence allowance",
+        "More extensive historical analysis",
+        "Advanced findings and prioritisation",
+        "More detailed evidence exploration",
+        "Advanced business performance insights",
+        "Priority support",
+      ],
+      cta: { label: "Start free trial", kind: "signup" },
+    },
+    {
+      id: "enterprise",
+      name: "Enterprise",
+      customPrice: "Custom pricing",
+      priceNote: "Tailored to your business",
+      description: "For established businesses with complex requirements.",
+      features: [
+        "Custom intelligence allowances",
+        "Multi-store capabilities",
+        "Multiple team members",
+        "Advanced access and permissions",
+        "Dedicated onboarding",
+        "Custom reporting requirements",
+        "Dedicated account support",
+        "Custom commercial agreements",
+      ],
+      cta: { label: "Contact our team", kind: "contact" },
+    },
+  ],
+  contactHref: "mailto:hello@revluma.com?subject=Revluma%20Enterprise",
+  trial: "Starter and Premium include a 7-day free trial. No credit card required.",
+  assurances: [
+    { id: "readonly", label: "Read-only Shopify access on every plan" },
+    { id: "usd", label: "Prices in US dollars" },
+  ],
+  faqLink: { label: "Questions? Read the FAQ", href: "#faq" },
+} as const;
