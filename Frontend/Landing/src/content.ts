@@ -178,3 +178,42 @@ export const MEET_REV = {
     },
   },
 } as const;
+
+// Founding Merchants Program: an honest early-access invitation. No number of
+// places is stated (capacity is not fixed), and nothing is promised that the
+// programme cannot deliver: early access, a direct line to the team, and a say
+// in what Revluma investigates. Revluma stays read-only.
+export const FOUNDING = {
+  eyebrow: "Founding Merchants Program",
+  headline: { lead: "Help shape the next generation", accent: "of store intelligence." },
+  description:
+    "We're inviting a select group of Shopify merchants to experience Revluma early, share their operational challenges, and help shape a more useful way to understand their businesses.",
+  cta: "Apply to Become a Founding Merchant",
+  ctaNote: "For Shopify merchants. After you apply, we'll get in touch about next steps.",
+  steps: [
+    { title: "Apply", body: "Tell us about your store and what's hard to understand today." },
+    { title: "Talk with us", body: "We'll reach out to learn about the operational challenges you face." },
+    { title: "Get early access", body: "Connect your Shopify store with read-only access and start using Revluma." },
+  ],
+  pass: {
+    label: "Founding Merchant",
+    program: "Early access invitation",
+    fields: [
+      { label: "Store", value: "your-store.myshopify.com" },
+      { label: "Access", value: "Read-only" },
+      { label: "Status", value: "Applications open" },
+    ],
+  },
+  offer: {
+    title: "What founding merchants get",
+    items: [
+      { id: "access", title: "Early access", body: "Use Revluma before it's publicly available." },
+      { id: "team", title: "A direct line to the team", body: "Talk with the people building Revluma, not a ticket queue." },
+      { id: "shape", title: "A say in what we build", body: "Your challenges shape what Revluma investigates and explains." },
+    ],
+  },
+  ask: {
+    title: "What we ask",
+    items: ["A Shopify store you actively run", "Time to share the challenges you face", "Honest feedback on what's useful and what isn't"],
+  },
+} as const;

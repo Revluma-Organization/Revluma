@@ -1,0 +1,390 @@
+/* Founding Merchants Program (FoundingSection.tsx). Light canvas, Revluma
+ * indigo for emphasis, the hero's dark pill CTA, and one membership card with
+ * an indigo pass on top. Static styles first; motion is in the reduced-motion
+ * block at the end. */
+
+.fm-section {
+  background: linear-gradient(180deg, #fbfaf8 0%, #f3f2ef 100%);
+  border-top: 1px solid #eeece7;
+}
+
+/* ---- Copy ------------------------------------------------------------------ */
+.fm-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.3rem 0.85rem 0.3rem 0.3rem;
+  border: 1px solid rgba(31, 6, 172, 0.16);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1f06ac;
+}
+.fm-eyebrow__icon {
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: #1f06ac;
+  color: #fff;
+}
+
+/* The hero's CTA treatment, at a size for a section's single action. */
+.fm-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  max-width: 100%;
+  min-height: 3rem;
+  padding: 0.3rem 0.3rem 0.3rem 1.35rem;
+  border-radius: 999px;
+  background: #0c0a1d;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #fff;
+  text-decoration: none;
+  box-shadow: 0 14px 30px -16px rgba(12, 10, 29, 0.6);
+  transition:
+    background-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+.fm-cta:hover {
+  background: #1f06ac;
+  box-shadow: 0 16px 34px -16px rgba(31, 6, 172, 0.7);
+}
+.fm-cta:focus-visible {
+  outline: 2px solid #1f06ac;
+  outline-offset: 3px;
+}
+.fm-cta__arrow {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  overflow: hidden;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  transition: background-color 0.3s;
+}
+.fm-cta:hover .fm-cta__arrow {
+  background: rgba(255, 255, 255, 0.25);
+}
+.fm-cta__a1,
+.fm-cta__a2 {
+  transition: transform 0.3s ease-out;
+}
+.fm-cta__a2 {
+  position: absolute;
+  transform: translate(-180%, 180%);
+}
+.fm-cta:hover .fm-cta__a1 {
+  transform: translate(180%, -180%);
+}
+.fm-cta:hover .fm-cta__a2 {
+  transform: translate(0, 0);
+}
+
+/* How it works: three numbered steps on a hairline rail. */
+.fm-steps {
+  display: grid;
+  gap: 1rem;
+  margin: 2.25rem 0 0;
+  padding: 1.5rem 0 0;
+  border-top: 1px solid #e8e6e1;
+  list-style: none;
+}
+@media (min-width: 640px) {
+  .fm-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.25rem;
+  }
+}
+.fm-step {
+  display: flex;
+  gap: 0.75rem;
+}
+@media (min-width: 640px) {
+  .fm-step {
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+}
+.fm-step__n {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(31, 6, 172, 0.18);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  color: #1f06ac;
+}
+.fm-step__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #0c0a1d;
+}
+.fm-step__body {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #6e6c7a;
+}
+
+/* ---- Membership card ------------------------------------------------------- */
+.fm-stage {
+  position: relative;
+  width: 100%;
+  max-width: 30rem;
+  margin: 0 auto;
+}
+/* A soft indigo halo so the card lifts off the canvas. */
+.fm-stage::before {
+  content: "";
+  position: absolute;
+  inset: 8% -6% -4%;
+  z-index: 0;
+  border-radius: 40px;
+  background: radial-gradient(closest-side, rgba(91, 70, 255, 0.18), transparent);
+  filter: blur(10px);
+}
+.fm-card {
+  position: relative;
+  z-index: 1;
+  padding: 0.6rem;
+  border: 1px solid #e8e6e1;
+  border-radius: 26px;
+  background: #fff;
+  box-shadow:
+    0 1px 2px rgba(12, 10, 29, 0.05),
+    0 30px 60px -32px rgba(12, 10, 29, 0.35);
+}
+
+.fm-pass {
+  container: fm-pass / inline-size;
+  position: relative;
+  overflow: hidden;
+  padding: 1.15rem 1.25rem 1.2rem;
+  border-radius: 20px;
+  background:
+    radial-gradient(22rem 12rem at 100% 0%, rgba(139, 120, 255, 0.45), transparent 65%),
+    radial-gradient(16rem 10rem at 0% 100%, rgba(43, 19, 207, 0.6), transparent 70%), linear-gradient(135deg, #1f06ac 0%, #17057f 100%);
+  color: #fff;
+}
+/* Fine grid, as on the features stage, fading toward the edges. */
+.fm-pass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: linear-gradient(115deg, transparent 20%, #000 75%);
+  mask-image: linear-gradient(115deg, transparent 20%, #000 75%);
+  pointer-events: none;
+}
+.fm-pass > * {
+  position: relative;
+}
+.fm-pass__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.fm-pass__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.fm-pass__brand img {
+  padding: 2px;
+  border-radius: 7px;
+  background: #fff;
+}
+.fm-pass__orb {
+  display: block;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.25),
+    0 0 18px 2px rgba(79, 168, 255, 0.45);
+}
+.fm-pass__orb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fm-pass__label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 1.6rem 0 0;
+  font-family: theme("fontFamily.headline");
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+.fm-pass__label svg {
+  color: #b4a8ff;
+}
+.fm-pass__program {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+.fm-pass__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.8fr) minmax(0, 1.15fr);
+  gap: 0.75rem;
+  margin: 1.25rem 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px dashed rgba(255, 255, 255, 0.22);
+}
+.fm-pass__fields div {
+  min-width: 0;
+}
+.fm-pass__k {
+  display: block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.fm-pass__v {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.2rem 0 0;
+  overflow: hidden;
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.fm-pass__v i {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #32d583;
+  box-shadow: 0 0 0 3px rgba(50, 213, 131, 0.2);
+}
+/* Narrow passes: the store gets its own row so nothing is cut off. */
+@container fm-pass (max-width: 439px) {
+  .fm-pass__fields {
+    grid-template-columns: 1fr 1fr;
+  }
+  .fm-pass__fields div:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.fm-card__body {
+  padding: 1.25rem 0.9rem 0.85rem;
+}
+.fm-card__title {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6e6c7a;
+}
+.fm-card__title--ask {
+  margin-top: 1.25rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid #efede8;
+}
+.fm-offer {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0.85rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.fm-offer li {
+  display: flex;
+  gap: 0.8rem;
+}
+.fm-offer__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 11px;
+  background: #eeebff;
+  color: #1f06ac;
+}
+.fm-offer__title {
+  margin: 0.05rem 0 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #0c0a1d;
+}
+.fm-offer__body {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #6e6c7a;
+}
+.fm-ask {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.fm-ask li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #3f3d4e;
+}
+.fm-ask svg {
+  flex: none;
+  margin-top: 2px;
+  color: #1f06ac;
+}
+
+/* ---- Motion ---------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  .fm-card {
+    opacity: 0;
+    translate: 0 28px;
+    transition:
+      opacity 0.9s cubic-bezier(0.25, 1, 0.5, 1) 0.15s,
+      translate 1.1s cubic-bezier(0.16, 1, 0.3, 1) 0.15s;
+  }
+  .is-in .fm-card {
+    opacity: 1;
+    translate: 0 0;
+  }
+  .fm-pass {
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .fm-card:hover .fm-pass {
+    transform: translateY(-2px);
+  }
+}

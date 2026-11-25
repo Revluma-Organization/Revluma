@@ -4,6 +4,7 @@
 @import "./components/features/features.css";
 @import "./components/how-it-works/how-it-works.css";
 @import "./components/meet-rev/meet-rev.css";
+@import "./components/founding/founding.css";
 @import "./motion.css";
 
 @tailwind base;
