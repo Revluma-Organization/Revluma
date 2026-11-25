@@ -408,7 +408,7 @@
             align-items: center;
         }
 
-        /* Laptop wrapper — positions the image + video together */
+        /* Laptop wrapper: positions the image + video together */
         .laptop-container {
             position: relative;
             width: 85vw;
@@ -447,7 +447,7 @@
             gap: 0;
         }
 
-        /* Promo items — no borders, no boxes */
+        /* Promo items: no borders, no boxes */
         .promo-item {
             padding: 1.6rem 0 0.8rem;
             border: none;
@@ -952,7 +952,7 @@
             this.waitlistId = result?.data?.id || null;
             this.position = result?.data?.waitlist_position || '';
             // Real, persisted referral code generated and stored by the
-            // backend — this is what actually gets credited when someone
+            // backend; this is what actually gets credited when someone
             // else signs up using it, so it must come from the server, not
             // be faked up client-side.
             this.referralCode = result?.data?.referral_code || '';
@@ -1093,7 +1093,7 @@
                                  <div class="h-[3px] flex-1 rounded-full transition-colors duration-300" :class="step >= 2 ? 'bg-white' : 'bg-white/10'"></div>
                              </div>
 
-                             <!-- ───────────────────────── STEP 1 — secure my spot ───────────────────────── -->
+                             <!-- ───────────────────────── STEP 1: secure my spot ───────────────────────── -->
                              <form x-ref="step1Form" x-show="step === 1" method="POST" @input="isValid = $el.checkValidity()" @change="isValid = $el.checkValidity()" x-init="isValid = $el.checkValidity()" @submit.prevent="submitStep1($event)" class="space-y-5">
                                  <div style="position:absolute; left:-9999px; top:-9999px;" aria-hidden="true">
                                    <label for="hp_field">Leave this unchecked</label>
@@ -1185,7 +1185,7 @@
                                 <p class="text-center text-[13px] text-zinc-200 pt-1">Takes 30 seconds to complete.</p>
                                 </form>
 
-                             <!-- STEP 2 — secured + optional extra info -->
+                             <!-- STEP 2: secured + optional extra info -->
                              <div x-show="step === 2" x-cloak
                                   x-transition:enter="transition ease-out duration-400"
                                   x-transition:enter-start="opacity-0 translate-y-3"
@@ -1213,7 +1213,7 @@
                                  <!-- Optional "tell us more" -->
                                  <template x-if="!detailsDone">
                                    <div>
-                                     <p class="text-sm text-zinc-400 mb-6 -mt-2">A few optional details help us prioritize early access — takes about a minute, skip anytime.</p>
+                                     <p class="text-sm text-zinc-400 mb-6 -mt-2">A few optional details help us prioritize early access. It takes about a minute, and you can skip anytime.</p>
 
                                      <form x-ref="step2Form" @submit.prevent="submitStep2($event)" class="space-y-7">
 
@@ -1514,9 +1514,9 @@
     <div id="how-it-works" class="revluma-section" data-pending>
         <h2 style="position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">From raw store data to clear business intelligence.</h2>
         <ol style="position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">
-            <li>01 — Connect your store: bring your Shopify data into Revluma.</li>
-            <li>02 — Revluma analyzes your business: discover what's happening beneath the surface.</li>
-            <li>03 — Understand what matters. Know what to do next: turn business intelligence into informed decisions.</li>
+            <li>01. Connect your store: bring your Shopify data into Revluma.</li>
+            <li>02. Revluma analyzes your business: discover what's happening beneath the surface.</li>
+            <li>03. Understand what matters. Know what to do next: turn business intelligence into informed decisions.</li>
         </ol>
     </div>
 
@@ -1814,7 +1814,7 @@
         }
         promoItems.forEach(item => promoObserver.observe(item));
 
-        // Safety fallback — if laptop never becomes visible within 1.5s, force it
+        // Safety fallback: if laptop never becomes visible within 1.5s, force it
         setTimeout(() => {
             if (laptop && !laptop.classList.contains('laptop-visible')) {
                 laptop.classList.add('laptop-visible');
