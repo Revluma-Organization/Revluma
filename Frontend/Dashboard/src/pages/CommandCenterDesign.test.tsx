@@ -177,9 +177,10 @@ describe("Task 219 finding, activity and readiness governance", () => {
   });
   it("priority and confidence have separate explanations", () => {
     priority(ccPriorityFixture());
-    fireEvent.click(screen.getByText("Inspect evidence, provenance and uncertainty"));
-    expect(screen.getByRole("heading", { name: "Why this is the priority" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Confidence" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
+    const drawer = within(screen.getByRole("dialog"));
+    expect(drawer.getByRole("heading", { name: "Why this is the priority" })).toBeInTheDocument();
+    expect(drawer.getByRole("heading", { name: "Confidence" })).toBeInTheDocument();
   });
   it("no numerical confidence or priority score is shown", () => {
     priority(ccPriorityFixture());
@@ -188,23 +189,28 @@ describe("Task 219 finding, activity and readiness governance", () => {
   it("supporting evidence preserves currency and period", () => {
     priority(ccPriorityFixture());
     expect(screen.getByText("$650.00")).toBeInTheDocument();
-    expect(screen.getByText(/equal length utc windows · UTC/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
+    const drawer = within(screen.getByRole("dialog"));
+    expect(drawer.getByText("$650.00")).toBeInTheDocument();
+    expect(drawer.getByText(/equal length utc windows · UTC/)).toBeInTheDocument();
   });
   it("recommendation is read-only and merchant executable", () => {
     priority(ccPriorityFixture());
+    expect(screen.queryByText(/merchant action, not executed by Revluma/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(screen.getByText(/merchant action, not executed by Revluma/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /execute|apply|launch/i })).not.toBeInTheDocument();
   });
   it("finding limitations remain adjacent to the conclusion", () => {
     priority(ccPriorityFixture());
-    fireEvent.click(screen.getByText("Inspect evidence, provenance and uncertainty"));
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(screen.getByRole("heading", { name: "Limits of this conclusion" })).toBeInTheDocument();
   });
-  it("provenance is hidden behind a keyboard-native disclosure", () => {
+  it("provenance is hidden behind the full-details drawer", () => {
     priority(ccPriorityFixture());
-    const summary = screen.getByText("Inspect evidence, provenance and uncertainty");
-    expect(summary.tagName).toBe("SUMMARY");
-    fireEvent.click(summary);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("finding-1")).toBeInTheDocument();
   });
   it("Rev navigation preserves the exact finding route", () => {

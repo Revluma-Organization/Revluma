@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import axe from "axe-core";
 import { PriorityFindingCard } from "./PriorityFindingCard";
 import { ccFinding } from "@/test/commandCenterFixtures";
@@ -20,7 +20,12 @@ function primaryFinding(extra: Record<string, unknown> = {}): Finding {
   }) as Finding;
 }
 
-describe("PriorityFindingCard: Premium Hybrid Intelligence Card", () => {
+function openDrawer() {
+  fireEvent.click(screen.getByRole("button", { name: "View full details" }));
+  return screen.getByRole("dialog");
+}
+
+describe("PriorityFindingCard: minimal card with full-details drawer", () => {
   it("renders the severity identity, rank, category, verification state, and detection time", () => {
     render(
       <PriorityFindingCard
@@ -66,7 +71,7 @@ describe("PriorityFindingCard: Premium Hybrid Intelligence Card", () => {
     expect(screen.getByLabelText("Impact level 1 of 3")).toBeInTheDocument();
   });
 
-  it("keeps the title focal with the factual description and compact evidence tiles", () => {
+  it("keeps the card minimal: verbatim title, description, primary impact, and actions only", () => {
     render(
       <PriorityFindingCard
         finding={primaryFinding()}
@@ -82,11 +87,17 @@ describe("PriorityFindingCard: Premium Hybrid Intelligence Card", () => {
     expect(
       screen.getByText("Verified checkout completion fell across the current comparison window."),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Key supporting evidence")).toBeInTheDocument();
     expect(screen.getByText("$650.00")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View full details" })).toBeInTheDocument();
+
+    // Full detail stays behind the drawer until requested.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recommended next step")).not.toBeInTheDocument();
+    expect(screen.queryByText("Why this is the priority")).not.toBeInTheDocument();
+    expect(screen.queryByText("Evidence and provenance")).not.toBeInTheDocument();
   });
 
-  it("shows the recommended next step in a distinct band with the read-only note", () => {
+  it("opens a side drawer with the full evidence, recommendation, and provenance", () => {
     render(
       <PriorityFindingCard
         finding={primaryFinding()}
@@ -96,11 +107,41 @@ describe("PriorityFindingCard: Premium Hybrid Intelligence Card", () => {
       />,
     );
 
-    expect(screen.getByText("Recommended next step")).toBeInTheDocument();
+    const dialog = openDrawer();
+    const drawer = within(dialog);
+    expect(drawer.getByRole("heading", { name: "Checkout conversion dropped sharply" })).toBeInTheDocument();
+    expect(drawer.getByLabelText("Key supporting evidence")).toBeInTheDocument();
+    expect(drawer.getByText("$650.00")).toBeInTheDocument();
+    expect(drawer.getByText("Recommended next step")).toBeInTheDocument();
     expect(
-      screen.getByText("Compare order count and average order value for both periods."),
+      drawer.getByText("Compare order count and average order value for both periods."),
     ).toBeInTheDocument();
-    expect(screen.getByText(/merchant action, not executed by Revluma/)).toBeInTheDocument();
+    expect(drawer.getByText(/merchant action, not executed by Revluma/)).toBeInTheDocument();
+    expect(drawer.getByRole("heading", { name: "Why this is the priority" })).toBeInTheDocument();
+    expect(drawer.getByRole("heading", { name: "Confidence" })).toBeInTheDocument();
+    expect(drawer.getByRole("heading", { name: "Limits of this conclusion" })).toBeInTheDocument();
+    expect(drawer.getByText("finding-1")).toBeInTheDocument();
+  });
+
+  it("closes the drawer from the close control and the Escape key", () => {
+    render(
+      <PriorityFindingCard
+        finding={primaryFinding()}
+        rank={1}
+        isPrimary
+        onInvestigate={() => {}}
+      />,
+    );
+
+    openDrawer();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    openDrawer();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("opens Rev Intelligence with the exact finding route from the Ask Rev action", () => {
@@ -115,6 +156,23 @@ describe("PriorityFindingCard: Premium Hybrid Intelligence Card", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Ask Rev about this" }));
+    expect(onInvestigate).toHaveBeenCalledTimes(1);
+    expect(onInvestigate).toHaveBeenCalledWith("/dashboard/rev-intell?finding=finding-1");
+  });
+
+  it("investigates from the drawer footer with the exact finding route", () => {
+    const onInvestigate = vi.fn();
+    render(
+      <PriorityFindingCard
+        finding={primaryFinding()}
+        rank={1}
+        isPrimary
+        onInvestigate={onInvestigate}
+      />,
+    );
+
+    const dialog = openDrawer();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Ask Rev about this finding" }));
     expect(onInvestigate).toHaveBeenCalledTimes(1);
     expect(onInvestigate).toHaveBeenCalledWith("/dashboard/rev-intell?finding=finding-1");
   });
@@ -147,7 +205,7 @@ describe("PriorityFindingCard: Premium Hybrid Intelligence Card", () => {
     expect(screen.getByRole("button", { name: "Investigate" })).toBeInTheDocument();
   });
 
-  it("navigates on card body click but not on disclosure or button interaction", () => {
+  it("navigates on card body click but not on button interaction", () => {
     const onInvestigate = vi.fn();
     render(
       <PriorityFindingCard
@@ -161,31 +219,9 @@ describe("PriorityFindingCard: Premium Hybrid Intelligence Card", () => {
     fireEvent.click(screen.getByText("Checkout conversion dropped sharply"));
     expect(onInvestigate).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByText("Inspect evidence, provenance and uncertainty"));
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(onInvestigate).toHaveBeenCalledTimes(1);
-  });
-
-  it("expands and collapses the evidence disclosure with native semantics", () => {
-    render(
-      <PriorityFindingCard
-        finding={primaryFinding()}
-        rank={1}
-        isPrimary
-        onInvestigate={() => {}}
-      />,
-    );
-
-    const summary = screen.getByText("Inspect evidence, provenance and uncertainty");
-    expect(summary.tagName).toBe("SUMMARY");
-    const details = summary.closest("details");
-    expect(details?.hasAttribute("open")).toBe(false);
-
-    fireEvent.click(summary);
-    expect(details?.hasAttribute("open")).toBe(true);
-    expect(screen.getByText("finding-1")).toBeInTheDocument();
-
-    fireEvent.click(summary);
-    expect(details?.hasAttribute("open")).toBe(false);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("passes axe-core checks for primary and secondary severities", async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { api } from "@/lib/api";
 import Overview from "./Overview";
@@ -190,28 +190,35 @@ describe("Task 217 priority finding evidence and next step", () => {
     await renderPage(priorityFixture());
     expect(screen.getByRole("heading", { name: "Net sales declined" })).toBeInTheDocument();
     expect(screen.getByText("$650.00")).toBeInTheDocument();
-    expect(screen.getByText("$1,000.00")).toBeInTheDocument();
-    expect(screen.getByText(/equal length utc windows · UTC/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
+    const drawer = within(screen.getByRole("dialog"));
+    expect(drawer.getByText("$650.00")).toBeInTheDocument();
+    expect(drawer.getByText("$1,000.00")).toBeInTheDocument();
+    expect(drawer.getByText(/equal length utc windows · UTC/)).toBeInTheDocument();
   });
   it("explains priority separately from confidence", async () => {
     await renderPage(priorityFixture());
-    fireEvent.click(screen.getByText("Inspect evidence, provenance and uncertainty"));
-    expect(screen.getByRole("heading", { name: "Why this is the priority" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Confidence" })).toBeInTheDocument();
-    expect(screen.getByText("high confidence")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
+    const drawer = within(screen.getByRole("dialog"));
+    expect(drawer.getByRole("heading", { name: "Why this is the priority" })).toBeInTheDocument();
+    expect(drawer.getByRole("heading", { name: "Confidence" })).toBeInTheDocument();
+    expect(drawer.getByText("high confidence")).toBeInTheDocument();
     expect(screen.queryByText(/confidence \d+%/i)).not.toBeInTheDocument();
   });
   it("provides a concrete merchant-executable next step and expected result", async () => {
     await renderPage(priorityFixture());
+    expect(screen.queryByText(/Compare order count and average order value/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(screen.getByText(/Compare order count and average order value/)).toBeInTheDocument();
     expect(screen.getByText(/Identify whether the change is concentrated/)).toBeInTheDocument();
     expect(screen.getByText(/merchant action, not executed by Revluma/)).toBeInTheDocument();
   });
-  it("uses progressive disclosure for provenance, lifecycle and unknowns", async () => {
+  it("uses the full-details drawer for provenance, lifecycle and unknowns", async () => {
     await renderPage(priorityFixture());
-    const disclosure = screen.getByText("Inspect evidence, provenance and uncertainty");
-    expect(disclosure.tagName).toBe("SUMMARY");
-    fireEvent.click(disclosure);
+    const trigger = screen.getByRole("button", { name: "View full details" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("coverage-run-1")).toBeInTheDocument();
     expect(screen.getByText(/current evidence verified/)).toBeInTheDocument();
     expect(screen.getAllByText(/underlying cause is not established/i).length).toBeGreaterThan(0);
@@ -237,11 +244,13 @@ describe("Task 217 priority finding evidence and next step", () => {
   it("refund deterioration recommends affected orders, products and reasons", async () => {
     await renderPage(priorityFixture({ title: "Refund value increased 100%", type: "refund_increase",
       recommendation: { available: true, step: "Review refund transactions. Compare affected orders, products and recorded refund reasons.", rationale: "The cause is not established.", expected_result: "Identify concentration in a product or issue.", validation_method: "Repeat with the same currency.", prerequisites: [], read_only: true, executed: false } }));
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(screen.getByText(/affected orders, products and recorded refund reasons/)).toBeInTheDocument();
     expect(screen.queryByText(/recoverable revenue|guaranteed recovery/i)).not.toBeInTheDocument();
   });
   it("inventory history limitation remains attached to the relevant claim", async () => {
     await renderPage(priorityFixture({ limitations: ["Inventory history is unavailable; no stockout history is asserted."] }));
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(screen.getByText(/no stockout history is asserted/)).toBeInTheDocument();
   });
   it("stale or failed evidence does not appear as a current top priority", async () => {
@@ -258,28 +267,34 @@ describe("Task 217 priority finding evidence and next step", () => {
   it("explains deterministic ties without implying greater impact", async () => {
     const tied = finding({ priority: { method_version: "finding-priority-v1", classification: "high", rationale: ["Recorded severity: high."], tie: { finding_ids: ["finding-1", "finding-2"], statement: "Equal severity, freshness, confidence and coverage. Stable ID order does not imply greater impact." } } });
     await renderPage(priorityFixture(tied));
+    expect(screen.getByText("Tiebreak applied")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(screen.getByText(/Stable ID order does not imply greater impact/)).toBeInTheDocument();
   });
   it("retains duplicate provenance without duplicate priority cards", async () => {
     const duplicate = finding({ evidence: { ...finding().evidence, duplicate_finding_ids: ["old-finding"] } });
     await renderPage(priorityFixture(duplicate));
-    fireEvent.click(screen.getByText("Inspect evidence, provenance and uncertainty"));
+    const card = document.querySelector("article[data-priority-primary='true']") as HTMLElement;
+    expect(within(card).getAllByRole("heading", { name: "Net sales declined" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(screen.getByText(/Deduplicated records retained: old-finding/)).toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { name: "Net sales declined" })).toHaveLength(1);
   });
   it("invalidated context carries prerequisites, not a current action", async () => {
     await renderPage(priorityFixture({ lifecycle: { state: "invalidated", current_validity: "historical_invalidated", invalidated: true }, recommendation: { available: false, step: null, rationale: null, expected_result: null, validation_method: null, prerequisites: ["Restore fresh, verified source evidence before treating this as current."], read_only: true, executed: false } }));
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(screen.getByText(/Restore fresh, verified source evidence/)).toBeInTheDocument();
   });
   it("priority evidence remains keyboard accessible and responsive without raw tables", async () => {
     await renderPage(priorityFixture());
     expect(document.querySelectorAll("table")).toHaveLength(0);
-    expect(screen.getByText("Inspect evidence, provenance and uncertainty").tagName).toBe("SUMMARY");
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(document.querySelector("[data-command-center]")?.className).toContain("overflow-x-clip");
   });
   it("does not expose an invented numerical priority or confidence score", async () => {
     await renderPage(priorityFixture());
     expect(screen.queryByText(/priority score|confidence score|\d+% confident/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(screen.getByText(/finding-priority-v1/)).toBeInTheDocument();
   });
 });
