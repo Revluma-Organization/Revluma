@@ -40,6 +40,10 @@ describe("Homepage hero embed", () => {
     expect(homepage).not.toMatch(/Why Revluma|The Honest Comparison|Why Smart Stores Choose Revluma|Typical\s+Tools|<table/);
   });
 
+  it("has no trust & security section (unverifiable SOC 2, GDPR, uptime and support claims)", () => {
+    expect(homepage).not.toMatch(/Enterprise-grade\. Startup-friendly|SOC 2 Ready|GDPR Compliant|99\.9% Uptime|24\/7 Support/);
+  });
+
   it("is wired into the homepage and the removed hero pieces are gone", () => {
     expect(homepage).toContain('<div id="revluma-hero"');
     expect(homepage).toContain('src="/landing-hero/hero.js"');
