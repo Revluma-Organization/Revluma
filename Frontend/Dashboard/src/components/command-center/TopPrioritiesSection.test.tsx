@@ -372,6 +372,15 @@ describe("TopPrioritiesSection — Premium Hybrid Redesign", () => {
     expect(screen.getByText("Recent signals")).toBeInTheDocument();
     expect(screen.getByText("5/6 signals evaluated")).toBeInTheDocument();
     expect(screen.getByText("Failed")).toBeInTheDocument();
+
+    // Detected issues spans full width with Recent signals stacked below it
+    const issuesLabel = screen.getByText("Detected issues");
+    const signalsLabel = screen.getByText("Recent signals");
+    expect(
+      Boolean(
+        issuesLabel.compareDocumentPosition(signalsLabel) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
   });
 
   it("passes automated axe-core accessibility checks across populated, empty, incomplete, loading, and error states", async () => {

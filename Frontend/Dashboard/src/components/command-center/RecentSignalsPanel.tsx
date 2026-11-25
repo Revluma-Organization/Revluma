@@ -105,8 +105,8 @@ export function RecentSignalsPanel({ evaluation }: RecentSignalsPanelProps) {
         </span>
       </header>
 
-      {/* Clean signal rows */}
-      <ul className="divide-y divide-[#F0F2F5]">
+      {/* Clean signal rows (responsive grid for the full-width below layout) */}
+      <ul className="grid gap-px bg-[#F0F2F5] sm:grid-cols-2 xl:grid-cols-3">
         {evaluation.signals.map((signal, idx) => {
           const visual = signalVisual(signal);
           return (
@@ -119,7 +119,7 @@ export function RecentSignalsPanel({ evaluation }: RecentSignalsPanelProps) {
                 delay: reducedMotion ? 0 : 0.08 + idx * 0.045,
                 ease: EASE_OUT_EXPO,
               }}
-              className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-start gap-3 px-5 py-3.5 transition-colors hover:bg-[#FAFBFD]"
+              className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-start gap-3 bg-white px-5 py-3.5 transition-colors hover:bg-[#FAFBFD]"
             >
               <span
                 aria-hidden="true"
