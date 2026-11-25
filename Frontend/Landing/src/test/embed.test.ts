@@ -44,6 +44,11 @@ describe("Homepage hero embed", () => {
     expect(homepage).not.toMatch(/Enterprise-grade\. Startup-friendly|SOC 2 Ready|GDPR Compliant|99\.9% Uptime|24\/7 Support/);
   });
 
+  it("has no integrations logo strip (Revluma is Shopify only)", () => {
+    expect(homepage).not.toContain('id="integrations"');
+    expect(homepage).not.toMatch(/Plugs seamlessly|int-pill|marquee-track/);
+  });
+
   it("is wired into the homepage and the removed hero pieces are gone", () => {
     expect(homepage).toContain('<div id="revluma-hero"');
     expect(homepage).toContain('src="/landing-hero/hero.js"');
