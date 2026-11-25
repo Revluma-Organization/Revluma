@@ -126,8 +126,17 @@ describe("Command Center — Premium Hybrid Redesign V1", () => {
     ).toBeInTheDocument();
     expect(within(prioritiesSection).getByText("$650.00")).toBeInTheDocument();
     expect(
-      within(prioritiesSection).getByText(/merchant action, not executed by Revluma/),
+      within(prioritiesSection).queryByText(/merchant action, not executed by Revluma/),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(prioritiesSection).getByRole("button", { name: "View full details" }),
+    );
+    const drawer = within(screen.getByRole("dialog"));
+    expect(
+      drawer.getByText(/merchant action, not executed by Revluma/),
     ).toBeInTheDocument();
+    fireEvent.click(drawer.getByRole("button", { name: "Close" }));
 
     fireEvent.click(
       within(prioritiesSection).getByRole("button", { name: "Ask Rev about this" }),
