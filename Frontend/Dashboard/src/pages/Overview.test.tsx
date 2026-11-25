@@ -195,6 +195,7 @@ describe("Task 217 priority finding evidence and next step", () => {
   });
   it("explains priority separately from confidence", async () => {
     await renderPage(priorityFixture());
+    fireEvent.click(screen.getByText("Inspect evidence, provenance and uncertainty"));
     expect(screen.getByRole("heading", { name: "Why this is the priority" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Confidence" })).toBeInTheDocument();
     expect(screen.getByText("high confidence")).toBeInTheDocument();
@@ -217,7 +218,7 @@ describe("Task 217 priority finding evidence and next step", () => {
   });
   it("opens Rev with the exact priority finding and revalidation contract", async () => {
     await renderPage(priorityFixture());
-    fireEvent.click(screen.getByRole("button", { name: /Investigate in Rev Intelligence/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask Rev about this" }));
     expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=finding-1"));
   });
   it("shows an honest no-priority state instead of a generic healthy alert", async () => {
@@ -308,6 +309,7 @@ describe("Task 218 contracts consolidated by Task 219", () => {
 
   it("never shows an investigate action unless the integration is connected", async () => {
     await renderPage(fixture()); // integration: null in the base fixture
+    expect(screen.queryByRole("button", { name: "Ask Rev about this" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Investigate with Rev" })).not.toBeInTheDocument();
   });
 });

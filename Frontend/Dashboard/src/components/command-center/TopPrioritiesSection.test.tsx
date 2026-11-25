@@ -179,8 +179,8 @@ describe("TopPrioritiesSection — Premium Hybrid Redesign", () => {
       screen.getByRole("heading", { name: "Checkout conversion dropped sharply", level: 3 }),
     ).toBeInTheDocument();
 
-    // Clicking secondary View investigation button navigates to that exact finding
-    const viewButtons = screen.getAllByRole("button", { name: "View investigation" });
+    // Clicking secondary Investigate with Rev button navigates to that exact finding
+    const viewButtons = screen.getAllByRole("button", { name: "Investigate with Rev" });
     fireEvent.click(viewButtons[0]);
     expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell?finding=finding-2"));
 
