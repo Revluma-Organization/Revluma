@@ -33,6 +33,10 @@ import type { Finding } from "./types";
  * Built on the Radix dialog Sheet primitives already in the codebase, so focus
  * trapping, Escape to close, overlay dismissal, scroll locking, and focus
  * return to the trigger come from the platform instead of custom code.
+ *
+ * Glassmorphic surfaces match the Top priorities bento cards: frosted shells,
+ * mesh gradient washes, and inset highlights. Only surfaces changed here; all
+ * copy, heading levels, labels, and behavior are preserved exactly.
  */
 
 function AnimatedMetricValue({
@@ -112,8 +116,17 @@ export function FindingDetailsDrawer({
       <SheetOverlay className="bg-[#17152F]/45 backdrop-blur-[2px] motion-reduce:animate-none" />
       <SheetPrimitive.Content
         aria-label={`Full details for priority ${rank}: ${finding.title}`}
+        style={{
+          background:
+            `radial-gradient(420px 200px at 90% -60px, ${severity.glowRgba}, transparent 70%), ` +
+            "radial-gradient(480px 200px at 12% -40px, rgba(68, 56, 232, 0.10), transparent 65%), " +
+            "radial-gradient(360px 180px at 100% 30%, rgba(20, 184, 166, 0.08), transparent 60%), " +
+            "linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(247,248,255,0.9) 100%)",
+          boxShadow:
+            "0 0 60px -12px rgba(31, 6, 172, 0.25), inset 1px 0 0 rgba(255, 255, 255, 0.9)",
+        }}
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex h-full w-[min(560px,94vw)] flex-col bg-white shadow-2xl outline-none",
+          "fixed inset-y-0 right-0 z-50 flex h-full w-[min(560px,94vw)] flex-col border-l border-white/60 bg-white/85 backdrop-blur-2xl outline-none",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
           "data-[state=open]:duration-500 data-[state=closed]:duration-300",
@@ -122,9 +135,9 @@ export function FindingDetailsDrawer({
       >
         {/* Header: severity identity + verification state */}
         <div
-          className="relative shrink-0 border-b border-[#EEF0F4] px-5 pb-4 pt-5 sm:px-6"
+          className="relative shrink-0 border-b border-white/60 bg-white/50 px-5 pb-4 pt-5 backdrop-blur-md sm:px-6"
           style={{
-            background: `radial-gradient(420px 150px at 90% -50px, ${severity.glowRgba}, transparent 70%), linear-gradient(180deg, ${severity.softBg} 0%, #FFFFFF 100%)`,
+            background: `radial-gradient(420px 150px at 90% -50px, ${severity.glowRgba}, transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.2) 100%)`,
           }}
         >
           <div className="flex items-center justify-between gap-3 pr-10">
@@ -182,7 +195,7 @@ export function FindingDetailsDrawer({
 
           <SheetPrimitive.Close
             className={cn(
-              "absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#E6E8F0] bg-white text-[#475467] transition-colors hover:bg-[#F4F5FA] hover:text-[#17191F]",
+              "absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/60 bg-white/80 text-[#475467] backdrop-blur-md transition-colors hover:bg-white hover:text-[#17191F]",
               cc.focus,
             )}
           >
@@ -220,11 +233,12 @@ export function FindingDetailsDrawer({
                 {availableObservations.map((obs, idx) => (
                   <div
                     key={`${obs.label}-${idx}`}
-                    className="min-w-0 rounded-xl border border-[#E8ECF3] bg-white px-3.5 py-3"
+                    className="min-w-0 rounded-xl border border-white/60 bg-white/70 px-3.5 py-3 backdrop-blur-md"
                     style={{
                       background:
-                        "linear-gradient(180deg, rgba(240, 237, 255, 0.55) 0%, rgba(255, 255, 255, 0.9) 100%)",
-                      boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.9)",
+                        "linear-gradient(180deg, rgba(240, 237, 255, 0.6) 0%, rgba(255, 255, 255, 0.75) 100%)",
+                      boxShadow:
+                        "inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
                     }}
                   >
                     <p className="truncate text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[#667085]">
@@ -240,7 +254,13 @@ export function FindingDetailsDrawer({
                 ))}
               </div>
             ) : (
-              <p className="mt-2.5 rounded-xl border border-[#E8ECF3] bg-[#FCFCFD] px-3.5 py-3 text-[12.5px] text-[#667085]">
+              <p
+                className="mt-2.5 rounded-xl border border-white/60 bg-white/70 px-3.5 py-3 text-[12.5px] text-[#667085] backdrop-blur-md"
+                style={{
+                  boxShadow:
+                    "inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
+                }}
+              >
                 No verified observations recorded for this finding.
               </p>
             )}
@@ -259,7 +279,7 @@ export function FindingDetailsDrawer({
 
           {/* Recommendation band */}
           <div
-            className="relative mt-5 overflow-hidden rounded-xl px-4 py-3.5"
+            className="relative mt-5 overflow-hidden rounded-xl px-4 py-3.5 ring-1 ring-white/10"
             style={{
               background:
                 "radial-gradient(360px 140px at 12% -40px, rgba(120, 110, 255, 0.5), transparent 65%), linear-gradient(118deg, #17152F 0%, #241A63 55%, #2B13CF 130%)",
@@ -313,54 +333,74 @@ export function FindingDetailsDrawer({
           </div>
 
           {finding.priority.tie?.statement && (
-            <p className="mt-4 rounded-lg border border-[#E3E1FA] bg-[#F7F8FF] px-3 py-2 text-[12px] text-[#1F06AC]">
+            <p className="mt-4 rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-[12px] text-[#1F06AC] backdrop-blur-md">
               {finding.priority.tie.statement}
             </p>
           )}
 
           {/* Epistemic separation: Priority vs. Confidence vs. Limits */}
           {isPrimary && (
-            <div className="mt-5 border-t border-[#EAECF0] pt-4">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#667085]">
-                Why this is the priority
-              </h3>
-              <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-[#475467]">
-                {(finding.priority.rationale.length > 0
-                  ? finding.priority.rationale
-                  : ["Ranked by verified severity, freshness, and coverage."]
-                ).map((item, idx) => (
-                  <li key={idx}>{item}</li>
-                ))}
-              </ul>
+            <div
+              className="mt-5 rounded-xl border border-white/60 bg-white/70 px-4 py-4 backdrop-blur-md"
+              style={{
+                boxShadow:
+                  "inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
+              }}
+            >
+              <div className="divide-y divide-slate-200/70">
+                <div className="pb-3.5">
+                  <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#667085]">
+                    Why this is the priority
+                  </h3>
+                  <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-[#475467]">
+                    {(finding.priority.rationale.length > 0
+                      ? finding.priority.rationale
+                      : ["Ranked by verified severity, freshness, and coverage."]
+                    ).map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
 
-              <h3 className="mt-4 text-[11px] font-bold uppercase tracking-[0.1em] text-[#667085]">
-                Confidence
-              </h3>
-              <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-[#475467]">
-                {(finding.confidence.rationale.length > 0
-                  ? finding.confidence.rationale
-                  : [confidenceText]
-                ).map((item, idx) => (
-                  <li key={idx}>{item}</li>
-                ))}
-              </ul>
+                <div className="py-3.5">
+                  <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#667085]">
+                    Confidence
+                  </h3>
+                  <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-[#475467]">
+                    {(finding.confidence.rationale.length > 0
+                      ? finding.confidence.rationale
+                      : [confidenceText]
+                    ).map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
 
-              <h3 className="mt-4 text-[11px] font-bold uppercase tracking-[0.1em] text-[#667085]">
-                Limits of this conclusion
-              </h3>
-              <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-[#475467]">
-                {(finding.limitations.length > 0
-                  ? finding.limitations
-                  : ["No additional evidence limitations recorded."]
-                ).map((item, idx) => (
-                  <li key={idx}>{item}</li>
-                ))}
-              </ul>
+                <div className="pt-3.5">
+                  <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#667085]">
+                    Limits of this conclusion
+                  </h3>
+                  <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-[#475467]">
+                    {(finding.limitations.length > 0
+                      ? finding.limitations
+                      : ["No additional evidence limitations recorded."]
+                    ).map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </div>
           )}
 
           {/* Provenance metadata */}
-          <div className="mt-5 border-t border-[#EAECF0] pt-4">
+          <div
+            className="mt-5 rounded-xl border border-white/60 bg-white/70 px-4 py-4 backdrop-blur-md"
+            style={{
+              boxShadow:
+                "inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
+            }}
+          >
             <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#667085]">
               Evidence and provenance
             </h3>
@@ -447,7 +487,7 @@ export function FindingDetailsDrawer({
         </div>
 
         {/* Sticky footer action */}
-        <div className="shrink-0 border-t border-[#EEF0F4] bg-white/95 px-5 py-4 backdrop-blur sm:px-6">
+        <div className="shrink-0 border-t border-white/60 bg-white/70 px-5 py-4 backdrop-blur-xl sm:px-6">
           <button
             type="button"
             onClick={() => onInvestigate(finding.investigation.route)}
