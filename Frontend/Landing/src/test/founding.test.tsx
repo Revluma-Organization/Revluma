@@ -38,7 +38,8 @@ describe("Founding Merchants Program", () => {
         <App />
       </LandingConfigProvider>,
     );
-    fireEvent.click(screen.getByRole("link", { name: FOUNDING.cta }));
+    const el = screen.getByRole("region", { name: `${FOUNDING.headline.lead} ${FOUNDING.headline.accent}` });
+    fireEvent.click(within(el).getByRole("link", { name: FOUNDING.cta }));
     expect(onJoin).toHaveBeenCalledTimes(1);
   });
 
