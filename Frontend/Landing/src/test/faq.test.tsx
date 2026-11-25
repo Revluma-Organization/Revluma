@@ -30,7 +30,7 @@ describe("FAQ", () => {
   it("asks the ten approved questions, in order, as accordion buttons", () => {
     const el = section();
     const buttons = within(within(el).getByRole("list", { name: "Frequently asked questions" })).getAllByRole("button");
-    expect(buttons.map((b) => b.textContent?.replace(/^\d{2}/, ""))).toEqual(QUESTIONS);
+    expect(buttons.map((b) => b.textContent?.replace(/^\d+\.\s*/, ""))).toEqual(QUESTIONS);
   });
 
   it("opens the first answer and toggles the others", () => {

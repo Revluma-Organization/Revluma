@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type CSSProperties } from "react";
-import { ArrowUpRight, Check, CircleHelp, Lock, Plus } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Lock } from "lucide-react";
 import { FAQ, FOUNDING } from "@/content";
 import { useLandingConfig } from "@/config";
 import { useReveal } from "@/useReveal";
@@ -9,14 +9,14 @@ import revlumaIcon from "@/assets/revluma-icon.png";
  * Section 11: FAQ. Answers the questions that could stop a merchant joining,
  * describing the product as it is today (see the FAQ block in content.ts).
  *
- * Left: eyebrow, headline and intro, then a "Still have a question?" card with
- * the Founding Merchants CTA (it opens the homepage's waitlist through the
- * landing config). Right: the questions as an accordion. On small screens the
- * card follows the questions. Each question is a button
+ * Left: headline and intro, then a "Still have a question?" card with the
+ * Founding Merchants CTA (it opens the homepage's waitlist through the
+ * landing config). Right: the questions as individual cards; the open card
+ * inverts to near-black while the rest stay white. On small screens the card
+ * follows the questions. Each question is a button
  * (aria-expanded / aria-controls); answers stay in the DOM so they're
  * searchable, and are hidden from assistive tech and the tab order while
- * collapsed. The first question starts open. Same palette, type and CTA as
- * the Founding Merchants section.
+ * collapsed. The first question starts open.
  */
 
 type Item = (typeof FAQ.items)[number];
@@ -68,15 +68,16 @@ function Question({ item, index, open, onToggle }: { item: Item; index: number; 
   const qId = `${uid}-q`;
   const aId = `${uid}-a`;
   return (
-    <li className={`faq-item${open ? " is-open" : ""}`}>
+    <li className={`faq-item fx-up${open ? " is-open" : ""}`} style={vars({ "--i": index })}>
       <h3 className="faq-item__h">
         <button type="button" id={qId} className="faq-q" aria-expanded={open} aria-controls={aId} onClick={onToggle}>
           <span className="faq-q__n" aria-hidden="true">
-            {String(index + 1).padStart(2, "0")}
+            {index + 1}.
           </span>
           <span className="faq-q__text">{item.q}</span>
-          <span className="faq-q__icon" aria-hidden="true">
-            <Plus size={16} strokeWidth={2.2} />
+          <span className="faq-q__mark" aria-hidden="true">
+            <span className="faq-q__bar" />
+            <span className="faq-q__bar faq-q__bar--v" />
           </span>
         </button>
       </h3>
@@ -113,27 +114,21 @@ export function FaqSection({ id }: { id?: string }) {
     <section id={id} aria-labelledby="faq-title" className="faq-section py-16 sm:py-20 lg:py-24">
       <div className="faq-grid mx-auto max-w-page px-5 sm:px-8">
         <div ref={intro} className="faq-intro">
-          <p className="fm-eyebrow fx-up" style={vars({ "--i": 0 })}>
-            <span className="fm-eyebrow__icon" aria-hidden="true">
-              <CircleHelp size={13} strokeWidth={2.2} />
-            </span>
-            {FAQ.eyebrow}
-          </p>
           <h2
             id="faq-title"
-            className="fx-up mt-5 font-headline text-[clamp(1.75rem,6.4vw,2.3rem)] font-black leading-[1.08] tracking-[-0.03em] text-ink [font-synthesis:none] [text-wrap:balance] sm:text-[clamp(2.1rem,3.8vw,2.85rem)]"
-            style={vars({ "--i": 1 })}
+            className="fx-up font-headline text-[clamp(1.75rem,6.4vw,2.3rem)] font-black leading-[1.08] tracking-[-0.03em] text-ink [font-synthesis:none] [text-wrap:balance] sm:text-[clamp(2.1rem,3.8vw,2.85rem)]"
+            style={vars({ "--i": 0 })}
           >
             <span className="block">{FAQ.headline.lead}</span>
             <span className="block text-indigo-deep">{FAQ.headline.accent}</span>
           </h2>
-          <p className="fx-up mt-4 max-w-[30rem] text-[0.98rem] leading-relaxed text-ink-muted [text-wrap:pretty] sm:text-[1.04rem]" style={vars({ "--i": 2 })}>
+          <p className="fx-up mt-4 max-w-[30rem] text-[0.98rem] leading-relaxed text-ink-muted [text-wrap:pretty] sm:text-[1.04rem]" style={vars({ "--i": 1 })}>
             {FAQ.description}
           </p>
         </div>
 
         <div ref={list} className="faq-main">
-          <ol className="faq-list fx-up" style={vars({ "--i": 1 })} aria-label="Frequently asked questions">
+          <ol className="faq-list" aria-label="Frequently asked questions">
             {FAQ.items.map((item, i) => (
               <Question key={item.id} item={item} index={i} open={open.has(item.id)} onToggle={() => toggle(item.id)} />
             ))}
@@ -142,14 +137,21 @@ export function FaqSection({ id }: { id?: string }) {
 
         <div ref={aside} className="faq-aside">
           <div className="faq-ask fx-up" style={vars({ "--i": 0 })}>
-            <img src={revlumaIcon} alt="" width={36} height={36} className="faq-ask__icon" />
+            <span className="faq-ask__orb faq-ask__orb--a" aria-hidden="true" />
+            <span className="faq-ask__orb faq-ask__orb--b" aria-hidden="true" />
+            <div className="faq-ask__avatars" aria-hidden="true">
+              <img src={revlumaIcon} alt="" width={32} height={32} className="faq-ask__avatar" />
+              <span className="faq-ask__avatar faq-ask__avatar--a" />
+              <span className="faq-ask__avatar faq-ask__avatar--b" />
+              <span className="faq-ask__plus">+</span>
+              <span className="faq-ask__you">You</span>
+            </div>
             <p className="faq-ask__title">{FAQ.aside.title}</p>
             <p className="faq-ask__body">{FAQ.aside.body}</p>
-            <a href={joinHref} onClick={onJoin} className="fm-cta group mt-5">
-              {FOUNDING.cta}
-              <span className="fm-cta__arrow" aria-hidden="true">
-                <ArrowUpRight size={15} className="fm-cta__a1" />
-                <ArrowUpRight size={15} className="fm-cta__a2" />
+            <a href={joinHref} onClick={onJoin} className="faq-ask__cta">
+              <span>{FOUNDING.cta}</span>
+              <span className="faq-ask__cta-arrow" aria-hidden="true">
+                <ArrowRight size={15} strokeWidth={2.4} />
               </span>
             </a>
             <p className="faq-ask__note">
