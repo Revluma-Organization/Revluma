@@ -551,7 +551,7 @@ export function TopPrioritiesSection({
             <button
               type="button"
               onClick={onRetry}
-              className="font-semibold text-danger underline underline-offset-2 hover:text-danger-deeper"
+              className="cursor-pointer font-semibold text-danger underline underline-offset-2 transition-colors hover:text-danger-deeper"
             >
               Retry
             </button>
@@ -586,7 +586,7 @@ export function TopPrioritiesSection({
           <button
             type="button"
             onClick={() => setActiveTier("all")}
-            className={cn("font-semibold text-brand hover:text-brand-deep", cc.focus)}
+            className={cn("cursor-pointer font-semibold text-brand transition-colors hover:text-brand-deep", cc.focus)}
           >
             Show all priorities
           </button>
@@ -631,7 +631,7 @@ export function TopPrioritiesSection({
                     <div className="flex items-center gap-3 px-1 pb-2.5">
                       <span className="h-px flex-1 bg-gradient-to-r from-transparent via-line to-transparent" aria-hidden="true" />
                       <div className="flex items-center gap-2">
-                        <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-ink-faint">
+                        <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
                           Other eligible findings
                         </span>
                         <span className="rounded-full border border-line bg-white px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-ink-tertiary">
@@ -669,7 +669,7 @@ export function TopPrioritiesSection({
                   type="button"
                   onClick={() => setActiveTier("all")}
                   className={cn(
-                    "mt-3 inline-flex min-h-9 items-center justify-center rounded-lg border border-brand-line bg-veil px-3.5 text-xs font-semibold text-brand-deeper hover:bg-brand-mist",
+                    "mt-3 inline-flex cursor-pointer min-h-9 items-center justify-center rounded-lg border border-brand-line bg-veil px-3.5 text-xs font-semibold text-brand-deeper transition-colors hover:bg-brand-mist",
                     cc.focus,
                   )}
                 >
@@ -715,7 +715,7 @@ export function TopPrioritiesSection({
                 type="button"
                 onClick={() => openRoute("/dashboard/integrations")}
                 className={cn(
-                  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-brand-deep",
+                  "inline-flex cursor-pointer min-h-11 items-center justify-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-brand-deep",
                   cc.focus,
                 )}
               >
@@ -728,7 +728,7 @@ export function TopPrioritiesSection({
                 type="button"
                 onClick={() => openRoute(revExploreRoute)}
                 className={cn(
-                  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-brand-line bg-brand-soft/50 px-5 py-2.5 text-xs font-semibold text-brand-deep transition-colors hover:border-brand hover:bg-brand-soft",
+                  "inline-flex cursor-pointer min-h-11 items-center justify-center gap-2 rounded-xl border border-brand-line bg-brand-soft/50 px-5 py-2.5 text-xs font-semibold text-brand-deep transition-colors hover:border-brand hover:bg-brand-soft",
                   cc.focus,
                 )}
               >
@@ -847,7 +847,7 @@ export function TopPrioritiesSection({
                 type="button"
                 onClick={() => openRoute(revExploreRoute)}
                 className={cn(
-                  "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-brand-lineStrong bg-brand-soft/55 px-4 py-2.5 text-xs font-semibold text-brand-deep transition-colors hover:border-brand hover:bg-brand hover:text-white",
+                  "inline-flex cursor-pointer min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-brand-lineStrong bg-brand-soft/55 px-4 py-2.5 text-xs font-semibold text-brand-deep transition-colors hover:border-brand hover:bg-brand hover:text-white",
                   cc.focus,
                 )}
               >

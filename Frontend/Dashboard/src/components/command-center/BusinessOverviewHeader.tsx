@@ -198,7 +198,7 @@ function RouterStoreSwitcherMenu({
           aria-label={`Switch store, current store: ${activeName}`}
           title={activeDomain ? `${activeName} (${activeDomain})` : activeName}
           className={cn(
-            "inline-flex min-h-10 min-w-0 max-w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-wash",
+            "inline-flex min-h-10 min-w-0 max-w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-wash",
             FOCUS_RING,
           )}
         >
@@ -336,7 +336,7 @@ function ReportingPeriodControl({
           aria-label={`Reporting period: ${reporting.periodLabel}, timezone ${reporting.timezone.iana}`}
           title={timezoneTooltip}
           className={cn(
-            "inline-flex min-h-10 min-w-0 flex-wrap items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-wash",
+            "inline-flex min-h-10 min-w-0 flex-wrap cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-wash",
             FOCUS_RING,
           )}
         >
@@ -429,7 +429,7 @@ export function BusinessOverviewHeader({
           disabled={refreshing}
           aria-label={refreshing ? "Refreshing…" : "Refresh briefing"}
           className={cn(
-            "inline-flex min-h-11 shrink-0 items-center justify-center gap-2 self-start rounded-lg border border-slate-300 bg-white px-3.5 text-xs font-semibold text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto",
+            "inline-flex min-h-11 shrink-0 cursor-pointer items-center justify-center gap-2 self-start rounded-lg border border-slate-300 bg-white px-3.5 text-xs font-semibold text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto",
             FOCUS_RING,
           )}
         >
