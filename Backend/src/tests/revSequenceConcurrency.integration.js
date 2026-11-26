@@ -28,8 +28,23 @@ if (process.env.RELEASE_CANDIDATE_ISOLATED_DB !== 'true' || !/@127\.0\.0\.1:5432
   throw new Error('Disposable localhost revluma_rc PostgreSQL and explicit opt-in required');
 }
 
+// C2_SCENARIOS filters to a comma-separated subset of scenario indices
+// (absent = all). CI runs cumulative prefixes in separate steps so a failure
+// is attributable without reading logs; local runs keep the full sequence.
+const wantedScenarios = String(process.env.C2_SCENARIOS || '')
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter(Boolean);
+let nextScenarioIndex = 0;
+
 const results = [];
 function record(name, fn) {
+  const index = nextScenarioIndex;
+  nextScenarioIndex += 1;
+  if (wantedScenarios.length > 0 && !wantedScenarios.includes(String(index))) {
+    results.push({ name, ok: true, skipped: true });
+    return Promise.resolve();
+  }
   return Promise.resolve()
     .then(fn)
     .then(() => results.push({ name, ok: true }))
@@ -240,7 +255,7 @@ async function main() {
   const failed = results.filter((result) => !result.ok);
   for (const result of results) {
     // eslint-disable-next-line no-console
-    console.log(`${result.ok ? 'ok' : 'NOT OK'} - ${result.name}`);
+    console.log(`${result.ok ? 'ok' : 'NOT OK'} - ${result.name}${result.skipped ? ' (skipped)' : ''}`);
     if (!result.ok) console.error(result.error);
   }
   if (failed.length > 0) {
