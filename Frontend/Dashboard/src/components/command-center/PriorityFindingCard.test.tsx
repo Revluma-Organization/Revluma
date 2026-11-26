@@ -39,7 +39,7 @@ describe("PriorityFindingCard: minimal card with full-details drawer", () => {
     const article = document.querySelector("article[data-priority-primary='true']");
     expect(article?.getAttribute("data-severity")).toBe("critical");
     expect(screen.getByText("Critical priority")).toBeInTheDocument();
-    expect(screen.getByText("#1")).toBeInTheDocument();
+    expect(screen.getByText("01")).toBeInTheDocument();
     expect(screen.getByText("Conversion & purchasing")).toBeInTheDocument();
     expect(screen.getByText("Verified finding")).toBeInTheDocument();
     expect(screen.getByText(/Detected (\d+[mhd] ago|Just now|Yesterday|Recently)/)).toBeInTheDocument();
@@ -56,7 +56,7 @@ describe("PriorityFindingCard: minimal card with full-details drawer", () => {
       />,
     );
     expect(screen.getByText("Medium priority")).toBeInTheDocument();
-    expect(screen.getByText("#2")).toBeInTheDocument();
+    expect(screen.getByText("02")).toBeInTheDocument();
     expect(screen.getByLabelText("Impact level 2 of 3")).toBeInTheDocument();
 
     rerender(
@@ -222,6 +222,54 @@ describe("PriorityFindingCard: minimal card with full-details drawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(onInvestigate).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("renders ranks zero-padded without padding past two digits", () => {
+    const { rerender } = render(
+      <PriorityFindingCard finding={primaryFinding()} rank={9} isPrimary={false} onInvestigate={() => {}} />,
+    );
+    expect(screen.getByText("09")).toBeInTheDocument();
+    rerender(
+      <PriorityFindingCard finding={primaryFinding()} rank={12} isPrimary={false} onInvestigate={() => {}} />,
+    );
+    expect(screen.getByText("12")).toBeInTheDocument();
+  });
+
+  it("gives the top item the primary CTA and every other row the quiet secondary style", () => {
+    const { unmount } = render(
+      <PriorityFindingCard finding={primaryFinding()} rank={1} isPrimary onInvestigate={() => {}} />,
+    );
+    const primaryCta = screen.getByRole("button", { name: "Ask Rev about this" });
+    // Gradient declarations do not survive jsdom's CSS parser, so the
+    // primary-only CTA shadow + white text pin the primary treatment.
+    expect(primaryCta.getAttribute("style") ?? "").toContain("31, 6, 172");
+    expect(primaryCta.className).toContain("text-white");
+    unmount();
+
+    render(
+      <PriorityFindingCard
+        finding={primaryFinding({
+          next_step: { label: "Investigate with Rev", route: "/dashboard/rev-intell?finding=finding-1" },
+        })}
+        rank={2}
+        isPrimary={false}
+        onInvestigate={() => {}}
+      />,
+    );
+    const secondaryCta = screen.getByRole("button", { name: "Investigate with Rev" });
+    expect(secondaryCta.getAttribute("style")).toBeNull();
+    expect(secondaryCta.className).toContain("border-line");
+    expect(secondaryCta.className).not.toContain("text-white");
+  });
+
+  it("uses the dense queue-row surface", () => {
+    const { container } = render(
+      <PriorityFindingCard finding={primaryFinding()} rank={1} isPrimary onInvestigate={() => {}} />,
+    );
+    const surface = container.querySelector("article > div") as HTMLElement;
+    expect(surface.className).toContain("rounded-xl");
+    expect(surface.className).toContain("border-line-soft");
+    expect(surface.className).toContain("bg-white");
   });
 
   it("passes axe-core checks for primary and secondary severities", async () => {

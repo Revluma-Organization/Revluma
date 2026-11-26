@@ -121,7 +121,7 @@ describe("Command Center — Premium Hybrid Redesign V1", () => {
     const prioritiesSection = container.querySelector("#priority-finding") as HTMLElement;
     expect(prioritiesSection).toBeTruthy();
 
-    expect(within(prioritiesSection).getByText("#1")).toBeInTheDocument();
+    expect(within(prioritiesSection).getByText("01")).toBeInTheDocument();
     expect(within(prioritiesSection).getByText("Verified finding")).toBeInTheDocument();
     expect(
       within(prioritiesSection).getByRole("heading", { name: "Net sales declined", level: 3 }),
