@@ -196,3 +196,15 @@ def test_prohibited_action_refuses_before_any_routing(model):
     routing = route("Please change my product prices to 9.99", model)
     assert routing["gate"] == "refuse"
     assert model["calls"] == []
+
+
+# ── M: greeting history never downgrades the next store question ─────────────
+def test_greeting_then_store_question_still_runs_tools(model):
+    greeting = route("Hello.", model)
+    assert greeting["gate"] == "conversational"
+    context = {"recent_turns": [{"role": "user", "text": "Hello."},
+                                {"role": "rev", "text": "Hello! How can I help?"}]}
+    routing = route("How much revenue did I generate this week?", model, context)
+    assert routing["classification"]["intent"] == INTENT_REVENUE
+    assert routing["classification"]["followup"] is False
+    assert routing["gate"] == "tools"

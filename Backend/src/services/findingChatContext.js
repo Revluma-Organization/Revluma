@@ -49,4 +49,17 @@ async function resolveFindingChatContext(prisma, organizationId, findingId, mess
   } };
 }
 
-module.exports = { validFindingId, buildFindingContext, resolveFindingChatContext };
+// Phase 5B parity: image turns run the legacy /orchestrate path, whose result
+// carries no selected_finding echo, so the finding reference the merchant
+// selected would be silently dropped from continuity. Re-attach the
+// Node-authorized request reference when — and only when — the result omits
+// the key entirely. An explicit null (topic-change clear) or a richer echo
+// is never overwritten, and a malformed request reference is never persisted.
+function attachRequestedFindingReference(data, requested) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  if (Object.prototype.hasOwnProperty.call(data, 'selected_finding')) return data;
+  if (!requested || typeof requested !== 'object' || !validFindingId(requested.finding_id)) return data;
+  return { ...data, selected_finding: { ...requested } };
+}
+
+module.exports = { validFindingId, buildFindingContext, resolveFindingChatContext, attachRequestedFindingReference };

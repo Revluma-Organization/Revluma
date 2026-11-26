@@ -374,6 +374,14 @@ exports.chat = async (req, res, next) => {
     }
 
     logger.info('rev_chat_python_succeeded', { correlationId, orgId: org.id, conversationId: activeConvId, latencyMs: Date.now() - startTime });
+    // Phase 5B parity: the legacy /orchestrate result (image turns) carries no
+    // selected_finding echo. Re-attach the Node-authorized request reference so
+    // finding continuity matches the text-turn path. Explicit echoes and
+    // explicit clears pass through untouched (see attachRequestedFindingReference).
+    if (imageBase64 && mlResult.data) {
+      const { attachRequestedFindingReference } = require('../services/findingChatContext');
+      mlResult.data = attachRequestedFindingReference(mlResult.data, selectedFinding);
+    }
     // Flatten the structured response contract for backwards-compatible
     // consumers while preserving the evidence-bearing fields.
     const revData = { ...mlResult.data, ...(mlResult.data?.response || {}) };

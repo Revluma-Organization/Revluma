@@ -693,6 +693,24 @@ function validateOrchestrateResponse(data) {
   }
 
   /*
+   * Phase 5B parity: /orchestrate never emits epistemic payloads (verified
+   * by OrchestrationResult.to_dict, which has no claims/facts/hypotheses/
+   * unknowns keys). Those grades are re-validated at the Node boundary only
+   * on the investigation path (_validateInvestigationResponse), so any
+   * orchestrate result carrying them fails closed here instead of flowing
+   * into persistence unvalidated. Key-based, like the investigation
+   * boundary's `!== undefined` checks: content is never inspected.
+   */
+  if (
+    data.claims !== undefined ||
+    data.facts !== undefined ||
+    data.hypotheses !== undefined ||
+    data.unknowns !== undefined
+  ) {
+    return false;
+  }
+
+  /*
    * Every valid orchestrator response needs these.
    */
   if (
