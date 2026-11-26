@@ -77,32 +77,32 @@ function getSignalStateMeta(state: SignalEvaluationState) {
     case "verified":
       return {
         label: "Finding verified",
-        badgeClass: "border-[#C9C7FA] bg-[#F0EDFF] text-[#3525B8]",
+        badgeClass: "border-brand-lineStrong bg-brand-soft text-brand-deep",
         Icon: AlertCircle,
       };
     case "not_detected":
       return {
         label: "Checked · Clear",
-        badgeClass: "border-[#BBF7D0] bg-[#ECFDF3] text-[#166534]",
+        badgeClass: "border-success-line bg-success-soft text-success",
         Icon: CheckCircle2,
       };
     case "evaluation_failed":
       return {
         label: "Evaluation failed",
-        badgeClass: "border-[#FECACA] bg-[#FEF2F2] text-[#B42318]",
+        badgeClass: "border-danger-line bg-danger-soft text-danger",
         Icon: XCircle,
       };
     case "stale":
       return {
         label: "Stale data",
-        badgeClass: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]",
+        badgeClass: "border-warning-line bg-warning-soft text-warning",
         Icon: Clock,
       };
     case "not_evaluated":
     default:
       return {
         label: "Not evaluated",
-        badgeClass: "border-[#DCE0EB] bg-[#F4F5FA] text-[#4B5563]",
+        badgeClass: "border-line-soft bg-wash text-gray-600",
         Icon: MinusCircle,
       };
   }
@@ -150,8 +150,8 @@ function SignalCoveragePanel({
       className={cn(
         "rounded-xl border",
         evaluation.incomplete
-          ? "border-[#D6E4FF] bg-[#EDF4FF]/65"
-          : "border-[#E3E1FA] bg-[#F0EDFF]/40",
+          ? "border-info-line bg-info-soft/65"
+          : "border-brand-pale bg-brand-soft/40",
         compact ? "p-3.5" : "p-4",
       )}
     >
@@ -161,39 +161,39 @@ function SignalCoveragePanel({
             className={cn(
               "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
               evaluation.incomplete
-                ? "bg-[#DCE9FF] text-[#2B59C3]"
-                : "bg-[#E6E2FF] text-[#4438E8]",
+                ? "bg-info-soft text-info"
+                : "bg-brand-mist text-brand",
             )}
             aria-hidden="true"
           >
             <Layers className="h-3.5 w-3.5" />
           </span>
-          <p className="text-xs font-semibold text-[#17191F]">
+          <p className="text-xs font-semibold text-ink">
             Signal evaluation coverage
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium tabular-nums">
-          <span className="rounded-full border border-[#D8D7FA] bg-white px-2.5 py-0.5 text-[#3525B8]">
+          <span className="rounded-full border border-brand-line bg-white px-2.5 py-0.5 text-brand-deep">
             {summary.evaluated_count} of {summary.total_signals} signals evaluated
           </span>
           {summary.verified_findings_count > 0 && (
-            <span className="rounded-full border border-[#C9C7FA] bg-[#F0EDFF] px-2 py-0.5 text-[#3525B8]">
+            <span className="rounded-full border border-brand-lineStrong bg-brand-soft px-2 py-0.5 text-brand-deep">
               {summary.verified_findings_count} verified
             </span>
           )}
           {summary.failed_count > 0 && (
-            <span className="rounded-full border border-[#FECACA] bg-[#FEF2F2] px-2 py-0.5 text-[#B42318]">
+            <span className="rounded-full border border-danger-line bg-danger-soft px-2 py-0.5 text-danger">
               {summary.failed_count} failed
             </span>
           )}
           {summary.not_evaluated_count > 0 && (
-            <span className="rounded-full border border-[#DCE0EB] bg-white px-2 py-0.5 text-[#4B5563]">
+            <span className="rounded-full border border-line-soft bg-white px-2 py-0.5 text-gray-600">
               {summary.not_evaluated_count} not evaluated
             </span>
           )}
           {summary.stale_count > 0 && (
-            <span className="rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2 py-0.5 text-[#92400E]">
+            <span className="rounded-full border border-warning-line bg-warning-soft px-2 py-0.5 text-warning">
               {summary.stale_count} stale
             </span>
           )}
@@ -201,7 +201,7 @@ function SignalCoveragePanel({
       </div>
 
       {nonEvaluatedCount > 0 && (
-        <p className="mt-2 text-xs leading-5 text-[#4B5563]">
+        <p className="mt-2 text-xs leading-5 text-gray-600">
           Business signals marked not evaluated, failed, or stale cannot confirm or rule out
           store issues.
         </p>
@@ -214,10 +214,10 @@ function SignalCoveragePanel({
           return (
             <li
               key={sig.id}
-              className="flex flex-col justify-between gap-1.5 rounded-lg border border-[#E6E8F0] bg-white px-3 py-2.5"
+              className="flex flex-col justify-between gap-1.5 rounded-lg border border-line bg-white px-3 py-2.5"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-[#17191F]">{sig.label}</span>
+                <span className="text-xs font-semibold text-ink">{sig.label}</span>
                 <span
                   className={cn(
                     "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-semibold leading-4",
@@ -228,7 +228,7 @@ function SignalCoveragePanel({
                   <span>{meta.label}</span>
                 </span>
               </div>
-              <p className="text-[11px] leading-4 text-[#5C6270]">{sig.reason}</p>
+              <p className="text-[11px] leading-4 text-gray-600">{sig.reason}</p>
             </li>
           );
         })}
@@ -246,55 +246,55 @@ function PriorityCardSkeleton() {
     >
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-2">
-          <div className="h-5 w-36 animate-pulse rounded-md bg-[#E3E1FA] motion-reduce:animate-none" />
-          <div className="h-3.5 w-64 animate-pulse rounded-md bg-[#EEF0F6] motion-reduce:animate-none" />
+          <div className="h-5 w-36 animate-pulse rounded-md bg-brand-pale motion-reduce:animate-none" />
+          <div className="h-3.5 w-64 animate-pulse rounded-md bg-skeleton motion-reduce:animate-none" />
         </div>
-        <div className="h-7 w-28 animate-pulse rounded-full bg-[#E3E1FA] motion-reduce:animate-none" />
+        <div className="h-7 w-28 animate-pulse rounded-full bg-brand-pale motion-reduce:animate-none" />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
         {Array.from({ length: 3 }, (_, idx) => (
           <div
             key={idx}
-            className="h-[88px] animate-pulse rounded-xl border border-[#E4E6F0] bg-white p-4 motion-reduce:animate-none"
+            className="h-[88px] animate-pulse rounded-xl border border-line-soft bg-white p-4 motion-reduce:animate-none"
           >
-            <div className="h-3 w-24 rounded bg-[#EEF0F6]" />
-            <div className="mt-2.5 h-6 w-10 rounded bg-[#E3E1FA]" />
-            <div className="mt-2 h-2.5 w-32 rounded bg-[#F4F5FA]" />
+            <div className="h-3 w-24 rounded bg-skeleton" />
+            <div className="mt-2.5 h-6 w-10 rounded bg-brand-pale" />
+            <div className="mt-2 h-2.5 w-32 rounded bg-wash" />
           </div>
         ))}
       </div>
 
       <div className="space-y-4">
         {/* Full-width Detected issues skeleton */}
-        <div className="animate-pulse overflow-hidden rounded-2xl border border-[#E6E5EE] bg-white motion-reduce:animate-none">
-          <div className="flex items-center justify-between gap-3 border-b border-[#EEF0F4] px-5 py-3.5">
-            <div className="h-4 w-32 rounded bg-[#E3E1FA]" />
-            <div className="h-3.5 w-16 rounded bg-[#EEF0F6]" />
+        <div className="animate-pulse overflow-hidden rounded-2xl border border-line-soft bg-white motion-reduce:animate-none">
+          <div className="flex items-center justify-between gap-3 border-b border-line-soft px-5 py-3.5">
+            <div className="h-4 w-32 rounded bg-brand-pale" />
+            <div className="h-3.5 w-16 rounded bg-skeleton" />
           </div>
-          <div className="space-y-3 bg-[#F7F8FF] px-3 py-3 sm:px-4">
+          <div className="space-y-3 bg-veil px-3 py-3 sm:px-4">
             {Array.from({ length: 2 }, (_, idx) => (
-              <div key={idx} className="space-y-3 rounded-[18px] border border-[#E8ECF3] bg-white p-5">
+              <div key={idx} className="space-y-3 rounded-[18px] border border-line-soft bg-white p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
-                    <div className="h-10 w-10 rounded-xl bg-[#E3E1FA]" />
+                    <div className="h-10 w-10 rounded-xl bg-brand-pale" />
                     <div className="space-y-1.5">
-                      <div className="h-3.5 w-28 rounded bg-[#E3E1FA]" />
-                      <div className="h-3 w-40 rounded bg-[#EEF0F6]" />
+                      <div className="h-3.5 w-28 rounded bg-brand-pale" />
+                      <div className="h-3 w-40 rounded bg-skeleton" />
                     </div>
                   </div>
-                  <div className="h-6 w-24 rounded-full bg-[#EEF0F6]" />
+                  <div className="h-6 w-24 rounded-full bg-skeleton" />
                 </div>
-                <div className="h-5 w-3/4 max-w-lg rounded bg-[#E3E1FA]" />
+                <div className="h-5 w-3/4 max-w-lg rounded bg-brand-pale" />
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <div className="h-14 rounded-xl bg-[#F4F5FA]" />
-                  <div className="h-14 rounded-xl bg-[#F4F5FA]" />
-                  <div className="h-14 rounded-xl bg-[#F4F5FA]" />
+                  <div className="h-14 rounded-xl bg-wash" />
+                  <div className="h-14 rounded-xl bg-wash" />
+                  <div className="h-14 rounded-xl bg-wash" />
                 </div>
-                <div className="h-16 rounded-xl bg-[#ECEBF3]" />
+                <div className="h-16 rounded-xl bg-skeleton" />
                 <div className="flex items-center justify-between gap-3">
-                  <div className="h-3.5 w-48 rounded bg-[#EEF0F6]" />
-                  <div className="h-9 w-40 rounded-xl bg-[#E3E1FA]" />
+                  <div className="h-3.5 w-48 rounded bg-skeleton" />
+                  <div className="h-9 w-40 rounded-xl bg-brand-pale" />
                 </div>
               </div>
             ))}
@@ -302,16 +302,16 @@ function PriorityCardSkeleton() {
         </div>
 
         {/* Recent signals skeleton below */}
-        <div className="animate-pulse overflow-hidden rounded-2xl border border-[#E6E5EE] bg-white motion-reduce:animate-none">
-          <div className="flex items-center justify-between gap-3 border-b border-[#EEF0F4] px-5 py-3.5">
-            <div className="h-4 w-28 rounded bg-[#E3E1FA]" />
-            <div className="h-3.5 w-20 rounded-full bg-[#EEF0F6]" />
+        <div className="animate-pulse overflow-hidden rounded-2xl border border-line-soft bg-white motion-reduce:animate-none">
+          <div className="flex items-center justify-between gap-3 border-b border-line-soft px-5 py-3.5">
+            <div className="h-4 w-28 rounded bg-brand-pale" />
+            <div className="h-3.5 w-20 rounded-full bg-skeleton" />
           </div>
           <div className="grid sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }, (_, idx) => (
-              <div key={idx} className="border-b border-[#F0F2F5] px-5 py-3.5">
-                <div className="h-4 w-3/4 rounded bg-[#EEF0F6]" />
-                <div className="mt-2 h-3 w-1/2 rounded bg-[#F4F5FA]" />
+              <div key={idx} className="border-b border-wash px-5 py-3.5">
+                <div className="h-4 w-3/4 rounded bg-skeleton" />
+                <div className="mt-2 h-3 w-1/2 rounded bg-wash" />
               </div>
             ))}
           </div>
@@ -387,7 +387,7 @@ export function TopPrioritiesSection({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-start gap-2.5">
             <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F0EDFF] text-[#4438E8]"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand"
               aria-hidden="true"
             >
               <Target className="h-4 w-4" />
@@ -395,11 +395,11 @@ export function TopPrioritiesSection({
             <div>
               <h2
                 id="priority-findings-heading"
-                className="text-[1.125rem] font-semibold leading-6 tracking-[-0.015em] text-[#17191F]"
+                className="text-[1.125rem] font-semibold leading-6 tracking-[-0.015em] text-ink"
               >
                 Top priorities
               </h2>
-              <p className="mt-0.5 text-[13px] leading-5 text-[#707582]">
+              <p className="mt-0.5 text-[13px] leading-5 text-ink-muted">
                 Verified commerce signals ranked by operational urgency and evidence quality.
               </p>
             </div>
@@ -408,17 +408,17 @@ export function TopPrioritiesSection({
 
         <div
           role="alert"
-          className="flex flex-col gap-3 rounded-xl border border-[#FECACA] bg-white p-5 sm:flex-row sm:items-center sm:justify-between"
+          className="flex flex-col gap-3 rounded-xl border border-danger-line bg-white p-5 sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#E5484D]">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-danger-soft text-severity-critical">
               <AlertCircle className="h-4 w-4" aria-hidden="true" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-[#17191F]">
+              <p className="text-sm font-semibold text-ink">
                 Unable to load verified priorities
               </p>
-              <p className="mt-0.5 text-xs leading-5 text-[#707582]">{error}</p>
+              <p className="mt-0.5 text-xs leading-5 text-ink-muted">{error}</p>
             </div>
           </div>
           {onRetry && (
@@ -487,7 +487,7 @@ export function TopPrioritiesSection({
       >
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -left-16 -top-24 h-56 w-56 rounded-full bg-[#4438E8]/10 blur-3xl"
+          className="pointer-events-none absolute -left-16 -top-24 h-56 w-56 rounded-full bg-brand/10 blur-3xl"
         />
         <div
           aria-hidden="true"
@@ -495,7 +495,7 @@ export function TopPrioritiesSection({
         />
         <div className="relative flex min-w-0 items-start gap-3">
           <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#D8D7FA] bg-[#F0EDFF] text-[#4438E8]"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-brand-line bg-brand-soft text-brand"
             aria-hidden="true"
           >
             <Target className="h-4 w-4" />
@@ -503,11 +503,11 @@ export function TopPrioritiesSection({
           <div className="min-w-0">
             <h2
               id="priority-findings-heading"
-              className="text-[1.125rem] font-semibold leading-6 tracking-[-0.015em] text-[#17191F]"
+              className="text-[1.125rem] font-semibold leading-6 tracking-[-0.015em] text-ink"
             >
               Top priorities
             </h2>
-            <p className="mt-0.5 text-[13px] leading-5 text-[#707582]">
+            <p className="mt-0.5 text-[13px] leading-5 text-ink-muted">
               The most important issues identified across your store.
             </p>
           </div>
@@ -517,16 +517,16 @@ export function TopPrioritiesSection({
           {refreshing && <StateBadge state="updating" />}
           {isStale && <StateBadge state="stale" />}
           {!isStale && isPartialCoverage && (
-            <span className="inline-flex items-center rounded-full border border-[#F5D68B] bg-[#FFFBEB] px-2.5 py-0.5 text-[11px] font-medium text-[#92400E]">
+            <span className="inline-flex items-center rounded-full border border-warning-lineStrong bg-warning-soft px-2.5 py-0.5 text-[11px] font-medium text-warning">
               Limited evidence
             </span>
           )}
           {signalEvaluation && (
-            <span className="inline-flex items-center rounded-full border border-[#D6E4FF] bg-[#EDF4FF] px-2.5 py-1 text-[11px] font-semibold tabular-nums text-[#2B59C3]">
+            <span className="inline-flex items-center rounded-full border border-info-line bg-info-soft px-2.5 py-1 text-[11px] font-semibold tabular-nums text-info">
               {signalEvaluation.summary.evaluated_count}/{signalEvaluation.summary.total_signals} signals evaluated
             </span>
           )}
-          <span className="inline-flex items-center rounded-full border border-[#D8D7FA] bg-[#F0EDFF] px-3 py-1 text-xs font-semibold tabular-nums text-[#3525B8]">
+          <span className="inline-flex items-center rounded-full border border-brand-line bg-brand-soft px-3 py-1 text-xs font-semibold tabular-nums text-brand-deep">
             {activeCountLabel}
           </span>
         </div>
@@ -544,14 +544,14 @@ export function TopPrioritiesSection({
       {error && (
         <div
           role="alert"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-2.5 text-xs text-[#991B1B]"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger-line bg-danger-soft px-4 py-2.5 text-xs text-danger-deep"
         >
           <span>{error}</span>
           {onRetry && (
             <button
               type="button"
               onClick={onRetry}
-              className="font-semibold text-[#B42318] underline underline-offset-2 hover:text-[#7F1D1D]"
+              className="font-semibold text-danger underline underline-offset-2 hover:text-danger-deeper"
             >
               Retry
             </button>
@@ -563,7 +563,7 @@ export function TopPrioritiesSection({
       {isStale && (
         <div
           role="status"
-          className="flex items-start gap-2.5 rounded-xl border border-[#F5D68B] bg-[#FFFBEB] px-4 py-2.5 text-xs leading-5 text-[#92400E]"
+          className="flex items-start gap-2.5 rounded-xl border border-warning-lineStrong bg-warning-soft px-4 py-2.5 text-xs leading-5 text-warning"
         >
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>
@@ -575,10 +575,10 @@ export function TopPrioritiesSection({
 
       {/* Active severity filter pill */}
       {effectiveTier !== "all" && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#D8D7FA] bg-[#F0EDFF]/50 px-4 py-2 text-xs text-[#3525B8]">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-line bg-brand-soft/50 px-4 py-2 text-xs text-brand-deep">
           <span>
             Showing{" "}
-            <strong className="font-semibold text-[#17191F]">
+            <strong className="font-semibold text-ink">
               {TIER_LABELS[effectiveTier]}
             </strong>{" "}
             priorities.
@@ -586,7 +586,7 @@ export function TopPrioritiesSection({
           <button
             type="button"
             onClick={() => setActiveTier("all")}
-            className={cn("font-semibold text-[#4438E8] hover:text-[#3525B8]", cc.focus)}
+            className={cn("font-semibold text-brand hover:text-brand-deep", cc.focus)}
           >
             Show all priorities
           </button>
@@ -607,10 +607,10 @@ export function TopPrioritiesSection({
             }}
           >
             <div className="flex items-center justify-between gap-2 border-b border-white/60 bg-white/60 px-5 py-3.5 backdrop-blur-md">
-              <span className="text-[13.5px] font-semibold tracking-[-0.01em] text-[#172033]">
+              <span className="text-[13.5px] font-semibold tracking-[-0.01em] text-ink">
                 Detected issues
               </span>
-              <span className="rounded-full border border-[#E2E4EC] bg-white/80 px-2.5 py-0.5 text-[12px] font-semibold tabular-nums text-[#475069]">
+              <span className="rounded-full border border-line bg-white/80 px-2.5 py-0.5 text-[12px] font-semibold tabular-nums text-slate-600">
                 {(visiblePrimary ? 1 : 0) + visibleSecondary.length} open
               </span>
             </div>
@@ -629,17 +629,17 @@ export function TopPrioritiesSection({
                 {visibleSecondary.length > 0 && (
                   <div className={cn(visiblePrimary && "pt-1")}>
                     <div className="flex items-center gap-3 px-1 pb-2.5">
-                      <span className="h-px flex-1 bg-gradient-to-r from-transparent via-[#E2E4EC] to-transparent" aria-hidden="true" />
+                      <span className="h-px flex-1 bg-gradient-to-r from-transparent via-line to-transparent" aria-hidden="true" />
                       <div className="flex items-center gap-2">
-                        <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#98A2B3]">
+                        <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-ink-faint">
                           Other eligible findings
                         </span>
-                        <span className="rounded-full border border-[#E6E8F0] bg-white px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-[#667085]">
+                        <span className="rounded-full border border-line bg-white px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-ink-tertiary">
                           {visibleSecondary.length}{" "}
                           {visibleSecondary.length === 1 ? "item" : "items"}
                         </span>
                       </div>
-                      <span className="h-px flex-1 bg-gradient-to-r from-transparent via-[#E2E4EC] to-transparent" aria-hidden="true" />
+                      <span className="h-px flex-1 bg-gradient-to-r from-transparent via-line to-transparent" aria-hidden="true" />
                     </div>
 
                     <ol
@@ -662,14 +662,14 @@ export function TopPrioritiesSection({
               </div>
             ) : (
               <div className="m-3 rounded-xl border border-white/60 bg-white/60 p-6 text-center backdrop-blur-md sm:m-4">
-                <p className="text-sm font-medium text-[#172033]">
+                <p className="text-sm font-medium text-ink">
                   No findings in this severity category.
                 </p>
                 <button
                   type="button"
                   onClick={() => setActiveTier("all")}
                   className={cn(
-                    "mt-3 inline-flex min-h-9 items-center justify-center rounded-lg border border-[#D8D7FA] bg-[#F7F8FF] px-3.5 text-xs font-semibold text-[#1F06AC] hover:bg-[#EEEBFF]",
+                    "mt-3 inline-flex min-h-9 items-center justify-center rounded-lg border border-brand-line bg-veil px-3.5 text-xs font-semibold text-brand-deeper hover:bg-brand-mist",
                     cc.focus,
                   )}
                 >
@@ -686,21 +686,21 @@ export function TopPrioritiesSection({
         </div>
       ) : isIncompleteAssessment && signalEvaluation ? (
         /* D1. Distinct Incomplete Store Assessment State (NEVER masquerades as healthy) */
-        <div className="rounded-2xl border border-[#D6E4FF] bg-white px-5 py-7 sm:px-8 sm:py-8">
+        <div className="rounded-2xl border border-info-line bg-white px-5 py-7 sm:px-8 sm:py-8">
           <div className="mx-auto max-w-[720px] space-y-5">
             <div className="flex flex-col items-center text-center">
               <div
-                className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#F5D68B] bg-[#FFFBEB] text-[#B54708]"
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-warning-lineStrong bg-warning-soft text-warning"
                 aria-hidden="true"
               >
                 <ShieldAlert className="h-5 w-5" />
               </div>
 
-              <h3 className="mt-3.5 text-[17px] font-semibold leading-snug tracking-[-0.015em] text-[#17191F]">
+              <h3 className="mt-3.5 text-[17px] font-semibold leading-snug tracking-[-0.015em] text-ink">
                 Your store assessment is incomplete
               </h3>
 
-              <p className="mt-2 max-w-[560px] text-[13.5px] leading-6 text-[#5C6270]">
+              <p className="mt-2 max-w-[560px] text-[13.5px] leading-6 text-gray-600">
                 {signalEvaluation.summary.evaluated_count} of{" "}
                 {signalEvaluation.summary.total_signals} business signal categories were evaluated.
                 Because some signals failed, are stale, or lack data access, Revluma cannot rule
@@ -715,7 +715,7 @@ export function TopPrioritiesSection({
                 type="button"
                 onClick={() => openRoute("/dashboard/integrations")}
                 className={cn(
-                  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#4438E8] px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#3525B8]",
+                  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-brand-deep",
                   cc.focus,
                 )}
               >
@@ -728,7 +728,7 @@ export function TopPrioritiesSection({
                 type="button"
                 onClick={() => openRoute(revExploreRoute)}
                 className={cn(
-                  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#D8D7FA] bg-[#F0EDFF]/50 px-5 py-2.5 text-xs font-semibold text-[#3525B8] transition-colors hover:border-[#4438E8] hover:bg-[#F0EDFF]",
+                  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-brand-line bg-brand-soft/50 px-5 py-2.5 text-xs font-semibold text-brand-deep transition-colors hover:border-brand hover:bg-brand-soft",
                   cc.focus,
                 )}
               >
@@ -740,33 +740,33 @@ export function TopPrioritiesSection({
         </div>
       ) : (
         /* D2. Legitimate Clean Empty State: Calm, analytical, non-celebratory */
-        <div className="rounded-2xl border border-[#E3E1FA] bg-white px-5 py-8 sm:px-8 sm:py-9">
+        <div className="rounded-2xl border border-brand-pale bg-white px-5 py-8 sm:px-8 sm:py-9">
           <div className="mx-auto max-w-[680px]">
             <div
-              className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-[#D8D7FA] bg-[#F0EDFF] text-[#4438E8]"
+              className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-brand-line bg-brand-soft text-brand"
               aria-hidden="true"
             >
               <ShieldCheck className="h-5 w-5" />
             </div>
 
-            <h3 className="mt-4 text-center text-[17px] font-semibold leading-snug tracking-[-0.015em] text-[#17191F]">
+            <h3 className="mt-4 text-center text-[17px] font-semibold leading-snug tracking-[-0.015em] text-ink">
               No verified priorities right now
             </h3>
 
-            <p className="mx-auto mt-2 max-w-[540px] text-center text-[13.5px] leading-6 text-[#707582]">
+            <p className="mx-auto mt-2 max-w-[540px] text-center text-[13.5px] leading-6 text-ink-muted">
               No findings currently meet the evidence threshold. This doesn&apos;t mean there are
               no business problems. Further investigation may uncover issues.
             </p>
 
             {/* Informational callout */}
-            <div className="mt-6 flex items-start gap-3 rounded-xl border border-[#D6E4FF] bg-[#EDF4FF]/65 p-4">
+            <div className="mt-6 flex items-start gap-3 rounded-xl border border-info-line bg-info-soft/65 p-4">
               <Info
-                className="mt-0.5 h-4 w-4 shrink-0 text-[#4438E8]"
+                className="mt-0.5 h-4 w-4 shrink-0 text-brand"
                 aria-hidden="true"
               />
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-[#17191F]">What this means</p>
-                <p className="mt-0.5 text-xs leading-5 text-[#4B5563]">
+                <p className="text-xs font-semibold text-ink">What this means</p>
+                <p className="mt-0.5 text-xs leading-5 text-gray-600">
                   {data.priority_selection.reason ||
                     "Revluma has not established a sufficiently supported priority from the available evidence."}
                 </p>
@@ -780,19 +780,19 @@ export function TopPrioritiesSection({
               </div>
             ) : (
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div className="flex items-start gap-2.5 rounded-xl border border-[#E4E6F0] bg-[#FAFBFD] px-4 py-3">
+                <div className="flex items-start gap-2.5 rounded-xl border border-line-soft bg-subtle px-4 py-3">
                   <Database
-                    className="mt-0.5 h-4 w-4 shrink-0 text-[#4777F5]"
+                    className="mt-0.5 h-4 w-4 shrink-0 text-info-bright"
                     aria-hidden="true"
                   />
                   <div className="min-w-0">
-                    <p className="text-[11px] font-medium text-[#707582]">Evidence coverage</p>
-                    <p className="mt-0.5 text-xs font-semibold tabular-nums text-[#17191F]">
+                    <p className="text-[11px] font-medium text-ink-muted">Evidence coverage</p>
+                    <p className="mt-0.5 text-xs font-semibold tabular-nums text-ink">
                       {monitoredSourceCount > 0
                         ? `${monitoredSourceCount} monitored ${monitoredSourceCount === 1 ? "source" : "sources"}`
                         : "No sources connected"}
                       {limitedSourceCount > 0 && (
-                        <span className="font-normal text-[#92400E]">
+                        <span className="font-normal text-warning">
                           {" "}
                           · {limitedSourceCount} limited
                         </span>
@@ -801,15 +801,15 @@ export function TopPrioritiesSection({
                   </div>
                 </div>
 
-                <div className="flex items-start gap-2.5 rounded-xl border border-[#E4E6F0] bg-[#FAFBFD] px-4 py-3">
+                <div className="flex items-start gap-2.5 rounded-xl border border-line-soft bg-subtle px-4 py-3">
                   <Clock
-                    className="mt-0.5 h-4 w-4 shrink-0 text-[#4777F5]"
+                    className="mt-0.5 h-4 w-4 shrink-0 text-info-bright"
                     aria-hidden="true"
                   />
                   <div className="min-w-0">
-                    <p className="text-[11px] font-medium text-[#707582]">Last updated</p>
+                    <p className="text-[11px] font-medium text-ink-muted">Last updated</p>
                     <p
-                      className="mt-0.5 text-xs font-semibold tabular-nums text-[#17191F]"
+                      className="mt-0.5 text-xs font-semibold tabular-nums text-ink"
                       title={dateTime(lastUpdatedIso)}
                     >
                       {relativeTime(lastUpdatedIso)}
@@ -821,18 +821,18 @@ export function TopPrioritiesSection({
 
             {/* Historical / excluded findings stay non-heading records */}
             {data.priority_selection.exclusions.length > 0 && (
-              <div className="mt-4 rounded-xl border border-[#E4E6F0] bg-[#FAFBFD] p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[#707582]">
+              <div className="mt-4 rounded-xl border border-line-soft bg-subtle p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-ink-muted">
                   Excluded from current priorities
                 </p>
-                <ul className="mt-2 space-y-1.5 text-xs text-[#4B5563]">
+                <ul className="mt-2 space-y-1.5 text-xs text-gray-600">
                   {data.priority_selection.exclusions.map((item) => (
                     <li
                       key={item.finding_id}
                       className="flex flex-wrap items-baseline justify-between gap-2"
                     >
-                      <span className="font-medium text-[#17191F]">{item.title}</span>
-                      <span className="text-[11px] text-[#707582]">
+                      <span className="font-medium text-ink">{item.title}</span>
+                      <span className="text-[11px] text-ink-muted">
                         not current: {item.reason.replaceAll("_", " ")}
                       </span>
                     </li>
@@ -847,7 +847,7 @@ export function TopPrioritiesSection({
                 type="button"
                 onClick={() => openRoute(revExploreRoute)}
                 className={cn(
-                  "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#C9C7FA] bg-[#F0EDFF]/55 px-4 py-2.5 text-xs font-semibold text-[#3525B8] transition-colors hover:border-[#4438E8] hover:bg-[#4438E8] hover:text-white",
+                  "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-brand-lineStrong bg-brand-soft/55 px-4 py-2.5 text-xs font-semibold text-brand-deep transition-colors hover:border-brand hover:bg-brand hover:text-white",
                   cc.focus,
                 )}
               >

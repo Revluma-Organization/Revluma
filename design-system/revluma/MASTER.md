@@ -343,7 +343,8 @@ required: the pair never renders in the same component.
 `#FAFBFD`/`#FCFCFD` → `subtle #F8F9FB` · `#F4F5FA` → `wash #F4F6FA` ·
 `#F0F2F5`/`#F2F4F7` → `wash` · `#F4F3FE`/`#F8F8FE`/`#F7F8FF`/`#F5F7FF` → `veil #F5F7FF`
 (canonical) · `#FFFAEB` → `warning-soft` · `#FEF3F2`/`#FFF8F7` → `danger-soft` ·
-`#FFF9F9` → `danger-soft` · `#FFFDF7` → `warning-soft` · `#EFEEF5` → `wash`
+`#FFF9F9` → `danger-soft` · `#FFFDF7` → `warning-soft` · `#EFEEF5` → `wash` ·
+`#ECEBF3` → `skeleton` (skeleton block; deck orb keeps it inside the gradient)
 
 **Hairlines → canonical:**
 `#E4E6F0`/`#E8ECF3`/`#E6E8F0`(chip)/`#DCE0EB`/`#E6E5EE` → `line-soft #EEF0F4` ·

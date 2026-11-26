@@ -45,32 +45,32 @@ export interface BusinessOverviewHeaderProps {
 }
 
 const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F06AC] focus-visible:ring-offset-2";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-deeper focus-visible:ring-offset-2";
 
 const CONNECTION_PILL_STYLES: Record<
   ConnectionTone,
   { pill: string; dot: string; pulse?: boolean }
 > = {
   positive: {
-    pill: "border-[#ABEFC6] bg-[#ECFDF3] text-[#067647]",
-    dot: "bg-[#12B76A]",
+    pill: "border-success-line bg-success-soft text-success",
+    dot: "bg-success-bright",
   },
   progress: {
-    pill: "border-[#C7D2FE] bg-[#EEF2FF] text-[#1F06AC]",
-    dot: "bg-[#1F06AC]",
+    pill: "border-brand-line bg-brand-mist text-brand-deeper",
+    dot: "bg-brand-deeper",
     pulse: true,
   },
   warning: {
-    pill: "border-[#FEDF89] bg-[#FFFAEB] text-[#93470E]",
-    dot: "bg-[#F79009]",
+    pill: "border-warning-line bg-warning-soft text-warning",
+    dot: "bg-warning-strong",
   },
   negative: {
-    pill: "border-[#FECDCA] bg-[#FEF3F2] text-[#B42318]",
-    dot: "bg-[#F04438]",
+    pill: "border-danger-line bg-danger-soft text-danger",
+    dot: "bg-danger-strong",
   },
   neutral: {
-    pill: "border-[#E2E8F0] bg-[#F8FAFC] text-[#475467]",
-    dot: "bg-[#94A3B8]",
+    pill: "border-slate-200 bg-slate-50 text-slate-600",
+    dot: "bg-slate-400",
   },
 };
 
@@ -164,11 +164,11 @@ function StoreSwitcher({
     <div className="inline-flex min-h-10 min-w-0 max-w-full items-center gap-2 rounded-lg px-2 py-1.5">
       <span
         aria-hidden="true"
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#EEF0FF] text-[#1F06AC]"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand-mist text-brand-deeper"
       >
         <Store className="h-3.5 w-3.5" />
       </span>
-      <span className="min-w-0 truncate text-[13px] font-semibold text-[#0F172A]">
+      <span className="min-w-0 truncate text-[13px] font-semibold text-slate-900">
         {activeName}
       </span>
     </div>
@@ -198,28 +198,28 @@ function RouterStoreSwitcherMenu({
           aria-label={`Switch store, current store: ${activeName}`}
           title={activeDomain ? `${activeName} (${activeDomain})` : activeName}
           className={cn(
-            "inline-flex min-h-10 min-w-0 max-w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[#F4F6FA]",
+            "inline-flex min-h-10 min-w-0 max-w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-wash",
             FOCUS_RING,
           )}
         >
           <span
             aria-hidden="true"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#EEF0FF] text-[#1F06AC]"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand-mist text-brand-deeper"
           >
             <Store className="h-3.5 w-3.5" />
           </span>
-          <span className="min-w-0 max-w-[200px] truncate text-[13px] font-semibold text-[#0F172A] sm:max-w-[260px]">
+          <span className="min-w-0 max-w-[200px] truncate text-[13px] font-semibold text-slate-900 sm:max-w-[260px]">
             {activeName}
           </span>
-          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-[#64748B]" aria-hidden="true" />
+          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
         sideOffset={6}
-        className="w-72 rounded-xl border border-[#DFE4EC] bg-white p-1.5 text-[#0F172A] shadow-[0_12px_32px_rgba(15,23,42,0.12)]"
+        className="w-72 rounded-xl border border-slate-200 bg-white p-1.5 text-slate-900 shadow-[0_12px_32px_rgba(15,23,42,0.12)]"
       >
-        <DropdownMenuLabel className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#526071]">
+        <DropdownMenuLabel className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-steel">
           Connected stores
         </DropdownMenuLabel>
         {stores.length > 0 ? (
@@ -237,13 +237,13 @@ function RouterStoreSwitcherMenu({
                   if (!isSelected) onSelectStore?.(store.id);
                 }}
                 className={cn(
-                  "flex cursor-pointer items-center justify-between gap-2.5 rounded-lg px-2.5 py-2 text-xs focus:bg-[#F4F6FA] focus:text-[#0F172A]",
-                  isSelected && "bg-[#F5F7FF]",
+                  "flex cursor-pointer items-center justify-between gap-2.5 rounded-lg px-2.5 py-2 text-xs focus:bg-wash focus:text-slate-900",
+                  isSelected && "bg-veil",
                 )}
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate font-semibold text-[#0F172A]">{label}</span>
+                    <span className="truncate font-semibold text-slate-900">{label}</span>
                     {storeStatus && (
                       <span
                         aria-hidden="true"
@@ -255,26 +255,26 @@ function RouterStoreSwitcherMenu({
                     )}
                   </div>
                   {(domain || store.iana_timezone) && (
-                    <p className="mt-0.5 truncate text-[11px] text-[#526071]">
+                    <p className="mt-0.5 truncate text-[11px] text-ink-steel">
                       {[domain, store.iana_timezone].filter(Boolean).join(" · ")}
                     </p>
                   )}
                 </div>
                 {isSelected && (
-                  <Check className="h-3.5 w-3.5 shrink-0 text-[#1F06AC]" aria-hidden="true" />
+                  <Check className="h-3.5 w-3.5 shrink-0 text-brand-deeper" aria-hidden="true" />
                 )}
               </DropdownMenuItem>
             );
           })
         ) : (
-          <div className="px-2.5 py-2 text-xs text-[#526071]">
+          <div className="px-2.5 py-2 text-xs text-ink-steel">
             No Shopify store is connected to this workspace yet.
           </div>
         )}
-        <DropdownMenuSeparator className="my-1.5 bg-[#E7EBF2]" />
+        <DropdownMenuSeparator className="my-1.5 bg-slate-200" />
         <DropdownMenuItem
           onSelect={() => navigate("/dashboard/integrations")}
-          className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-[#1F06AC] focus:bg-[#F5F7FF] focus:text-[#1F06AC]"
+          className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-brand-deeper focus:bg-veil focus:text-brand-deeper"
         >
           <Settings2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>{stores.length > 0 ? "Manage stores in Integrations" : "Connect a Shopify store"}</span>
@@ -301,16 +301,16 @@ function ReportingPeriodControl({
 
   const readout = (
     <>
-      <Calendar className="h-3.5 w-3.5 shrink-0 text-[#526071]" aria-hidden="true" />
-      <span className="font-semibold text-[#0F172A]">{reporting.periodLabel}</span>
+      <Calendar className="h-3.5 w-3.5 shrink-0 text-ink-steel" aria-hidden="true" />
+      <span className="font-semibold text-slate-900">{reporting.periodLabel}</span>
       {reporting.dateRangeLabel && (
-        <span className="hidden text-[#526071] tabular-nums sm:inline">
+        <span className="hidden text-ink-steel tabular-nums sm:inline">
           {reporting.dateRangeLabel}
         </span>
       )}
       <span
         title={timezoneTooltip}
-        className="rounded-md bg-[#F1F5F9] px-1.5 py-0.5 text-[11px] font-medium text-[#475467]"
+        className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600"
       >
         {reporting.timezone.label}
       </span>
@@ -336,20 +336,20 @@ function ReportingPeriodControl({
           aria-label={`Reporting period: ${reporting.periodLabel}, timezone ${reporting.timezone.iana}`}
           title={timezoneTooltip}
           className={cn(
-            "inline-flex min-h-10 min-w-0 flex-wrap items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-[#F4F6FA]",
+            "inline-flex min-h-10 min-w-0 flex-wrap items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-wash",
             FOCUS_RING,
           )}
         >
           {readout}
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#64748B]" aria-hidden="true" />
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
         sideOffset={6}
-        className="w-64 rounded-xl border border-[#DFE4EC] bg-white p-1.5 text-[#0F172A] shadow-[0_12px_32px_rgba(15,23,42,0.12)]"
+        className="w-64 rounded-xl border border-slate-200 bg-white p-1.5 text-slate-900 shadow-[0_12px_32px_rgba(15,23,42,0.12)]"
       >
-        <DropdownMenuLabel className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#526071]">
+        <DropdownMenuLabel className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-steel">
           Reporting period
         </DropdownMenuLabel>
         {REPORTING_PERIOD_OPTIONS.map((option) => {
@@ -361,23 +361,23 @@ function ReportingPeriodControl({
                 if (!active) onSelectPeriod?.(option.value);
               }}
               className={cn(
-                "flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-xs focus:bg-[#F4F6FA] focus:text-[#0F172A]",
-                active && "bg-[#F5F7FF]",
+                "flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-xs focus:bg-wash focus:text-slate-900",
+                active && "bg-veil",
               )}
             >
               <div>
-                <p className="font-semibold text-[#0F172A]">{option.label}</p>
-                <p className="text-[11px] text-[#526071]">{option.comparisonLabel}</p>
+                <p className="font-semibold text-slate-900">{option.label}</p>
+                <p className="text-[11px] text-ink-steel">{option.comparisonLabel}</p>
               </div>
-              {active && <Check className="h-3.5 w-3.5 shrink-0 text-[#1F06AC]" aria-hidden="true" />}
+              {active && <Check className="h-3.5 w-3.5 shrink-0 text-brand-deeper" aria-hidden="true" />}
             </DropdownMenuItem>
           );
         })}
-        <DropdownMenuSeparator className="my-1.5 bg-[#E7EBF2]" />
-        <div className="flex items-start gap-2 px-2.5 py-1.5 text-[11px] leading-4 text-[#526071]">
-          <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#64748B]" aria-hidden="true" />
+        <DropdownMenuSeparator className="my-1.5 bg-slate-200" />
+        <div className="flex items-start gap-2 px-2.5 py-1.5 text-[11px] leading-4 text-ink-steel">
+          <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden="true" />
           <div>
-            <p className="font-medium text-[#334155]">
+            <p className="font-medium text-slate-700">
               {reporting.timezone.verified ? "Shopify store timezone" : "Reporting timezone"}
             </p>
             <p className="mt-0.5">{reporting.timezone.iana}</p>
@@ -413,11 +413,11 @@ export function BusinessOverviewHeader({
         <div className="min-w-0">
           <h1
             id="business-overview-heading"
-            className="text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.03em] text-[#0F172A] sm:text-[2rem]"
+            className="text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.03em] text-slate-900 sm:text-[2rem]"
           >
             Your business at a glance.
           </h1>
-          <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[#475467]">
+          <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-600">
             Understand your store&apos;s performance, discover what needs attention, and see what
             Revluma knows about your business.
           </p>
@@ -429,13 +429,13 @@ export function BusinessOverviewHeader({
           disabled={refreshing}
           aria-label={refreshing ? "Refreshing…" : "Refresh briefing"}
           className={cn(
-            "inline-flex min-h-11 shrink-0 items-center justify-center gap-2 self-start rounded-lg border border-[#CFD6E2] bg-white px-3.5 text-xs font-semibold text-[#1E293B] shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-colors hover:border-[#94A3B8] hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto",
+            "inline-flex min-h-11 shrink-0 items-center justify-center gap-2 self-start rounded-lg border border-slate-300 bg-white px-3.5 text-xs font-semibold text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto",
             FOCUS_RING,
           )}
         >
           <RefreshCw
             className={cn(
-              "h-3.5 w-3.5 text-[#475467]",
+              "h-3.5 w-3.5 text-slate-600",
               refreshing && "animate-spin motion-reduce:animate-none",
             )}
             aria-hidden="true"
@@ -447,7 +447,7 @@ export function BusinessOverviewHeader({
       <div
         role="region"
         aria-label="Store and reporting context"
-        className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border border-[#DFE4EC] bg-white px-2.5 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
       >
         <StoreSwitcher
           data={data}
@@ -455,11 +455,11 @@ export function BusinessOverviewHeader({
           onSelectStore={onSelectStore}
         />
 
-        <span aria-hidden="true" className="hidden h-5 w-px bg-[#E5E9F0] sm:block" />
+        <span aria-hidden="true" className="hidden h-5 w-px bg-slate-200 sm:block" />
 
         <ConnectionStatusBadge status={connection} inRouter={inRouter} />
 
-        <span aria-hidden="true" className="hidden h-5 w-px bg-[#E5E9F0] sm:block" />
+        <span aria-hidden="true" className="hidden h-5 w-px bg-slate-200 sm:block" />
 
         <ReportingPeriodControl
           data={data}
@@ -469,9 +469,9 @@ export function BusinessOverviewHeader({
 
         <span
           title={lastUpdate.title ?? undefined}
-          className="inline-flex min-h-8 items-center gap-1.5 px-2 py-1 text-xs text-[#526071] tabular-nums lg:ml-auto"
+          className="inline-flex min-h-8 items-center gap-1.5 px-2 py-1 text-xs text-ink-steel tabular-nums lg:ml-auto"
         >
-          <Clock3 className="h-3.5 w-3.5 shrink-0 text-[#64748B]" aria-hidden="true" />
+          <Clock3 className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden="true" />
           <span>{lastUpdate.label}</span>
         </span>
       </div>
