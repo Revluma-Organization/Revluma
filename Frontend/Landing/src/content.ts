@@ -447,3 +447,60 @@ export const FINAL_CTA = {
   secondary: "Apply as a Founding Merchant",
   notes: ["7-day free trial", "No credit card required"],
 } as const;
+
+// Footer. Every link points at something that exists: homepage sections, the
+// real sign-up / sign-in pages, the Founding Merchants waitlist, the contact
+// inbox already used for Enterprise, and the two real legal pages (the other
+// files under /pages are copies of the Terms page, so they are not linked).
+// Social: X only until the other official accounts are confirmed.
+export const FOOTER = {
+  tagline: "Store intelligence for Shopify. Rev shows what happened in your store, how it knows, and what to look at next.",
+  columns: [
+    {
+      title: "Product",
+      links: [
+        { label: "Platform", href: "#platform" },
+        { label: "How it works", href: "#how-it-works" },
+        { label: "Meet Rev", href: "#meet-rev" },
+        { label: "Pricing", href: "#pricing" },
+      ],
+    },
+    {
+      title: "Get started",
+      links: [
+        { label: "Start free trial", to: "signUp" },
+        { label: "Sign in", to: "signIn" },
+        { label: "Founding Merchants", to: "join" },
+      ],
+    },
+    {
+      title: "Support",
+      links: [
+        { label: "FAQ", href: "#faq" },
+        { label: "Contact us", href: "mailto:hello@revluma.com" },
+      ],
+    },
+    {
+      title: "Legal",
+      links: [
+        { label: "Privacy Policy", href: "/pages/privacyPolicy" },
+        { label: "Terms of Service", href: "/pages/termsOfService" },
+      ],
+    },
+  ],
+  social: [{ label: "Revluma on X", href: "https://x.com/RevlumaAI" }],
+  // The scene's watching eye (Rev's orb as the iris) sits in the sky and looks
+  // at one part of the store at a time. Positions are fractions of the image;
+  // each label is Shopify data Revluma actually reads.
+  watch: {
+    eye: { x: 0.5, y: 0.2 },
+    targets: [
+      { x: 0.128, y: 0.72, label: "Checkouts" },
+      { x: 0.434, y: 0.76, label: "Inventory" },
+      { x: 0.588, y: 0.83, label: "Orders" },
+      { x: 0.76, y: 0.82, label: "Customers" },
+      { x: 0.855, y: 0.74, label: "Products" },
+      { x: 0.912, y: 0.82, label: "Refunds" },
+    ],
+  },
+} as const;

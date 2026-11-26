@@ -41,6 +41,7 @@ describe("Homepage hero embed", () => {
       "faq",
       "pricing",
       "get-started",
+      "site-footer",
     ]);
     for (const id of Object.keys(SECTIONS)) expect(homepage).toContain(`<div id="${id}"`);
   });
