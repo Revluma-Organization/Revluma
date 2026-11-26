@@ -1,0 +1,138 @@
+/* Merchant feedback (ReviewsSection.tsx). Light canvas, white cards and
+ * indigo accents, matching the Founding Merchants and FAQ sections (reuses
+ * .fm-eyebrow). */
+
+.rv-section {
+  background: linear-gradient(180deg, #f3f2ef 0%, #fbfaf8 100%);
+  border-top: 1px solid #eeece7;
+}
+
+.rv-grid {
+  display: grid;
+  gap: 1.25rem;
+  margin: 3rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+@media (min-width: 768px) {
+  .rv-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  .rv-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.5rem;
+    margin-top: 3.5rem;
+  }
+}
+
+.rv-card {
+  display: flex;
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  /* Two columns: the third card spans the row instead of sitting alone. */
+  .rv-card:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.rv-figure {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  margin: 0;
+  padding: 1.75rem;
+  border: 1px solid #eae8e3;
+  border-radius: 1.5rem;
+  background: #fff;
+  box-shadow:
+    0 1px 2px rgba(12, 10, 29, 0.04),
+    0 24px 48px -36px rgba(12, 10, 29, 0.2);
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    transform 0.3s ease;
+}
+@media (min-width: 640px) {
+  .rv-figure {
+    padding: 2rem;
+  }
+}
+.rv-figure:hover {
+  border-color: rgba(31, 6, 172, 0.2);
+  box-shadow:
+    0 1px 2px rgba(12, 10, 29, 0.04),
+    0 28px 56px -32px rgba(31, 6, 172, 0.28);
+}
+
+.rv-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rv-stars {
+  display: flex;
+  gap: 0.15rem;
+  margin: 0;
+  color: #dcd9e6;
+}
+.rv-stars .is-on {
+  color: #1f06ac;
+}
+.rv-mark {
+  color: #eeebff;
+}
+
+.rv-quote {
+  flex: 1;
+  margin: 1.25rem 0 0;
+}
+.rv-quote p {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.7;
+  color: #3f3d4e;
+  text-wrap: pretty;
+}
+
+.rv-person {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #efede8;
+}
+.rv-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2b13cf, #1f06ac);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+.rv-name {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #0c0a1d;
+}
+.rv-role {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.8rem;
+  color: #6e6c7a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rv-figure {
+    transition: none;
+  }
+}
