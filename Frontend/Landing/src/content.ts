@@ -397,11 +397,6 @@ export const PRICING = {
   ],
   contactHref: "mailto:hello@revluma.com?subject=Revluma%20Enterprise",
   trial: "Starter and Premium include a 7-day free trial. No credit card required.",
-  assurances: [
-    { id: "readonly", label: "Read-only Shopify access on every plan" },
-    { id: "usd", label: "Prices in US dollars" },
-  ],
-  faqLink: { label: "Questions? Read the FAQ", href: "#faq" },
 } as const;
 
 // Merchant feedback: real quotes supplied and approved by the founder

@@ -1,5 +1,5 @@
 import { useRef, useState, type CSSProperties } from "react";
-import { ArrowRight, Check, CircleDollarSign, Lock, MessageCircleQuestion } from "lucide-react";
+import { Check } from "lucide-react";
 import { PRICING } from "@/content";
 import { useLandingConfig } from "@/config";
 import { useReveal } from "@/useReveal";
@@ -128,25 +128,6 @@ export function PricingSection({ id }: { id?: string }) {
 
         <div className="pr-foot">
           <p className="pr-foot__trial">{PRICING.trial}</p>
-          <ul className="pr-foot__list">
-            {PRICING.assurances.map((a) => (
-              <li key={a.id}>
-                {a.id === "readonly" ? (
-                  <Lock size={13} strokeWidth={2.2} aria-hidden="true" />
-                ) : (
-                  <CircleDollarSign size={13} strokeWidth={2.2} aria-hidden="true" />
-                )}
-                {a.label}
-              </li>
-            ))}
-            <li>
-              <a href={PRICING.faqLink.href} className="pr-foot__link">
-                <MessageCircleQuestion size={13} strokeWidth={2.2} aria-hidden="true" />
-                {PRICING.faqLink.label}
-                <ArrowRight size={13} strokeWidth={2.2} aria-hidden="true" />
-              </a>
-            </li>
-          </ul>
         </div>
       </div>
     </section>
