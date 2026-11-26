@@ -8,7 +8,7 @@ POSTs (those are writes).
 
 ```bash
 curl -s -o /tmp/ready.json -w "HTTP %{http_code}\n" \
-  https://revluma-backend-vrsd.onrender.com/ready
+  https://revluma-backend-lqve.onrender.com/ready
 python3 -c "import json;r=json.load(open('/tmp/ready.json'));print('status:',r['status']);print('node_build:',r['node_build']);print('python_build:',r['python_build']);print('python_ready:',r['python_ready'],'database_ready:',r['database_ready'])"
 ```
 
@@ -19,11 +19,8 @@ python3 -c "import json;r=json.load(open('/tmp/ready.json'));print('status:',r['
 
 ## A2. Python service SHA (cross-check)
 
-Get the public URL from Render dashboard → service
-`srv-db9m923ncjis739s8co0` → Settings/Connect:
-
 ```bash
-curl -s https://<python-public-url>/health | python3 -m json.tool | head -n 12
+curl -s https://revluma-python-swwk.onrender.com/health | python3 -m json.tool | head -n 12
 ```
 
 - Expect: HTTP 200, field `build` starts `9a133438`.
@@ -39,12 +36,12 @@ keys anywhere):
 ```bash
 export TOKEN="<paste access_token>"
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://revluma-backend-vrsd.onrender.com/api/v1/rev/conversations?limit=1" \
+  "https://revluma-backend-lqve.onrender.com/api/v1/rev/conversations?limit=1" \
   | head -c 600; echo
 # expect: HTTP 200, "success":true, a conversations list
 export CONV="<one conversation id from above>"
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://revluma-backend-vrsd.onrender.com/api/v1/rev/conversation/$CONV?limit=5" \
+  "https://revluma-backend-lqve.onrender.com/api/v1/rev/conversation/$CONV?limit=5" \
   | python3 -c "import json,sys;r=json.load(sys.stdin);print('success:',r['success']);print('seqs:',[(m['sequence_number'],m['role']) for m in r['data']['messages']])"
 # expect: success True, messages listed ascending (restoration read path OK)
 ```
