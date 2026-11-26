@@ -18,8 +18,13 @@ export const Checkout: FC = () => {
     const navigate = useNavigate();
   const location = useLocation();
   
-  // Catch the plan and cycle passed from the Subscription page!
-  const { plan = "growth", cycle = "monthly" } = location.state || {};
+  // Plan and cycle come from the Subscription page (router state) or the
+  // upgrade modal (?plan=&interval= query string). "yearly" maps to "annual".
+  const query = new URLSearchParams(location.search);
+  const state = (location.state || {}) as { plan?: string; cycle?: string };
+  const plan = state.plan || query.get("plan") || "starter";
+  const rawCycle = state.cycle || query.get("interval") || "monthly";
+  const cycle = rawCycle === "yearly" ? "annual" : rawCycle;
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);

@@ -6,226 +6,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="../assets/images/Revluma-icon.png">
-  <title>Revluma - Verify Email</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap"
-    rel="stylesheet">
+  <title>Verify Email | Revluma</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&family=Archivo+Black&display=swap" rel="stylesheet" />
   <script src="../assets/js/apiConfig.js"></script>
   <script src="../assets/js/auth-client.js"></script>
   <style>
-    :root {
-      --bg: #060608;
-      --surface: rgba(255, 255, 255, 0.028);
-      --surface-hover: rgba(255, 255, 255, 0.048);
-      --border: rgba(255, 255, 255, 0.07);
-      --border-focus: rgba(255, 255, 255, 0.22);
-      --text: #f0f0f5;
-      --muted: #5a5a72;
-      --muted2: #3a3a50;
-      --accent: #7c6fff;
-      --red: #f87171;
-      --green: #34d399;
-    }
-
-    *,
-    *::before,
-    *::after {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    html,
-    body {
-      height: 100%;
-      font-family: 'DM Sans', system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      -webkit-font-smoothing: antialiased;
-    }
-
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      pointer-events: none;
-      opacity: 0.018;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-      background-size: 128px;
-    }
-
-    .glow-1 {
-      position: fixed;
-      width: 500px;
-      height: 500px;
-      top: -160px;
-      left: -160px;
-      background: radial-gradient(circle, rgba(124, 111, 255, 0.055) 0%, transparent 70%);
-      border-radius: 50%;
-      filter: blur(100px);
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    .glow-2 {
-      position: fixed;
-      width: 400px;
-      height: 400px;
-      bottom: -100px;
-      right: -100px;
-      background: radial-gradient(circle, rgba(255, 255, 255, 0.025) 0%, transparent 70%);
-      border-radius: 50%;
-      filter: blur(100px);
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    .code-box {
-      width: 48px;
-      height: 56px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      font-size: 1.5rem;
-      font-weight: 600;
-      color: var(--text);
-      text-align: center;
-      outline: none;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-      caret-color: var(--accent);
-    }
-
-    .code-box:focus {
-      border-color: var(--border-focus);
-      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
-    }
-
-    .code-box.filled {
-      border-color: var(--green);
-    }
-
-    .code-box.error {
-      border-color: var(--red) !important;
-      animation: shake 0.3s ease;
-    }
-
-    @keyframes shake {
-
-      0%,
-      100% {
-        transform: translateX(0);
-      }
-
-      25% {
-        transform: translateX(-4px);
-      }
-
-      75% {
-        transform: translateX(4px);
-      }
-    }
-
-    @keyframes fadeSlideIn {
-      from {
-        opacity: 0;
-        transform: translateY(14px);
-      }
-
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .animate-in {
-      animation: fadeSlideIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    }
-
-    @keyframes pulse-ring {
-      0% {
-        box-shadow: 0 0 0 0 rgba(124, 111, 255, 0.25);
-      }
-
-      70% {
-        box-shadow: 0 0 0 12px rgba(124, 111, 255, 0);
-      }
-
-      100% {
-        box-shadow: 0 0 0 0 rgba(124, 111, 255, 0);
-      }
-    }
-
-    .pulse-icon {
-      animation: pulse-ring 2s ease infinite;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, #ffffff, #e0e0e0);
-      color: #060608;
-      font-weight: 600;
-      font-size: 0.95rem;
-      border: none;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .btn-primary:hover {
-      opacity: 0.92;
-      transform: translateY(-1px);
-    }
-
-    .btn-primary:active {
-      transform: scale(0.98);
-    }
-
-    .btn-primary:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    .btn-secondary {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-weight: 500;
-      font-size: 0.875rem;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .btn-secondary:hover {
-      background: var(--surface-hover);
-      border-color: rgba(255, 255, 255, 0.15);
-    }
-
-    .spinner {
-      animation: spin 0.9s linear infinite;
-    }
-
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    .countdown {
-      font-variant-numeric: tabular-nums;
-    }
-
-    @media (max-width: 480px) {
-      .code-box {
-        width: 42px;
-        height: 50px;
-        font-size: 1.25rem;
-      }
-    }
+    /* Page-specific layout; shared components live in auth-theme.css. */
+    .mail-badge { display: grid; place-items: center; width: 60px; height: 60px; margin: 0 auto 22px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--accent); box-shadow: var(--card-shadow); animation: rvPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+    .email-pill { display: inline-block; margin-top: 6px; padding: 4px 12px; border-radius: 999px; background: var(--surface-md); color: var(--text); font-weight: 600; font-size: 14px; word-break: break-all; }
+    .code-label { display: block; margin-bottom: 12px; text-align: center; font-size: 13.5px; font-weight: 600; color: var(--text-soft); }
+    .code-msg { min-height: 20px; margin-top: 10px; text-align: center; font-size: 13px; color: var(--red); }
+    .meta-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 20px; font-size: 13px; color: var(--muted); }
+    .meta-row strong { color: var(--text); font-variant-numeric: tabular-nums; }
+    .alt-row { margin-top: 20px; text-align: center; font-size: 14px; color: var(--muted); }
   </style>
 
   <!-- Clean URL Masking -->
@@ -238,10 +33,7 @@
 </head>
 
 <body>
-  <!-- Glassmorphism Card Component: loaded dynamically from the shared
-       components/GlassmorphismCard.html so this page, the rest of the auth
-       flow, and the React version in the Dashboard app all stay in sync
-       with a single source of truth instead of duplicated copies. -->
+  <!-- Shared confirmation dialog (components/GlassmorphismCard.html). -->
   <script>
     async function loadGlassmorphismCard() {
       try {
@@ -250,25 +42,18 @@
         const html = await res.text();
         const temp = document.createElement('div');
         temp.innerHTML = html;
-
-        // Append the <style> and markup nodes as-is
         Array.from(temp.childNodes).forEach((node) => {
           if (node.nodeType === 1 && node.tagName === 'SCRIPT') return;
           document.body.appendChild(node);
         });
-
-        // <script> tags inserted via innerHTML never execute — recreate and
-        // append them so the component's show/hide functions actually run.
         Array.from(temp.querySelectorAll('script')).forEach((oldScript) => {
           const newScript = document.createElement('script');
           newScript.textContent = oldScript.textContent;
           document.body.appendChild(newScript);
         });
-
         return true;
       } catch (err) {
-        // Degrade gracefully: a network hiccup loading the shared component
-        // should never block verification or the redirect into onboarding.
+        // A network hiccup loading the dialog must never block verification.
         console.error('Could not load shared glassmorphism card component:', err);
         window.showGlassmorphismCard = (_type, _title, _message, onClose) => { if (onClose) onClose(); };
         window.hideGlassmorphismCard = () => {};
@@ -277,175 +62,224 @@
     }
   </script>
 
-  <div class="glow-1"></div>
-  <div class="glow-2"></div>
+  <div class="rv-shell">
+    <header class="rv-nav-wrap">
+      <nav class="rv-nav" aria-label="Revluma">
+        <a href="/" class="rv-nav-logo" aria-label="Revluma home"><span class="rv-nav-mark"><img src="../assets/images/Revluma-icon.png" alt="" width="24" height="24" /></span><span>Revluma</span></a>
+        <a href="login.html" class="rv-nav-link">Sign In</a>
+      </nav>
+    </header>
 
-  <div class="min-h-screen flex flex-col items-center justify-start" style="position: relative; z-index: 1;">
-
-    <!-- Header Logo -->
-    <div class="w-full flex justify-between items-center py-5 px-6 sm:px-8 absolute top-0 left-0">
-      <a href="/" class="flex items-center gap-2.5" style="text-decoration:none;">
-        <div class="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center">
-          <img src="../assets/images/Revluma-icon.png" alt="Revluma Logo"
-            class="w-full h-full object-contain mix-blend-screen">
+    <main class="rv-main">
+      <div class="rv-col" style="max-width: 460px;">
+        <div class="mail-badge" aria-hidden="true">
+          <svg width="26" height="26" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
         </div>
-        <div>
-          <span
-            class="text-lg font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Revluma</span>
-        </div>
-      </a>
-    </div>
 
-    <!-- Content Area -->
-    <div class="flex-1 flex flex-col px-4 pt-24 md:pt-28 pb-16 w-full relative z-10">
-      <div class="w-full max-w-[440px] animate-in mb-auto mx-auto">
+        <!-- Shown when we know which email to verify -->
+        <div id="codeStep">
+          <div class="page-heading">
+            <h1>Check your inbox</h1>
+            <p>Enter the 6-digit code we sent to</p>
+            <span class="email-pill" id="displayEmail"></span>
+          </div>
 
-        <!-- Mail Icon -->
-        <div class="flex justify-center mb-8">
-          <div class="w-16 h-16 rounded-2xl flex items-center justify-center pulse-icon"
-            style="background: var(--surface); border: 1px solid var(--border);">
-            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--accent);">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
-              </path>
-            </svg>
+          <div class="card">
+            <form id="verifyForm" novalidate>
+              <span class="code-label" id="codeLabel">Verification code</span>
+              <div class="rv-otp" id="codeContainer" role="group" aria-labelledby="codeLabel" aria-describedby="codeError">
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="code-box" data-index="0" aria-label="Digit 1 of 6" autocomplete="one-time-code" placeholder=" ">
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="code-box" data-index="1" aria-label="Digit 2 of 6" autocomplete="off" placeholder=" ">
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="code-box" data-index="2" aria-label="Digit 3 of 6" autocomplete="off" placeholder=" ">
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="code-box" data-index="3" aria-label="Digit 4 of 6" autocomplete="off" placeholder=" ">
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="code-box" data-index="4" aria-label="Digit 5 of 6" autocomplete="off" placeholder=" ">
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="code-box" data-index="5" aria-label="Digit 6 of 6" autocomplete="off" placeholder=" ">
+              </div>
+              <p id="codeError" class="code-msg" role="alert" aria-live="polite"></p>
+
+              <div class="meta-row">
+                <span id="timerText">Code expires in <strong id="expiryTimer" class="countdown">15:00</strong></span>
+                <button type="button" id="resendBtn" class="resend-btn" disabled>Resend in <span id="resendCountdown" class="countdown">60</span>s</button>
+              </div>
+
+              <button type="submit" id="verifyBtn" class="btn-primary" disabled>
+                <span id="verifyBtnText">Verify Email</span>
+                <svg id="verifyBtnSpinner" class="spinner hidden" width="16" height="16" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="40" stroke-dashoffset="10" stroke-linecap="round" /></svg>
+                <span class="rv-chip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg></span>
+              </button>
+            </form>
+            <p class="alt-row">Wrong email? <a href="signup.html" class="rv-link">Use a different one</a></p>
           </div>
         </div>
 
-        <!-- Heading -->
-        <div class="text-center mb-8">
-          <h1 class="text-2xl sm:text-3xl font-bold mb-2 leading-tight">Check your inbox</h1>
-          <p style="color: var(--muted);">We've sent a 6-digit code to</p>
-          <p class="font-semibold mt-1" id="displayEmail" style="color: var(--text);">user@example.com</p>
+        <!-- Shown when this page is opened without a pending email -->
+        <div id="emailStep" class="hidden">
+          <div class="page-heading">
+            <h1>Verify your email</h1>
+            <p>Enter the email you signed up with and we will send you a new 6-digit code.</p>
+          </div>
+          <div class="card">
+            <form id="emailForm" novalidate>
+              <div class="field">
+                <label for="pendingEmail">Email address</label>
+                <input type="email" id="pendingEmail" placeholder="you@yourstore.com" autocomplete="email" inputmode="email" spellcheck="false" aria-describedby="pendingEmailError" required>
+                <p id="pendingEmailError" class="field-error" role="alert" aria-live="polite"></p>
+              </div>
+              <button type="submit" id="sendCodeBtn" class="btn-primary"><span class="btn-label">Send Code</span><span class="rv-chip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg></span></button>
+            </form>
+            <p class="alt-row">Already verified? <a href="login.html" class="rv-link">Sign in</a></p>
+          </div>
         </div>
-
-        <!-- Code Input -->
-        <form id="verifyForm" class="space-y-6">
-          <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider mb-3"
-              style="color: var(--muted);">Verification Code</label>
-            <div class="flex justify-center gap-3" id="codeContainer">
-              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-box" data-index="0"
-                autocomplete="one-time-code">
-              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-box" data-index="1">
-              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-box" data-index="2">
-              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-box" data-index="3">
-              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-box" data-index="4">
-              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-box" data-index="5">
-            </div>
-            <p id="codeError" class="text-xs text-center mt-2 hidden" style="color: var(--red);"></p>
-          </div>
-
-          <!-- Timer & Resend -->
-          <div class="flex items-center justify-between text-xs" style="color: var(--muted);">
-            <span id="timerText">Code expires in <span id="expiryTimer" class="countdown font-semibold"
-                style="color: var(--text);">15:00</span></span>
-            <button type="button" id="resendBtn" class="font-medium transition-colors disabled:opacity-40"
-              style="color: var(--accent);" disabled>
-              Resend (<span id="resendCountdown" class="countdown">60</span>s)
-            </button>
-          </div>
-
-          <!-- Verify Button -->
-          <button type="submit" id="verifyBtn" class="btn-primary w-full py-3.5 flex items-center justify-center gap-2"
-            disabled>
-            <span id="verifyBtnText">Verify & Continue</span>
-            <svg id="verifyBtnSpinner" class="w-4 h-4 spinner hidden" fill="none" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="40"
-                stroke-dashoffset="10" stroke-linecap="round" />
-            </svg>
-          </button>
-
-          <!-- Back -->
-          <div class="flex items-center justify-between">
-            <button type="button" id="backBtn" class="btn-secondary px-5 py-2.5 text-sm">← Back</button>
-            <p class="text-sm" style="color: var(--muted);">
-              Wrong email? <a href="signup.html" class="font-medium hover:underline" style="color: var(--text);">Change
-                it</a>
-            </p>
-          </div>
-        </form>
-
       </div>
-    </div>
+    </main>
 
-    <!-- Footer -->
-    <div class="pb-6">
-      <p style="font-size: 11px; color: #888; text-align: center; letter-spacing: 0.02em;">
-        Protected by Revluma &nbsp;·&nbsp;
-        <a href="../pages/privacyPolicy.html" style="color: inherit; text-decoration: none;">Privacy</a> &nbsp;·&nbsp;
-        <a href="../pages/termsOfService.html" style="color: inherit; text-decoration: none;">Terms</a>
-      </p>
-    </div>
+    <footer class="rv-foot">
+      <span>&copy; 2026 Revluma</span><span class="rv-foot-dot" aria-hidden="true"></span>
+      <a href="../pages/privacyPolicy.html">Privacy</a><span class="rv-foot-dot" aria-hidden="true"></span>
+      <a href="../pages/termsOfService.html">Terms</a><span class="rv-foot-dot" aria-hidden="true"></span>
+      <a href="mailto:hello@revluma.com">Help</a>
+    </footer>
   </div>
 
   <script>
-    const API_BASE = window.REVLUMA_API_BASE || 'https://revluma-backend-lqve.onrender.com/api/v1';
+    // Requests go through auth-client.js (window.revlumaAuth), which uses this base.
+    const API_BASE = (window.revlumaAuth && window.revlumaAuth.apiBase) || window.REVLUMA_API_BASE;
 
     document.addEventListener('DOMContentLoaded', async () => {
-      // Load the shared glassmorphism card component before anything can trigger it.
       await loadGlassmorphismCard();
 
-      // ================================================================
-      //  STATE
-      // ================================================================
-      const email = localStorage.getItem('signup_email') || localStorage.getItem('revluma_pending_email') || '';
-      document.getElementById('displayEmail').textContent = email;
-
+      let email = localStorage.getItem('signup_email') || localStorage.getItem('revluma_pending_email') || '';
+      const codeStep = document.getElementById('codeStep');
+      const emailStep = document.getElementById('emailStep');
       const codeInputs = document.querySelectorAll('.code-box');
       const verifyBtn = document.getElementById('verifyBtn');
       const verifyBtnText = document.getElementById('verifyBtnText');
       const verifyBtnSpinner = document.getElementById('verifyBtnSpinner');
       const codeError = document.getElementById('codeError');
       const resendBtn = document.getElementById('resendBtn');
-      const resendCountdown = document.getElementById('resendCountdown');
       const expiryTimer = document.getElementById('expiryTimer');
-      if (!email) {
-        codeError.textContent = 'Email not found. Return to sign in or registration to continue.';
-        codeError.classList.remove('hidden');
-        verifyBtn.disabled = true;
-        resendBtn.disabled = true;
-        return;
+      let resendInterval = null;
+      let expiryInterval = null;
+
+      function getCode() {
+        return Array.from(codeInputs).map(i => i.value).join('');
+      }
+      function setCodeError(message) {
+        codeError.textContent = message || '';
+        codeInputs.forEach(i => i.classList.toggle('error', !!message));
+        codeInputs.forEach(i => message ? i.setAttribute('aria-invalid', 'true') : i.removeAttribute('aria-invalid'));
       }
 
-      // ================================================================
-      //  CODE INPUT LOGIC
-      // ================================================================
+      // ── Countdown timers ────────────────────────────────────────────
+      function startResendCountdown(seconds = 60) {
+        clearInterval(resendInterval);
+        let left = seconds;
+        resendBtn.disabled = true;
+        resendBtn.innerHTML = 'Resend in <span class="countdown">' + left + '</span>s';
+        resendInterval = setInterval(() => {
+          left--;
+          const el = resendBtn.querySelector('.countdown');
+          if (el) el.textContent = left;
+          if (left <= 0) {
+            clearInterval(resendInterval);
+            resendBtn.disabled = false;
+            resendBtn.textContent = 'Resend code';
+          }
+        }, 1000);
+      }
+      function startExpiryCountdown(seconds = 15 * 60) {
+        clearInterval(expiryInterval);
+        let left = seconds;
+        expiryTimer.style.color = '';
+        expiryTimer.textContent = '15:00';
+        expiryInterval = setInterval(() => {
+          left--;
+          const mins = Math.floor(left / 60);
+          const secs = left % 60;
+          expiryTimer.textContent = mins + ':' + String(secs).padStart(2, '0');
+          if (left <= 60) expiryTimer.style.color = 'var(--red)';
+          if (left <= 0) {
+            clearInterval(expiryInterval);
+            expiryTimer.textContent = 'expired';
+            setCodeError('This code has expired. Request a new one.');
+            verifyBtn.disabled = true;
+          }
+        }, 1000);
+      }
+
+      function showCodeStep() {
+        emailStep.classList.add('hidden');
+        codeStep.classList.remove('hidden');
+        codeStep.classList.add('rv-step-in');
+        document.getElementById('displayEmail').textContent = email;
+        startResendCountdown();
+        startExpiryCountdown();
+        codeInputs[0].focus();
+      }
+
+      // ── No pending email: ask for it instead of showing an error ────
+      if (!email) {
+        codeStep.classList.add('hidden');
+        emailStep.classList.remove('hidden');
+        const input = document.getElementById('pendingEmail');
+        const err = document.getElementById('pendingEmailError');
+        input.focus();
+        document.getElementById('emailForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const value = input.value.trim();
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+            err.textContent = 'Please enter a valid email address.';
+            err.classList.add('visible');
+            input.setAttribute('aria-invalid', 'true');
+            input.focus();
+            return;
+          }
+          err.classList.remove('visible');
+          input.removeAttribute('aria-invalid');
+          const btn = document.getElementById('sendCodeBtn');
+          btn.disabled = true;
+          btn.querySelector('.btn-label').textContent = 'Sending…';
+          try {
+            await window.revlumaAuth.resendVerification(value);
+          } catch (error) {
+            console.warn('[AUTH] resend verification failed', error);
+          }
+          email = value;
+          localStorage.setItem('signup_email', value);
+          btn.disabled = false;
+          btn.querySelector('.btn-label').textContent = 'Send Code';
+          showCodeStep();
+        });
+      } else {
+        showCodeStep();
+      }
+
+      // ── Code boxes ──────────────────────────────────────────────────
       codeInputs.forEach((input, index) => {
         input.addEventListener('input', (e) => {
-          const val = e.target.value.replace(/[^0-9]/g, '');
+          const val = e.target.value.replace(/[^0-9]/g, '').slice(-1);
           e.target.value = val;
-
-          if (val) {
-            e.target.classList.add('filled');
-            if (index < codeInputs.length - 1) {
-              codeInputs[index + 1].focus();
-            }
-          } else {
-            e.target.classList.remove('filled');
-          }
-
-          // Enable verify button when all 6 digits filled
-          const code = getCode();
-          verifyBtn.disabled = code.length < 6;
-
-          // Clear error state
-          codeError.classList.add('hidden');
-          codeInputs.forEach(i => i.classList.remove('error'));
+          e.target.classList.toggle('filled', !!val);
+          if (val && index < codeInputs.length - 1) codeInputs[index + 1].focus();
+          verifyBtn.disabled = getCode().length < 6;
+          setCodeError('');
+          if (getCode().length === 6) verifyBtn.focus();
         });
-
         input.addEventListener('keydown', (e) => {
           if (e.key === 'Backspace' && !e.target.value && index > 0) {
             codeInputs[index - 1].focus();
             codeInputs[index - 1].value = '';
             codeInputs[index - 1].classList.remove('filled');
+            verifyBtn.disabled = true;
+          } else if (e.key === 'ArrowLeft' && index > 0) {
+            codeInputs[index - 1].focus();
+          } else if (e.key === 'ArrowRight' && index < codeInputs.length - 1) {
+            codeInputs[index + 1].focus();
           }
         });
-
-        // Allow paste of full code
         input.addEventListener('paste', (e) => {
           e.preventDefault();
-          const paste = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '');
+          const paste = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '').slice(0, 6);
           paste.split('').forEach((char, i) => {
             if (codeInputs[i]) {
               codeInputs[i].value = char;
@@ -455,172 +289,62 @@
           const lastIndex = Math.min(paste.length, codeInputs.length) - 1;
           if (lastIndex >= 0) codeInputs[lastIndex].focus();
           verifyBtn.disabled = getCode().length < 6;
+          setCodeError('');
         });
       });
 
-      // Focus first input on page load
-      codeInputs[0].focus();
-
-      function getCode() {
-        return Array.from(codeInputs).map(i => i.value).join('');
-      }
-
-      // ================================================================
-      //  VERIFY SUBMIT
-      // ================================================================
+      // ── Verify ──────────────────────────────────────────────────────
       document.getElementById('verifyForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const code = getCode();
         if (code.length < 6) return;
 
-        // Show loading state
         verifyBtn.disabled = true;
-        verifyBtnText.textContent = 'Verifying...';
+        verifyBtnText.textContent = 'Verifying…';
         verifyBtnSpinner.classList.remove('hidden');
         showGlassmorphismCard('loading', 'Verifying your code…', 'Just a moment.');
 
         try {
           await window.revlumaAuth.verifyEmail(email, code);
-
           // Email verification does not create an authenticated session.
           showGlassmorphismCard('success',
-            'Email Verified!',
-            'Your email is verified. Please sign in to continue.',
+            'Email verified',
+            'Your email is confirmed. Sign in to set up your store.',
             () => window.location.href = 'login.html',
             'Continue to Sign In'
           );
-
-          // Auto-redirect after 3 seconds in case the user doesn't click the button
-          setTimeout(() => {
-            window.location.href = 'login.html';
-          }, 3000);
-
+          setTimeout(() => { window.location.href = 'login.html'; }, 3000);
         } catch (err) {
-          // Inline field-level feedback (which digits were wrong)
-          codeError.textContent = err.message || 'Invalid verification code. Please try again.';
-          codeError.classList.remove('hidden');
-          codeInputs.forEach(i => i.classList.add('error'));
-
+          hideGlassmorphismCard();
+          setCodeError(err.message || 'That code is invalid or has expired. Check the digits and try again.');
           verifyBtn.disabled = false;
-          verifyBtnText.textContent = 'Verify & Continue';
+          verifyBtnText.textContent = 'Verify Email';
           verifyBtnSpinner.classList.add('hidden');
-
-          // Prominent glass card for the failure, matching the success treatment
-          showGlassmorphismCard('error',
-            'Verification Failed',
-            err.message || 'That code is invalid or has expired. Please check the digits and try again.',
-            () => {
-              hideGlassmorphismCard();
-              codeInputs[0].focus();
-            },
-            'Try Again'
-          );
+          codeInputs[0].focus();
         }
       });
 
-      // ================================================================
-      //  RESEND COUNTDOWN (60s)
-      // ================================================================
-      let resendSeconds = 60;
-      const resendInterval = setInterval(() => {
-        resendSeconds--;
-        resendCountdown.textContent = resendSeconds;
-        if (resendSeconds <= 0) {
-          clearInterval(resendInterval);
-          resendBtn.disabled = false;
-          resendBtn.innerHTML = 'Resend code';
-        }
-      }, 1000);
-
+      // ── Resend ──────────────────────────────────────────────────────
       resendBtn.addEventListener('click', async () => {
         resendBtn.disabled = true;
-        resendBtn.textContent = 'Sending...';
-
-        // Get the email from localStorage
-        const resendEmail = localStorage.getItem('signup_email') || localStorage.getItem('revluma_pending_email') || '';
-
-        if (!resendEmail) {
-          resendBtn.textContent = 'Error — email not found';
-          setTimeout(() => {
-            resendBtn.disabled = false;
-            resendBtn.innerHTML = 'Resend code';
-          }, 3000);
-          return;
-        }
-
+        resendBtn.textContent = 'Sending…';
         try {
-          const data = await window.revlumaAuth.resendVerification(resendEmail);
-
-          if (data.success === true) {
-            // Show success message
-            resendBtn.textContent = 'Request accepted';
-            resendBtn.style.color = '#4ade80';
-
-            // Reset countdown after 2 seconds
-            setTimeout(() => {
-              resendBtn.style.color = '';
-              resendSeconds = 60;
-              resendBtn.innerHTML = 'Resend (<span id="resendCountdown" class="countdown">60</span>s)';
-              const newCountdown = resendBtn.querySelector('#resendCountdown');
-              const newInterval = setInterval(() => {
-                resendSeconds--;
-                newCountdown.textContent = resendSeconds;
-                if (resendSeconds <= 0) {
-                  clearInterval(newInterval);
-                  resendBtn.disabled = false;
-                  resendBtn.innerHTML = 'Resend code';
-                }
-              }, 1000);
-            }, 2000);
-
+          const data = await window.revlumaAuth.resendVerification(email);
+          if (data && data.success === true) {
+            resendBtn.textContent = 'New code sent';
+            setCodeError('');
+            codeInputs.forEach(i => { i.value = ''; i.classList.remove('filled'); });
+            verifyBtn.disabled = true;
+            startExpiryCountdown();
+            setTimeout(() => startResendCountdown(), 2000);
           } else {
-            resendBtn.textContent = 'Failed — try again';
-            resendBtn.style.color = '#f87171';
-            setTimeout(() => {
-              resendBtn.style.color = '';
-              resendBtn.disabled = false;
-              resendBtn.innerHTML = 'Resend code';
-            }, 3000);
+            throw new Error('resend failed');
           }
-
         } catch (err) {
-          resendBtn.textContent = 'Network error — try again';
-          resendBtn.style.color = '#f87171';
-          setTimeout(() => {
-            resendBtn.style.color = '';
-            resendBtn.disabled = false;
-            resendBtn.innerHTML = 'Resend code';
-          }, 3000);
+          resendBtn.textContent = 'Could not send. Try again';
+          setTimeout(() => { resendBtn.disabled = false; resendBtn.textContent = 'Resend code'; }, 3000);
         }
       });
-
-      // ================================================================
-      //  EXPIRY TIMER (15 min)
-      // ================================================================
-      let expirySeconds = 15 * 60; // 15 minutes
-      const expiryInterval = setInterval(() => {
-        expirySeconds--;
-        const mins = Math.floor(expirySeconds / 60);
-        const secs = expirySeconds % 60;
-        expiryTimer.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
-
-        if (expirySeconds <= 60) {
-          expiryTimer.style.color = 'var(--red)';
-        }
-
-        if (expirySeconds <= 0) {
-          clearInterval(expiryInterval);
-          expiryTimer.textContent = 'Expired';
-          codeError.textContent = 'Code has expired. Please request a new one.';
-          codeError.classList.remove('hidden');
-          verifyBtn.disabled = true;
-        }
-      }, 1000);
-
-      document.getElementById('backBtn').addEventListener('click', () => {
-        window.history.back();
-      });
-
     });
   </script>
   <script src="../assets/js/pageLoader.js"></script>

@@ -1,92 +1,119 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <script src="../assets/js/theme.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="../assets/images/Revluma-icon.png" />
-  <title>Payment — Revluma</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,500,400&display=swap" rel="stylesheet" />
+  <title>Payment | Revluma</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&family=Archivo+Black&display=swap" rel="stylesheet" />
   <script src="../assets/js/apiConfig.js"></script>
+  <script src="../assets/js/auth-client.js"></script>
   <style>
-    *, *::before, *::after { box-sizing: border-box; }
-    body { margin: 0; font-family: 'Satoshi', sans-serif; background: #0A0A0A; color: white; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .spinner { animation: spin 0.8s linear infinite; }
-    @keyframes checkPop { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.2); } 100% { transform: scale(1); opacity: 1; } }
-    .check-pop { animation: checkPop 0.5s ease forwards; }
+    /* Page-specific layout; shared components live in auth-theme.css. */
+    .result { text-align: center; }
+    .result h1 { font-size: clamp(1.5rem, 4.6vw, 1.9rem); }
+    .result p { margin: 0 auto; max-width: 26rem; font-size: 15px; line-height: 1.55; color: var(--muted); }
+    .result .plan-line { margin-bottom: 6px; font-weight: 600; color: var(--text); }
+    .verify-ring { width: 56px; height: 56px; margin: 4px auto 22px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--text); animation: rvSpin 0.8s linear infinite; }
+    .redirect-track { height: 4px; margin: 24px 0; border-radius: 99px; background: var(--border); overflow: hidden; }
+    .redirect-bar { width: 0; height: 100%; border-radius: 99px; background: var(--accent); transition: width 3s linear; }
+    .result-actions { display: grid; gap: 10px; margin-top: 26px; }
+    .result-actions .btn-secondary { width: 100%; }
   </style>
+
+  <!-- Clean URL Masking -->
+  <script>
+    if (window.location.pathname.endsWith('.html')) {
+      window.history.replaceState(null, '', window.location.pathname.replace('.html', '') + window.location.search);
+    }
+  </script>
   <link rel="stylesheet" href="../assets/css/auth-theme.css">
 </head>
+
 <body>
-  <div class="text-center px-6 max-w-md w-full">
-    <div class="flex items-center justify-center gap-2 mb-12">
-      <img src="../assets/images/Revluma-icon.png" alt="Revluma" class="w-8 h-8 rounded-lg" />
-      <span class="font-bold text-white text-lg">Revluma</span>
-    </div>
+  <div class="rv-shell">
+    <header class="rv-nav-wrap">
+      <nav class="rv-nav" aria-label="Revluma">
+        <a href="/" class="rv-nav-logo" aria-label="Revluma home"><span class="rv-nav-mark"><img src="../assets/images/Revluma-icon.png" alt="" width="24" height="24" /></span><span>Revluma</span></a>
+        <span class="rv-nav-note">Payment</span>
+      </nav>
+    </header>
 
-    <!-- Verifying -->
-    <div id="state-verifying">
-      <div class="w-16 h-16 rounded-full border-2 border-white/10 border-t-white spinner mx-auto mb-6"></div>
-      <h2 class="text-xl font-bold mb-2">Confirming your payment…</h2>
-      <p class="text-[#555] text-sm">Verifying with Paystack. This only takes a moment.</p>
-    </div>
+    <main class="rv-main">
+      <div class="rv-col" style="max-width: 460px;">
+        <div class="card result" aria-live="polite">
+          <!-- Verifying -->
+          <div id="state-verifying">
+            <div class="verify-ring" aria-hidden="true"></div>
+            <h1 class="rv-h1">Confirming your payment</h1>
+            <p>Checking with Paystack. This only takes a moment.</p>
+          </div>
 
-    <!-- Success -->
-    <div id="state-success" class="hidden">
-      <div class="w-20 h-20 rounded-full bg-green-400/15 border border-green-400/30 flex items-center justify-center mx-auto mb-6 check-pop">
-        <svg class="w-10 h-10 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-          <polyline points="20 6 9 17 4 12" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-      <h2 class="text-2xl font-bold mb-2">You're all set! 🎉</h2>
-      <p class="text-[#888] text-sm mb-3" id="success-plan-text">Welcome to Revluma.</p>
-      <p class="text-[#555] text-sm mb-8">Your 7-day free trial has started. Taking you to your dashboard…</p>
-      <div class="w-full bg-[#1a1a1a] rounded-full h-1 mb-6 overflow-hidden">
-        <div id="progress-bar" class="h-full bg-green-400 rounded-full transition-all duration-[3000ms]" style="width:0%"></div>
-      </div>
-      <a href="/dashboard/overview" class="inline-block px-8 py-3 rounded-full bg-white text-black font-bold text-sm hover:bg-zinc-100 transition-all">Go to dashboard →</a>
-    </div>
+          <!-- Success -->
+          <div id="state-success" class="hidden">
+            <div class="rv-tick" aria-hidden="true"><svg width="28" height="28" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg></div>
+            <h1 class="rv-h1">You're all set</h1>
+            <p class="plan-line" id="success-plan-text">Welcome to Revluma.</p>
+            <p>Your subscription is active. Taking you to your dashboard.</p>
+            <div class="redirect-track" aria-hidden="true"><div id="progress-bar" class="redirect-bar"></div></div>
+            <a href="/dashboard/overview" class="btn-primary">Go to Dashboard <span class="rv-chip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg></span></a>
+          </div>
 
-    <!-- Error -->
-    <div id="state-error" class="hidden">
-      <div class="w-20 h-20 rounded-full bg-red-400/10 border border-red-400/25 flex items-center justify-center mx-auto mb-6">
-        <svg class="w-10 h-10 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-        </svg>
+          <!-- Error -->
+          <div id="state-error" class="hidden">
+            <div class="rv-tick is-error" aria-hidden="true"><svg width="26" height="26" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.25" d="M6 18L18 6M6 6l12 12" /></svg></div>
+            <h1 class="rv-h1">Payment not confirmed</h1>
+            <p id="error-detail" role="alert">We could not verify your payment.</p>
+            <div class="result-actions">
+              <a href="/auth/choose-plan.html" class="btn-primary">Try Again <span class="rv-chip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg></span></a>
+              <a href="mailto:hello@revluma.com?subject=Revluma%20payment" class="btn-secondary">Contact Support</a>
+            </div>
+          </div>
+        </div>
       </div>
-      <h2 class="text-2xl font-bold mb-2">Payment not confirmed</h2>
-      <p class="text-[#888] text-sm mb-8" id="error-detail">We could not verify your payment.</p>
-      <div class="flex flex-col gap-3 max-w-xs mx-auto">
-        <a href="/auth/choose-plan.html" class="block px-8 py-3 rounded-full bg-white text-black font-bold text-sm text-center">Try again</a>
-        <a href="mailto:hello@revluma.com" class="block px-8 py-3 rounded-full border border-white/15 text-white font-semibold text-sm text-center">Contact support</a>
-      </div>
-    </div>
+    </main>
+
+    <footer class="rv-foot">
+      <span>&copy; 2026 Revluma</span><span class="rv-foot-dot" aria-hidden="true"></span>
+      <a href="../pages/privacyPolicy.html">Privacy</a><span class="rv-foot-dot" aria-hidden="true"></span>
+      <a href="../pages/termsOfService.html">Terms</a><span class="rv-foot-dot" aria-hidden="true"></span>
+      <a href="mailto:hello@revluma.com">Help</a>
+    </footer>
   </div>
 
   <script>
     function getToken() {
+      if (window.revlumaAuth && typeof window.revlumaAuth.getStoredToken === 'function') return window.revlumaAuth.getStoredToken();
       try {
         const raw = localStorage.getItem('rv-auth');
-        return raw ? JSON.parse(raw)?.state?.csrfToken : null;
+        const state = raw ? JSON.parse(raw)?.state : null;
+        return state ? state.accessToken || state.csrfToken || null : null;
       } catch { return null; }
     }
 
     function showState(name) {
-      ['verifying','success','error'].forEach(s => {
-        document.getElementById(`state-${s}`).classList.toggle('hidden', s !== name);
+      ['verifying', 'success', 'error'].forEach((s) => {
+        document.getElementById('state-' + s).classList.toggle('hidden', s !== name);
       });
+      const target = document.getElementById('state-' + name);
+      target.classList.add('rv-step-in');
+    }
+
+    function showError(message) {
+      document.getElementById('error-detail').textContent = message;
+      showState('error');
     }
 
     async function verifyPayment() {
-      // Get reference from URL — Paystack appends ?reference=xxx to callback_url
+      // Paystack appends ?reference=xxx to the callback URL.
       const params = new URLSearchParams(window.location.search);
-      const reference = params.get('reference') || sessionStorage.getItem('paystack_reference');
-
+      const reference = params.get('reference') || params.get('trxref') || sessionStorage.getItem('paystack_reference');
       if (!reference) {
-        document.getElementById('error-detail').textContent = 'No payment reference found. Please try again.';
-        showState('error');
+        showError('We could not find a payment reference. Please choose your plan again.');
         return;
       }
 
@@ -94,38 +121,33 @@
       if (!token) { window.location.href = '/auth/login.html'; return; }
 
       try {
-        const API = window.REVLUMA_CONFIG?.API_BASE_URL || 'https://revluma-backend-lqve.onrender.com/api/v1';
-
-        // Verify server-side — frontend cannot forge this
-        const res = await fetch(`${API}/subscriptions/verify/${encodeURIComponent(reference)}`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const API = (window.revlumaAuth && window.revlumaAuth.apiBase) || window.REVLUMA_API_BASE || 'https://revluma-backend-lqve.onrender.com/api/v1';
+        // Verified server-side: the browser cannot forge this result.
+        const res = await fetch(API + '/subscriptions/verify/' + encodeURIComponent(reference), {
+          headers: { Authorization: 'Bearer ' + token },
+          credentials: 'include',
         });
         const data = await res.json();
 
         if (data.success) {
-          // Clean up session storage
           sessionStorage.removeItem('paystack_reference');
-
-          const planName = data.data?.plan || 'Growth';
-          document.getElementById('success-plan-text').textContent =
-            `Welcome to Revluma ${planName.charAt(0).toUpperCase() + planName.slice(1)}.`;
+          const plan = (data.data && data.data.plan) || '';
+          document.getElementById('success-plan-text').textContent = plan
+            ? 'Welcome to Revluma ' + plan.charAt(0).toUpperCase() + plan.slice(1) + '.'
+            : 'Welcome to Revluma.';
           showState('success');
-
           setTimeout(() => { document.getElementById('progress-bar').style.width = '100%'; }, 100);
           setTimeout(() => { window.location.href = '/dashboard/overview'; }, 3200);
         } else {
-          document.getElementById('error-detail').textContent =
-            data.error || 'Payment could not be verified. If you were charged, contact support.';
-          showState('error');
+          showError(data.error || 'Payment could not be verified. If you were charged, contact support and we will sort it out.');
         }
       } catch (err) {
-        document.getElementById('error-detail').textContent =
-          'Network error while verifying. Your card has not been charged yet. Please try again.';
-        showState('error');
+        showError('We lost the connection while checking your payment. If you were charged, your plan will still be confirmed. Refresh this page or contact support.');
       }
     }
 
     verifyPayment();
   </script>
 </body>
+
 </html>

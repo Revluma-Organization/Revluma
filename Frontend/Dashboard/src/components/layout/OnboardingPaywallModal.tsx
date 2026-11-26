@@ -38,42 +38,42 @@ export const OnboardingPaywallModal: FC<OnboardingPaywallModalProps> = ({
     !isDismissed &&
     (userStatus === "free" || userStatus === "trial_expired");
   
-  // Real Pricing Data Strategy based on Subscription Page
+  // Mirrors the landing page pricing (Frontend/Landing/src/content.ts PRICING).
   const plans = [
     {
-      id: "growth",
-      name: "Growth",
-      description: "Unlock your automation for growing storefronts.",
+      id: "starter",
+      name: "Starter",
+      description: "For merchants getting started with operational intelligence.",
       monthlyPrice: 29,
       yearlyPrice: 23, // $276 / 12 months = $23/mo
       features: [
-        "AI Cart Recovery (email)",
-        "Product Intelligence",
-        "Optimal send-time AI",
-        "1,000 tracked visitors / mo",
-        "1 Store integration",
-        "Full dashboard access",
-        "Priority email support",
+        "1 Shopify store",
+        "Core store intelligence",
+        "Automated signal monitoring",
+        "Ranked Top Priorities",
+        "Evidence and reasoning",
+        "Essential Rev Intelligence access",
+        "Standard support",
       ],
       isPopular: false,
-      buttonText: "Start Growth Plan",
+      buttonText: "Choose Starter",
     },
     {
-      id: "scale",
-      name: "Scale",
-      description: "Advanced intelligence and multi-channel recovery.",
-      monthlyPrice: 50,
-      yearlyPrice: 40, // $480 / 12 months = $40/mo
+      id: "premium",
+      name: "Premium",
+      description: "For growing merchants who want deeper intelligence.",
+      monthlyPrice: 79,
+      yearlyPrice: 63, // $756 / 12 months = $63/mo
       features: [
-        "Everything in Growth",
-        "Offer value optimizer",
-        "Churn risk prediction",
-        "WhatsApp + SMS + Email",
-        "10,000 tracked visitors / mo",
-        "Dedicated onboarding call",
+        "Everything in Starter",
+        "Deeper business investigations",
+        "Higher Rev Intelligence allowance",
+        "More extensive historical analysis",
+        "Advanced business performance insights",
+        "Priority support",
       ],
       isPopular: true,
-      buttonText: "Start Scale Plan",
+      buttonText: "Choose Premium",
     },
   ];
 

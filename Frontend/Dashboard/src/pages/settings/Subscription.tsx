@@ -23,34 +23,39 @@ export interface SubscriptionInfo {
   resetDate: string;
 }
 
+// Mirrors the landing page pricing (Frontend/Landing/src/content.ts PRICING)
+// and the backend PLANS in subscriptionController.js.
 const PLANS = {
-  growth: {
-    id: "growth",
-    name: "Growth",
+  starter: {
+    id: "starter",
+    name: "Starter",
     monthlyPrice: 29,
     annualTotal: 276,
     features: [
-      { text: "AI Cart Recovery (email)", isAi: true },
-      { text: "Product Intelligence", isAi: true },
-      { text: "Optimal send-time AI", isAi: true },
-      { text: "1,000 tracked visitors / mo", isAi: false },
-      { text: "1 Store integration", isAi: false },
-      { text: "Full dashboard access", isAi: false },
-      { text: "Priority email support", isAi: false },
+      { text: "1 Shopify store", isAi: false },
+      { text: "Core store intelligence", isAi: true },
+      { text: "Automated signal monitoring", isAi: true },
+      { text: "Ranked Top Priorities", isAi: true },
+      { text: "Evidence and reasoning", isAi: false },
+      { text: "Essential Rev Intelligence access", isAi: true },
+      { text: "Basic historical findings", isAi: false },
+      { text: "Standard support", isAi: false },
     ],
   },
-  scale: {
-    id: "scale",
-    name: "Scale",
-    monthlyPrice: 50,
-    annualTotal: 480,
+  premium: {
+    id: "premium",
+    name: "Premium",
+    monthlyPrice: 79,
+    annualTotal: 756,
     features: [
-      { text: "Everything in Growth", isAi: false },
-      { text: "Offer value optimizer", isAi: true },
-      { text: "Churn risk prediction", isAi: true },
-      { text: "WhatsApp + SMS + Email", isAi: false },
-      { text: "10,000 tracked visitors / mo", isAi: false },
-      { text: "Dedicated onboarding call", isAi: false },
+      { text: "Everything in Starter", isAi: false },
+      { text: "Deeper business investigations", isAi: true },
+      { text: "Higher Rev Intelligence allowance", isAi: true },
+      { text: "More extensive historical analysis", isAi: false },
+      { text: "Advanced findings and prioritisation", isAi: true },
+      { text: "More detailed evidence exploration", isAi: false },
+      { text: "Advanced business performance insights", isAi: true },
+      { text: "Priority support", isAi: false },
     ],
   },
 };
@@ -61,7 +66,7 @@ export const Subscription: FC = () => {
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [isLoadingSub, setIsLoadingSub] = useState<boolean>(true);
 
-  const [activePlan, setActivePlan] = useState<"growth" | "scale">("growth");
+  const [activePlan, setActivePlan] = useState<"starter" | "premium">("starter");
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("annual");
 
   const fetchSubscription = useCallback(async () => {
@@ -164,23 +169,23 @@ export const Subscription: FC = () => {
             Unlock your <span className="text-sky-600 dark:text-sky-500">Automation</span>
           </h2>
 
-          {/* Plan Toggle (Growth vs Scale) */}
+          {/* Plan Toggle (Starter vs Premium) */}
           <div className="mx-auto flex w-fit rounded-full bg-slate-100 p-1 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
             <button
-              onClick={() => setActivePlan("growth")}
+              onClick={() => setActivePlan("starter")}
               className={`rounded-full px-6 py-2.5 text-sm font-semibold transition-all ${
-                activePlan === "growth" ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:text-white dark:ring-slate-700" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                activePlan === "starter" ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:text-white dark:ring-slate-700" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
               }`}
             >
-              Growth plan
+              Starter plan
             </button>
             <button
-              onClick={() => setActivePlan("scale")}
+              onClick={() => setActivePlan("premium")}
               className={`flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold transition-all ${
-                activePlan === "scale" ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:text-white dark:ring-slate-700" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                activePlan === "premium" ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:text-white dark:ring-slate-700" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
               }`}
             >
-              Scale plan
+              Premium plan
               <Sparkles className="h-3.5 w-3.5 text-sky-500 dark:text-sky-400" />
             </button>
           </div>

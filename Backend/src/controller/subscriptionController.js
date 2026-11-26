@@ -21,24 +21,38 @@ const prisma   = dbConfig.prisma;
 
 // ── Plan registry — single source of truth for pricing ───────────────────────
 // Amounts are in kobo (NGN) and cents (USD). NEVER accept amounts from the client.
+// Plans match the public pricing page: Starter $29/mo and Premium $79/mo, with
+// yearly billing 20% off ($23 and $63 per month, billed annually). Enterprise is
+// sold by the team (mailto on the pricing page) and has no self-serve checkout.
+// NGN amounts keep the existing ₦1,000 per $1 list-price convention.
 const PLANS = {
-  growth: {
-    name:         'Revluma Growth',
+  starter: {
+    name:         'Revluma Starter',
     monthly_ngn:  29000 * 100,   // ₦29,000 in kobo
     annual_ngn:   23000 * 12 * 100,
     monthly_usd:  29 * 100,      // $29 in cents
     annual_usd:   23 * 12 * 100,
-    features:     ['AI Cart Recovery', 'Product Intelligence', '1 Store', '1,000 tracked visitors/mo'],
+    features:     ['1 Shopify store', 'Core store intelligence', 'Ranked Top Priorities', 'Essential Rev Intelligence access'],
   },
-  scale: {
-    name:         'Revluma Scale',
-    monthly_ngn:  50000 * 100,
-    annual_ngn:   40000 * 12 * 100,
-    monthly_usd:  50 * 100,
-    annual_usd:   40 * 12 * 100,
-    features:     ['Everything in Growth', 'WhatsApp + SMS', 'Unlimited flows', 'ROAS Scoring'],
+  premium: {
+    name:         'Revluma Premium',
+    monthly_ngn:  79000 * 100,   // ₦79,000 in kobo
+    annual_ngn:   63000 * 12 * 100,
+    monthly_usd:  79 * 100,      // $79 in cents
+    annual_usd:   63 * 12 * 100,
+    features:     ['Everything in Starter', 'Deeper business investigations', 'Higher Rev Intelligence allowance', 'Priority support'],
   },
 };
+
+// Older clients (dashboard checkout, cached pages) still send the previous plan
+// identifiers. Map them onto the current plans instead of rejecting the request.
+const PLAN_ALIASES = { growth: 'starter', scale: 'premium' };
+function normalizePlan(plan) {
+  if (typeof plan !== 'string') return null;
+  const key = plan.trim().toLowerCase();
+  const resolved = PLAN_ALIASES[key] || key;
+  return Object.prototype.hasOwnProperty.call(PLANS, resolved) ? resolved : null;
+}
 
 const TRIAL_DAYS = 7;
 const PAYSTACK_BASE = 'https://api.paystack.co';
@@ -72,7 +86,7 @@ async function paystackRequest(method, path, data = {}) {
 
 // ── Amount resolver — server-side only ───────────────────────────────────────
 function resolveAmount(plan, billing_cycle, currency) {
-  const planConfig = PLANS[plan];
+  const planConfig = PLANS[normalizePlan(plan)];
   if (!planConfig) throw new Error(`Unknown plan: ${plan}`);
   const isAnnual = billing_cycle === 'annual';
   if (currency === 'USD') {
@@ -122,16 +136,18 @@ exports.startTrial = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/subscriptions/initialize
 // Requires: authenticateToken
-// Body: { plan: "growth"|"scale", billing_cycle: "monthly"|"annual", currency: "NGN"|"USD" }
+// Body: { plan: "starter"|"premium", billing_cycle: "monthly"|"annual", currency: "NGN"|"USD" }
+// (legacy "growth"/"scale" are accepted and mapped to starter/premium)
 // Returns: { authorization_url, reference }
 // ─────────────────────────────────────────────────────────────────────────────
 exports.initialize = async (req, res, next) => {
   try {
-    const { plan, billing_cycle = 'monthly', currency = 'NGN' } = req.body;
+    const { billing_cycle = 'monthly', currency = 'NGN' } = req.body;
+    const plan = normalizePlan(req.body.plan);
 
     // Validate plan — server determines amount, not client
-    if (!plan || !PLANS[plan]) {
-      return res.status(400).json({ success: false, error: 'Invalid plan. Choose: growth or scale.' });
+    if (!plan) {
+      return res.status(400).json({ success: false, error: 'Invalid plan. Choose: starter or premium.' });
     }
     if (!['monthly', 'annual'].includes(billing_cycle)) {
       return res.status(400).json({ success: false, error: 'Invalid billing_cycle. Choose: monthly or annual.' });
@@ -592,3 +608,8 @@ exports.cancel = async (req, res, next) => {
     next(error);
   }
 };
+
+// Exposed for tests.
+exports.PLANS = PLANS;
+exports.normalizePlan = normalizePlan;
+exports.resolveAmount = resolveAmount;
