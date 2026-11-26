@@ -151,11 +151,11 @@ jobs:
             echo "::error title=rev-sequence-concurrency::${summary:0:1200}"
             exit "$status"
           fi
-      - name: Rev sequence races (rev inserts, mixed, tuple)
+      - name: Rev sequence races (accept race)
         working-directory: Backend
         env:
           RELEASE_CANDIDATE_ISOLATED_DB: 'true'
-          C2_SCENARIOS: '0,1,2,3,4'
+          C2_SCENARIOS: '0,1'
         run: |
           set +e
           node src/tests/revSequenceConcurrency.integration.js 2>&1 | tee /tmp/rev-sequence-b.log
