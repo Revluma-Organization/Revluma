@@ -73,7 +73,27 @@ timestamp, PITR recovery-point timestamp. Plus post-freeze
   approval log, and nothing commits until each group is approved row-by-row.
   Ambiguous rows are never automatically rewritten. Current census: 0.
 
-## 5. Remaining blockers
+## 5. Pre-maintenance verification results (2026-11-26 ~21:00Z)
+
+Database state re-verified read-only: 774 msgs / 241 convos / 109 tied / 0
+ambiguous / 0 ties since #519 / 36 migrations (latest apple) / 0 C2 rows;
+0 messages and 0 rev errors since #519; jobs fresh (latest 20:56Z). Census
+stable, writers healthy, migration boundary held.
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Node deployed SHA | OUTSTANDING | No network path from here to Render hosts; operator must run the §1 curl (expect `9a133438…`) |
+| Python deployed SHA | OUTSTANDING | Same — `/health` build field (expect `9a133438…`) |
+| Production smoke tests | PARTIAL | DB proxies green (jobs fresh, 0 errors, 0 new ties); HTTP smokes (`/ready`, GET conversation) need the operator |
+| Supabase PITR | OUTSTANDING | No backup/PITR API in connector; operator must pull plan, PITR status, recoverable ts, backup ts from dashboard |
+| Backup/recovery readiness | NOT READY | Blocked on PITR artifacts; post-freeze `pg_dump` procedure specified (§3/§6.3), not yet executable |
+| Operator confirmed | PASS | Splendor |
+| Maintenance window | ACCEPTED | 06:30–07:30 UTC |
+
+**Verdict: BLOCKED** — outstanding evidence: (1) the two SHA curl outputs,
+(2) dashboard PITR/plan/backup artifacts. Both are operator-side only.
+
+Remaining blockers:
 
 1. Operator SHA confirmation (the two curls above) + read-only smokes.
 2. Operator PITR artifacts (plan, backup ts, recovery point).
