@@ -17,13 +17,23 @@ function renderFooter(onJoin = vi.fn()) {
 }
 
 describe("Footer", () => {
-  it("has the brand, tagline, X link and the four link columns", () => {
+  it("has the brand, tagline, social accounts and the four link columns", () => {
     const el = renderFooter();
     expect(within(el).getByRole("link", { name: "Revluma home" })).toHaveAttribute("href", "/");
     expect(within(el).getByText(FOOTER.tagline)).toBeInTheDocument();
-    const x = within(el).getByRole("link", { name: "Revluma on X" });
-    expect(x).toHaveAttribute("href", "https://x.com/RevlumaAI");
-    expect(x).toHaveAttribute("rel", "noopener noreferrer");
+    const social = within(el).getByRole("list", { name: "Revluma on social media" });
+    const accounts = within(social).getAllByRole("link");
+    expect(accounts.map((a) => [a.getAttribute("aria-label"), a.getAttribute("href")])).toEqual([
+      ["Revluma on X", "https://x.com/RevlumaAI"],
+      ["Revluma on TikTok", "https://www.tiktok.com/@revlumaai"],
+      ["Revluma on YouTube", "https://youtube.com/@revluma"],
+      ["Revluma on Instagram", "https://instagram.com/revluma.ai"],
+    ]);
+    for (const a of accounts) {
+      expect(a).toHaveAttribute("target", "_blank");
+      expect(a).toHaveAttribute("rel", "noopener noreferrer");
+      expect(a.querySelector("svg")).not.toBeNull();
+    }
     const headings = within(el)
       .getAllByRole("heading", { level: 2 })
       .map((h) => h.textContent);
