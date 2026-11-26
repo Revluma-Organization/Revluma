@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 // The embed mounts on import; give it nothing to mount into.
@@ -14,9 +14,25 @@ describe("Homepage hero embed", () => {
     }
   });
 
+  // cleanUrls serves Frontend/auth/<page>.html at /auth/<page>; short URLs redirect there.
+  const vercel = JSON.parse(readFileSync(resolve(__dirname, "../../../../vercel.json"), "utf8")) as {
+    cleanUrls: boolean;
+    redirects: Array<{ source: string; destination: string }>;
+  };
+
   it("points Sign Up at the real sign-up page", () => {
     expect(EMBED_CONFIG.signUpHref).toBe("/auth/signup");
-    expect(readFileSync(resolve(__dirname, "../../../../vercel.json"), "utf8")).toContain('"source": "/auth/signup"');
+    expect(vercel.cleanUrls).toBe(true);
+    expect(existsSync(resolve(__dirname, "../../../auth/signup.html"))).toBe(true);
+  });
+
+  it("points Sign In at the real sign-in page", () => {
+    expect(EMBED_CONFIG.signInHref).toBe("/auth/login");
+    expect(existsSync(resolve(__dirname, "../../../auth/login.html"))).toBe(true);
+  });
+
+  it("keeps the legacy /login short URL redirecting to the sign-in page", () => {
+    expect(vercel.redirects.find((r) => r.source === "/login")?.destination).toBe("/auth/login");
   });
 
   it("opens the homepage's waitlist modal instead of navigating", () => {

@@ -40,7 +40,7 @@ export const EMBED_CONFIG: LandingConfig = {
     { label: "How It Works", href: "#how-it-works" },
     { label: "FAQ", href: "#faq" },
   ],
-  signInHref: "/login",
+  signInHref: "/auth/login",
   joinHref: "#join",
   signUpHref: "/auth/signup",
   // The homepage's Alpine waitlist modal listens for `open-waitlist` on window.

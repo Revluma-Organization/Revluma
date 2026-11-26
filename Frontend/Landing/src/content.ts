@@ -4,7 +4,7 @@
 //  - No invented metrics, testimonials, logos, or setup-time claims.
 //  - Revluma reads merchant-authorised data; it does not change the store.
 
-export const SIGN_IN_URL = "/login";
+export const SIGN_IN_URL = "/auth/login";
 export const SIGN_UP_URL = "/auth/signup";
 
 export const NAV_LINKS = [

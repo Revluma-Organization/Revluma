@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolveApiBaseUrl, createRequestId } from "@/lib/api";
 import { resolveProfileMembership, storedOrganizationId, type ProfileMembership } from "@/lib/auth/organization";
 import { normalizeIntegrationState } from "@/lib/integrationState";
@@ -293,6 +293,7 @@ describe("T227 build, runtime and deployment configuration — 10 scenarios", ()
   const vercel = JSON.parse(readFileSync("../../vercel.json", "utf8")) as {
     headers: Array<{ source: string; headers: Array<{ key: string; value: string }> }>;
     rewrites: Array<{ source: string; destination: string }>; outputDirectory: string; buildCommand: string;
+    redirects: Array<{ source: string; destination: string; permanent: boolean }>; cleanUrls: boolean;
   };
   const baseline = vercel.headers.find(item => item.source === "/(.*)")?.headers ?? [];
   it.each([
@@ -300,7 +301,27 @@ describe("T227 build, runtime and deployment configuration — 10 scenarios", ()
   ])("deploys the %s baseline header", key => expect(baseline.some(header => header.key === key)).toBe(true));
   it("builds the actual Dashboard package", () => expect(vercel.buildCommand).toContain("Frontend/Dashboard"));
   it("publishes the monorepo Frontend output", () => expect(vercel.outputDirectory).toBe("Frontend"));
-  it("has one canonical login rewrite", () => expect(vercel.rewrites.filter(item => item.source === "/login")).toHaveLength(1));
+  it("has one canonical /login route, a redirect to the static sign-in page", () => {
+    const routes = [...vercel.rewrites, ...vercel.redirects].filter(item => item.source === "/login");
+    expect(routes).toEqual([{ source: "/login", destination: "/auth/login", permanent: false }]);
+  });
+  // With cleanUrls, static pages are served at extension-less paths, so a rewrite or
+  // redirect to "*.html" 404s in production (this broke /login and /forgot-password).
+  it("never routes to a .html destination while cleanUrls is on", () => {
+    expect(vercel.cleanUrls).toBe(true);
+    const htmlTargets = [...vercel.rewrites, ...vercel.redirects].filter(item => /\.html($|[?#])/.test(item.destination));
+    expect(htmlTargets).toEqual([]);
+  });
+  it.each([
+    ["/login", "auth/login.html"],
+    ["/signup", "auth/signup.html"],
+    ["/auth/signUp", "auth/signup.html"],
+    ["/forgot-password", "auth/forgottenpassword.html"],
+  ])("short URL %s redirects to an existing page (%s)", (source, file) => {
+    const route = vercel.redirects.find(item => item.source === source);
+    expect(route?.destination).toBe(`/${file.replace(/\.html$/, "")}`);
+    expect(existsSync(`../${file}`)).toBe(true);
+  });
   it("exposes request IDs through backend CORS", () => expect(readFileSync("../../Backend/src/app.js", "utf8")).toContain("exposedHeaders: ['X-Request-ID', 'Retry-After']"));
   it("keeps workspace design within a bounded content width", () => expect(workspaceDesign.breakpoints.contentMax).toBe(1320));
 });

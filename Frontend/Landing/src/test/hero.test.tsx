@@ -65,7 +65,7 @@ describe("Landing hero", () => {
       expect(within(nav).getByRole("link", { name: link.label })).toHaveAttribute("href", link.href);
     }
     expect(within(nav).getByRole("link", { name: "Sign In" })).toHaveAttribute("href", SIGN_IN_URL);
-    expect(SIGN_IN_URL).toBe("/login");
+    expect(SIGN_IN_URL).toBe("/auth/login");
   });
 
   it("opens and closes the mobile menu", async () => {
