@@ -669,14 +669,14 @@ export function OperationalBriefingSection({
         {/* D. Evidence and Data Coverage */}
         <section
           id="evidence-heading-panel"
-          aria-labelledby="evidence-heading"
+          aria-labelledby="evidence-coverage-heading"
           className={cn(cc.surface, "overflow-hidden")}
         >
           <div className={cn("flex items-start justify-between gap-3 border-b px-5 py-4", cc.divider)}>
             <div className="flex min-w-0 items-center gap-2">
               <Database className="h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
               <div className="min-w-0">
-                <h3 id="evidence-heading" className="text-sm font-semibold text-ink">
+                <h3 id="evidence-coverage-heading" className="text-sm font-semibold text-ink">
                   Evidence &amp; data coverage
                 </h3>
                 <p className="mt-0.5 text-[11px] text-ink-muted">{context.summaryPreview}</p>

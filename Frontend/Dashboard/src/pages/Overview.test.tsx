@@ -95,15 +95,19 @@ describe("Task 216 Command Center", () => {
     }
   });
 
-  it("orders Welcome, Top Priorities, Operational Briefing, and Supporting Intelligence", async () => {
+  it("orders Welcome, KPI strip, Today's Priorities + rail, Operational Briefing, and Operational Activity", async () => {
     await renderPage(fixture());
     const welcome = screen.getByRole("heading", { name: /^Good (morning|afternoon|evening)/, level: 1 });
-    const priorities = screen.getByRole("heading", { name: "Top priorities", level: 2 });
-    const briefing = screen.getByRole("heading", { name: "Your latest synchronized business picture", level: 2 });
+    const kpis = screen.getByRole("region", { name: "Key store indicators" });
+    const priorities = screen.getByRole("heading", { name: "Today's Priorities", level: 2 });
     const supporting = screen.getByRole("heading", { name: "Supporting intelligence", level: 2 });
-    expect(welcome.compareDocumentPosition(priorities) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(priorities.compareDocumentPosition(briefing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(briefing.compareDocumentPosition(supporting) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const briefing = screen.getByRole("heading", { name: "Your latest synchronized business picture", level: 2 });
+    const activity = screen.getByRole("heading", { name: "Operational activity", level: 2 });
+    expect(welcome.compareDocumentPosition(kpis) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(kpis.compareDocumentPosition(priorities) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(priorities.compareDocumentPosition(supporting) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(supporting.compareDocumentPosition(briefing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(briefing.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("revluma-test-store-v1.myshopify.com")).toBeInTheDocument();
     expect(screen.getByText(/^Last synchronized:/)).toBeInTheDocument();
   });
@@ -132,7 +136,10 @@ describe("Task 216 Command Center", () => {
   it("stale evidence is labelled and dated rather than presented as current", async () => {
     await renderPage(fixture({ business_state: { ...fixture().business_state, presentation_status: "stale", stale: true }, metrics: [metric({ availability: "stale", availability_reason: "Historical value, not current performance." }) as CommandCenterData["metrics"][number]] }));
     expect(screen.getAllByText("Stale").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Historical evidence remains available; it is not current performance/)).toBeInTheDocument();
+    // Both the rail coverage matrix and the briefing label the stale snapshot.
+    expect(screen.getAllByText(/Historical evidence remains available; it is not current performance/)).toHaveLength(2);
+    const rail = screen.getByRole("complementary", { name: "Secondary intelligence" });
+    expect(within(rail).getByText(/Stale snapshot generated Nov 8, 2026/)).toBeInTheDocument();
   });
 
   it("new merchant synchronization does not fabricate comparisons", async () => {

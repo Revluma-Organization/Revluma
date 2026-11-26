@@ -81,7 +81,7 @@ describe("Viewport matrix (Task 220) — JS-driven contract; CSS layout verified
   it.each(WIDTHS)("%ipx: the full Command Center content is present (no information removed for the viewport)", (width) => {
     window.innerWidth = width;
     renderShell();
-    expect(screen.getByRole("heading", { name: "Top priorities" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Today's Priorities" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Your latest synchronized business picture" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Evidence & data coverage" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Operational data health" })).toBeInTheDocument();

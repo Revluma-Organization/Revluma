@@ -111,7 +111,7 @@ function canonicalValue(indicator: BusinessIndicator) {
   return INTEGRATION_STATE_LABELS[indicator.value as keyof typeof INTEGRATION_STATE_LABELS] || String(indicator.value).replaceAll("_", " ");
 }
 
-function CanonicalHealthIndicators({ data }: { data: CommandCenterData }) {
+function CanonicalHealthIndicators({ data, layout }: { data: CommandCenterData; layout: "grid" | "stacked" }) {
   const health = data.business_health!;
   const reporting = resolveReportingContext(data);
   return <section aria-labelledby="business-health-heading" className={cc.surface}>
@@ -123,9 +123,9 @@ function CanonicalHealthIndicators({ data }: { data: CommandCenterData }) {
     <p className={cn("border-b bg-subtle px-5 py-2.5 sm:px-6", cc.divider, cc.metadata)}>
       {health.business_status_explanation} Business severity and data quality are independent.
     </p>
-    <dl className={cn("grid divide-y sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5", cc.divider)}>{health.indicators.map(indicator => {
+    <dl className={layout === "stacked" ? cn("grid divide-y", cc.divider) : cn("grid divide-y sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5", cc.divider)}>{health.indicators.map(indicator => {
       const Icon = canonicalIcons[indicator.category];
-      return <div key={indicator.id} data-health-domain={indicator.category === "product_availability" ? "product-availability" : indicator.category} className={cn("min-w-0 border-b p-5 last:border-b-0 sm:border-r xl:border-b-0 xl:last:border-r-0", cc.divider)}>
+      return <div key={indicator.id} data-health-domain={indicator.category === "product_availability" ? "product-availability" : indicator.category} className={cn(layout === "stacked" ? "min-w-0 border-b p-5 last:border-b-0" : "min-w-0 border-b p-5 last:border-b-0 sm:border-r xl:border-b-0 xl:last:border-r-0", cc.divider)}>
         <dt className="flex items-center gap-2 text-xs font-medium text-ink-muted"><Icon className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />{indicator.title}</dt>
         <dd className="mt-3 break-words text-lg font-semibold leading-6 tracking-[-0.02em] text-ink tabular-nums">{canonicalValue(indicator)}</dd>
         <dd className="mt-2 flex flex-wrap items-center gap-2"><Availability value={indicator.status} /><span className={cc.metadata}>{DATA_QUALITY_LABEL[indicator.data_quality]}</span></dd>
@@ -137,8 +137,8 @@ function CanonicalHealthIndicators({ data }: { data: CommandCenterData }) {
   </section>;
 }
 
-export function HealthIndicators({ data }: { data: CommandCenterData }) {
-  if (data.business_health) return <CanonicalHealthIndicators data={data} />;
+export function HealthIndicators({ data, layout = "grid" }: { data: CommandCenterData; layout?: "grid" | "stacked" }) {
+  if (data.business_health) return <CanonicalHealthIndicators data={data} layout={layout} />;
   const revenue = data.metrics.find(item => item.id === "net_sales_today") || null;
   const change = data.metrics.find(item => item.id === "revenue_change") || null;
   const checkout = data.metrics.find(item => item.id === "abandoned_checkouts") || null;
@@ -157,9 +157,9 @@ export function HealthIndicators({ data }: { data: CommandCenterData }) {
       title="Supporting intelligence"
       description={`Verified operational indicators · Current and previous UTC day · ${data.context.currency || "currency not verified"}`}
     />
-    <dl className={cn("grid divide-y sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5", cc.divider)}>{items.map(item => {
+    <dl className={layout === "stacked" ? cn("grid divide-y", cc.divider) : cn("grid divide-y sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5", cc.divider)}>{items.map(item => {
       const Icon = item.icon;
-      return <div key={item.id} data-health-domain={item.id} className={cn("min-w-0 border-b p-5 last:border-b-0 sm:border-r xl:border-b-0 xl:last:border-r-0", cc.divider)}>
+      return <div key={item.id} data-health-domain={item.id} className={cn(layout === "stacked" ? "min-w-0 border-b p-5 last:border-b-0" : "min-w-0 border-b p-5 last:border-b-0 sm:border-r xl:border-b-0 xl:last:border-r-0", cc.divider)}>
         <dt className="flex items-center gap-2 text-xs font-medium text-ink-muted"><Icon className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />{item.label}</dt>
         <dd className="mt-3 break-words text-lg font-semibold leading-6 tracking-[-0.02em] text-ink tabular-nums">{item.value}</dd>
         {(item.id === "revenue" && revenue || item.id === "checkouts" && checkout) && <dd className="sr-only">{item.id === "revenue" ? revenue?.definition : checkout?.definition}</dd>}

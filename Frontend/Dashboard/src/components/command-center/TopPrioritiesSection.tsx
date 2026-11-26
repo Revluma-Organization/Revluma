@@ -19,6 +19,7 @@ import {
 import { useInRouterContext, useNavigate } from "react-router-dom";
 import { investigationRoute } from "@/lib/workspaceNavigation";
 import { cn } from "@/lib/utils";
+import { selectQueueFindings } from "./findingDisplay";
 import { PriorityFindingCard } from "./PriorityFindingCard";
 import { RecentSignalsPanel } from "./RecentSignalsPanel";
 import { SeveritySummaryDeck, type SeverityFilterTier } from "./SeveritySummaryDeck";
@@ -38,6 +39,8 @@ export interface TopPrioritiesSectionProps {
   refreshing?: boolean;
   error?: string | null;
   onRetry?: () => void;
+  /** Hide the embedded signals panel when the workspace rail renders it instead. */
+  hideSignalsPanel?: boolean;
 }
 
 type SeverityTier = SeverityFilterTier;
@@ -328,18 +331,16 @@ export function TopPrioritiesSection({
   refreshing = false,
   error = null,
   onRetry,
+  hideSignalsPanel = false,
 }: TopPrioritiesSectionProps) {
   const openRoute = useWorkspaceNavigation();
   const [activeTier, setActiveTier] = useState<SeverityTier>("all");
 
+  const allEligibleFindings = useMemo(() => selectQueueFindings(data), [data]);
   const primary = data?.priority_finding ?? null;
   const secondaryFindings = useMemo(
-    () => (data ? data.findings.filter((item) => item.id !== primary?.id) : []),
-    [data, primary?.id],
-  );
-  const allEligibleFindings = useMemo(
-    () => (primary ? [primary, ...secondaryFindings] : secondaryFindings),
-    [primary, secondaryFindings],
+    () => allEligibleFindings.filter((item) => item.id !== primary?.id),
+    [allEligibleFindings, primary?.id],
   );
 
   const severityCounts = useMemo(() => {
@@ -369,7 +370,7 @@ export function TopPrioritiesSection({
         className="min-w-0"
       >
         <h2 id="priority-findings-heading" className="sr-only">
-          Top priorities
+          Today's Priorities
         </h2>
         <PriorityCardSkeleton />
       </section>
@@ -397,7 +398,7 @@ export function TopPrioritiesSection({
                 id="priority-findings-heading"
                 className="text-[1.125rem] font-semibold leading-6 tracking-[-0.015em] text-ink"
               >
-                Top priorities
+                Today's Priorities
               </h2>
               <p className="mt-0.5 text-[13px] leading-5 text-ink-muted">
                 Verified commerce signals ranked by operational urgency and evidence quality.
@@ -505,7 +506,7 @@ export function TopPrioritiesSection({
               id="priority-findings-heading"
               className="text-[1.125rem] font-semibold leading-6 tracking-[-0.015em] text-ink"
             >
-              Top priorities
+              Today's Priorities
             </h2>
             <p className="mt-0.5 text-[13px] leading-5 text-ink-muted">
               The most important issues identified across your store.
@@ -680,7 +681,7 @@ export function TopPrioritiesSection({
           </div>
 
           {/* Below Panel: Recent signals (full-width companion to Detected issues) */}
-          {signalEvaluation && signalEvaluation.signals.length > 0 && (
+          {signalEvaluation && signalEvaluation.signals.length > 0 && !hideSignalsPanel && (
             <RecentSignalsPanel evaluation={signalEvaluation} />
           )}
         </div>
