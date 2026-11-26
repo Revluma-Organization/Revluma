@@ -12,8 +12,8 @@
 @layer base {
   :root {
     /* Layout */
-    --sidebar-w: 260px;
-    --sidebar-w-collapsed: 72px;
+    --sidebar-w: 240px;
+    --sidebar-w-collapsed: 68px;
     --topbar-h: 64px;
     --radius: 0.75rem;
 

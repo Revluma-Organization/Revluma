@@ -14,7 +14,7 @@ export function safeWorkspaceRoute(value: string | null | undefined): string {
     const finding = parsed.searchParams.get("finding");
     if (finding && /^[0-9a-f-]{36}$/i.test(finding)) safe.set("finding", finding);
     const section = parsed.searchParams.get("section");
-    if (section && /^(priority|activity|evidence|health)$/.test(section)) safe.set("section", section);
+    if (section && /^(priority|signals|activity|evidence|health)$/.test(section)) safe.set("section", section);
     return `${COMMAND_CENTER}${safe.size ? `?${safe}` : ""}${parsed.hash && /^#[a-z-]{1,40}$/.test(parsed.hash) ? parsed.hash : ""}`;
   } catch { return COMMAND_CENTER; }
 }

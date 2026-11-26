@@ -239,7 +239,7 @@ describe("Command Center — Premium Hybrid Redesign V1", () => {
     expect(cc.surface).toContain("bg-white");
     expect(cc.surface).toContain("border-[#E7E9EF]");
     expect(cc.surface).not.toContain("shadow");
-    expect(cc.page).toContain("max-w-[1400px]");
+    expect(cc.page).toContain("max-w-[1440px]");
     expect(cc.primary).toContain("#4438E8");
     expect(cc.muted).toContain("#707582");
     expect(cc.title).toContain("#17191F");

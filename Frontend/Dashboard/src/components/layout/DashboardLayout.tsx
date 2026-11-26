@@ -1,4 +1,4 @@
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Bell, Sparkles, Compass } from "lucide-react";
 import { Sidebar } from "./Sidebar";
@@ -28,9 +28,24 @@ const SECTION_TITLES: Record<string, string> = {
   "/dashboard/beta": "Beta Features",
 };
 
+// Breadcrumb titles for the nav-owned `?section=` overview views (Priorities /
+// Signals are anchors, not routes, so the title comes from the query string).
+const SECTION_VIEW_TITLES: Record<string, string> = {
+  priority: "Priorities",
+  signals: "Signals",
+};
+
+export function resolveSectionTitle(basePath: string, section: string | null): string {
+  if (basePath === "/dashboard/overview" && section && SECTION_VIEW_TITLES[section]) {
+    return SECTION_VIEW_TITLES[section];
+  }
+  return SECTION_TITLES[basePath] ?? "Overview";
+}
+
 export function DashboardLayout() {
   const { startTour, setCmdOpen, setNotifOpen, setCopilotOpen } = useUI();
   const { pathname } = useLocation();
+  const [searchParams] = useSearchParams();
   // Use basePath for animation key to prevent re-mounting the entire layout for nested routes
   const basePath = pathname.split('/').slice(0, 3).join('/');
   const { user } = useAuth(); // Grabs the logged-in user
@@ -99,7 +114,7 @@ export function DashboardLayout() {
     <div className="app-h flex w-full overflow-hidden bg-bg">
       <Sidebar />
       <main tabIndex={-1} className={`cc-scroll flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden ${commandCenter ? shell.workspace : "bg-bg"}`}>
-        <Topbar section={SECTION_TITLES[basePath] ?? "Overview"} lightWorkspace={commandCenter} />
+        <Topbar section={resolveSectionTitle(basePath, searchParams.get("section"))} lightWorkspace={commandCenter} />
         <div className={commandCenter ? "px-4 py-6 sm:px-6 sm:py-7 lg:px-10 lg:py-8" : "px-3 py-5 sm:px-6 sm:py-6 lg:px-8"}>
           <AnimatePresence mode="wait">
             <motion.div
