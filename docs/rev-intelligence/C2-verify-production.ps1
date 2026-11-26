@@ -9,8 +9,9 @@ $ErrorActionPreference = 'Stop'
 
 $NodeReadyUrl = 'https://revluma-backend-lqve.onrender.com/ready'
 $PythonHealthUrl = 'https://revluma-python-swwk.onrender.com/health'
-# Known C2-identical commits: #519 merge, #522 merge (waitlist-only, verified).
-$AcceptedPrefixes = @('9a133438', '48957cc')
+# Known C2-identical commits: #519 merge, #522 merge (waitlist-only),
+#523+#524 merge (store-sync guard + waitlist frontend, C2-orthogonal, no migrations).
+$AcceptedPrefixes = @('9a133438', '48957cc', 'c455084')
 
 $failures = @()
 

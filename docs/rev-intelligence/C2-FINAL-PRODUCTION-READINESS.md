@@ -44,7 +44,7 @@ No gate is Failed. Nothing here authorizes the window.
 
 1. Run `docs/rev-intelligence/C2-verify-production.ps1`, paste its results
    block. Binding pre-maintenance SHA gate: at window start it must PASS —
-   both SHAs accepted (`9a133438`/`48957cc`) and agreeing. Anything else
+   all accepted (`9a133438`/`48957cc`/`c455084`) and agreeing. Anything else
    stops the window. No Render deploys during the window (freeze covers the
    writer processes AND the deploy pipeline; #522 proved prod can move
    mid-review).
