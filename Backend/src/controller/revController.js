@@ -265,6 +265,7 @@ exports.chat = async (req, res, next) => {
       const acceptance = await acceptSubmission({
         prisma, organizationId: org.id, userId: req.user.id,
         message, requestId: correlationId, requestedConversationId: conversationId,
+        imageAssisted: Boolean(imageBase64),
       });
       activeConvId = acceptance.conversationId;
       if (acceptance.duplicate) {
@@ -675,22 +676,48 @@ exports.getConversation = async (req, res, next) => {
     res.setHeader('X-Execution-ID', restoreExecutionId);
 
     const limit  = Math.min(parseInt(req.query.limit  || '50', 10), 100);
-    const offset = Math.max(parseInt(req.query.offset || '0',  10), 0);
+    // Phase 5D: stable newest-first paging. The thread opens on the newest
+    // page and older pages are addressed by a sequence cursor, so sending a
+    // turn while older history is still paging can neither skip nor duplicate
+    // messages (offset paging would shift under concurrent inserts). The wire
+    // format stays ascending, so existing consumers are unaffected. `offset`
+    // is no longer used and is ignored when present.
+    const beforeRaw = parseInt(req.query.before, 10);
+    const before = Number.isInteger(beforeRaw) && beforeRaw >= 0 ? beforeRaw : null;
 
-    const messages = await prisma.$queryRaw`
-      SELECT
-        cm.id, cm.role, cm.content, cm.sequence_number,
-        cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
-        cm.created_at,
-        fb.rating AS feedback_rating
-      FROM conversation_messages cm
-      JOIN conversations cv ON cv.id = cm.conversation_id
-      LEFT JOIN conversation_message_feedback fb
-        ON fb.message_id = cm.id AND fb.user_id = ${req.user.id}::uuid
-      WHERE cm.conversation_id = ${id}::uuid
-        AND cv.organization_id = ${org.id}::uuid
-      ORDER BY cm.sequence_number ASC
-      LIMIT ${limit} OFFSET ${offset}
+    const messages = before === null ? await prisma.$queryRaw`
+      SELECT * FROM (
+        SELECT
+          cm.id, cm.role, cm.content, cm.sequence_number,
+          cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
+          cm.created_at,
+          fb.rating AS feedback_rating
+        FROM conversation_messages cm
+        JOIN conversations cv ON cv.id = cm.conversation_id
+        LEFT JOIN conversation_message_feedback fb
+          ON fb.message_id = cm.id AND fb.user_id = ${req.user.id}::uuid
+        WHERE cm.conversation_id = ${id}::uuid
+          AND cv.organization_id = ${org.id}::uuid
+        ORDER BY cm.sequence_number DESC
+        LIMIT ${limit}
+      ) newest ORDER BY sequence_number ASC
+    ` : await prisma.$queryRaw`
+      SELECT * FROM (
+        SELECT
+          cm.id, cm.role, cm.content, cm.sequence_number,
+          cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
+          cm.created_at,
+          fb.rating AS feedback_rating
+        FROM conversation_messages cm
+        JOIN conversations cv ON cv.id = cm.conversation_id
+        LEFT JOIN conversation_message_feedback fb
+          ON fb.message_id = cm.id AND fb.user_id = ${req.user.id}::uuid
+        WHERE cm.conversation_id = ${id}::uuid
+          AND cv.organization_id = ${org.id}::uuid
+          AND cm.sequence_number < ${before}
+        ORDER BY cm.sequence_number DESC
+        LIMIT ${limit}
+      ) newest ORDER BY sequence_number ASC
     `;
 
     const safeMessages = messages.map((message) => ({
@@ -703,7 +730,7 @@ exports.getConversation = async (req, res, next) => {
       data: {
         conversation: conv,
         messages: safeMessages,
-        pagination: { limit, offset },
+        pagination: { limit, before },
       },
     });
   } catch (error) {
@@ -2001,6 +2028,30 @@ exports.getToolCatalog = async (req, res, next) => {
   }
 };
 
+// Phase 5D — retry eligibility as a pure decision so the contract test can
+// exercise the real matrix. Returns the 409 error code, or null when the retry
+// may proceed:
+//   NOTHING_TO_RETRY      — no persisted user question exists to reuse.
+//   RETRY_IMAGE_REQUIRED  — the question was asked with an image, whose bytes
+//                           are not persisted; re-running it imageless would
+//                           answer a different question.
+//   RETRY_NOT_ELIGIBLE    — the caller's question is no longer the latest (a
+//                           stale client must not re-run a newer turn), or the
+//                           latest failure is permanent.
+//   RETRY_ALREADY_COMPLETED — the latest turn already has a successful answer.
+// A cancelled turn that persisted nothing after the user message is eligible:
+// there is simply no rev row to conflict with.
+function _retryEligibility({ userText, userImageAssisted, latestRev, expectedMessage }) {
+  if (!userText) return 'NOTHING_TO_RETRY';
+  if (userImageAssisted === true) return 'RETRY_IMAGE_REQUIRED';
+  if (typeof expectedMessage === 'string' && expectedMessage.trim() !== userText.trim()) {
+    return 'RETRY_NOT_ELIGIBLE';
+  }
+  if (latestRev && latestRev.has_error !== true) return 'RETRY_ALREADY_COMPLETED';
+  if (latestRev && !retryabilityForError(latestRev.error_code)) return 'RETRY_NOT_ELIGIBLE';
+  return null;
+}
+
 // ── POST /api/v1/rev/conversation/:id/retry ──────────────────────────────────
 exports.retryConversation = async (req, res, next) => {
   try {
@@ -2033,10 +2084,23 @@ exports.retryConversation = async (req, res, next) => {
         AND role = 'rev' AND sequence_number > ${lastUser[0].sequence_number}
       ORDER BY sequence_number DESC LIMIT 1
     `;
-    if (latestRev.length && latestRev[0].has_error !== true) {
+    const ineligible = _retryEligibility({
+      userText: text,
+      userImageAssisted: typeof content === 'object' && content !== null ? content.image_assisted : null,
+      latestRev: latestRev[0] || null,
+      expectedMessage: typeof req.body?.message === 'string' ? req.body.message : null,
+    });
+    if (ineligible === 'RETRY_ALREADY_COMPLETED') {
       return res.status(409).json({ success: false, error: { code: 'RETRY_ALREADY_COMPLETED' } });
     }
-    if (latestRev.length && !retryabilityForError(latestRev[0].error_code)) {
+    if (ineligible === 'RETRY_IMAGE_REQUIRED') {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'RETRY_IMAGE_REQUIRED', message: 'This question was asked with an image. Re-attach the image and send it again.' },
+        retryable: false,
+      });
+    }
+    if (ineligible) {
       return res.status(409).json({
         success: false,
         error: { code: 'RETRY_NOT_ELIGIBLE', message: 'This failure needs a configuration, authorization or request change before retrying.' },

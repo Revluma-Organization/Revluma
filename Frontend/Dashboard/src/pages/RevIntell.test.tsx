@@ -344,19 +344,36 @@ describe('finding investigation handoff', () => {
     expect(screen.getByText('Previous finding answer')).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
-  it.each([true, false])('keeps the earlier attempt when persistence is acknowledged or uncertain (acknowledged=%s)', async acknowledged => {
+  it('retries an acknowledged failure in place through the server retry endpoint without duplicating the question', async () => {
     await openFinding(); send('Recoverable question');
     await act(async () => {
-      if (acknowledged) streams[0].request.handlers.onMeta?.({ conversation_id: 'Created' });
+      streams[0].request.handlers.onMeta?.({ conversation_id: 'Created' });
       streams[0].result.reject(new RevStreamError('INTELLIGENCE_UNAVAILABLE', 'Unavailable', 503));
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Ask again' }));
-    if (!acknowledged) expect(screen.getByLabelText('Question recovery')).toHaveTextContent('may have been saved');
-    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-    expect(streams[1].request).toMatchObject({ findingId: findingOne });
-    expect(streams[1].request.reuseUserMessage).not.toBe(true);
-    expect(screen.getAllByText('Recoverable question')).toHaveLength(3);
-    expect(screen.getByText('A supporting service did not respond. Verified information already shown remains available.')).toBeInTheDocument();
+    await screen.findByText('A supporting service did not respond. Verified information already shown remains available.');
+    vi.mocked(api.post).mockResolvedValue(turnReply(answer('Created', 'Retried finding answer')) as never);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText('Retried finding answer');
+    expect(vi.mocked(api.post)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.post)).toHaveBeenCalledWith('/rev/conversation/Created/retry',
+      { message: 'Recoverable question' }, expect.objectContaining({ timeoutMs: 120000 }));
+    expect(streams).toHaveLength(1);
+    expect(screen.getAllByText('Recoverable question')).toHaveLength(1);
+    expect(screen.queryByText('A supporting service did not respond. Verified information already shown remains available.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+  it('hands an unaccepted failure back as a resendable draft when the server has nothing to reuse', async () => {
+    renderPage('/dashboard/rev-intell/A'); await screen.findByText('Message from A');
+    send('Unaccepted question');
+    await act(async () => { streams[0].result.reject(new Error('Network interrupted')); });
+    await screen.findByText('Rev is taking a moment. Please try again shortly.');
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Not eligible', { error: { code: 'RETRY_NOT_ELIGIBLE' } }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByLabelText('Question recovery');
+    expect(vi.mocked(api.post)).toHaveBeenCalledWith('/rev/conversation/A/retry',
+      { message: 'Unaccepted question' }, expect.objectContaining({ timeoutMs: 120000 }));
+    expect(screen.getByLabelText('Question recovery')).toHaveTextContent('may have been saved');
+    expect(screen.getByPlaceholderText(/Ask (me|Rev)/)).toHaveValue('Unaccepted question');
   });
   it('shows the same two distinct finding turns after reloading persisted history', async () => {
     const view = await openFinding(); send('Investigate this finding'); await finishFinding('First persisted answer');
@@ -401,7 +418,7 @@ describe('finding investigation handoff', () => {
     } else if (outcome === 'successful') await screen.findByText('Image finding answer');
     else await screen.findByText(outcome === 'acknowledged failure'
        ? 'A supporting service did not respond. Verified information already shown remains available.' : 'Rev is taking a moment. Please try again shortly.');
-    fireEvent.click(screen.getByRole('button', { name: outcome === 'rejected' ? 'Try again' : 'Ask again' }));
+    fireEvent.click(screen.getByRole('button', { name: outcome === 'successful' ? 'Ask again' : 'Try again' }));
     expect(screen.getByLabelText('Question recovery')).toHaveTextContent('Reattach the original image');
     if (outcome === 'successful' || outcome === 'acknowledged failure') {
       expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
@@ -870,7 +887,7 @@ describe('turn callbacks remain in their originating thread', () => {
 
 describe('Phase 5.4 bounded pagination', () => {
   const firstHistory = () => Array.from({ length: 20 }, (_, i) => conversation(`H${i}`));
-  const firstMessages = () => Array.from({ length: 50 }, (_, i) => ({ id: `m${i}`, role: 'user', content: `Paged question ${i}`, created_at: '2026-11-02T12:00:00Z' }));
+  const firstMessages = () => Array.from({ length: 50 }, (_, i) => ({ id: `m${50 + i}`, role: 'user', content: `Paged question ${50 + i}`, sequence_number: 50 + i, created_at: '2026-11-02T12:00:00Z' }));
   it('loads only requested history pages, deduplicates overlap and prevents duplicate submissions', async () => {
     replies.set('/rev/conversations', Promise.resolve(reply(firstHistory())));
     const pending = deferred<Reply>(); replies.set('/rev/conversations?limit=20&offset=20', pending.promise);
@@ -936,36 +953,42 @@ describe('Phase 5.4 bounded pagination', () => {
     expect(screen.queryByText('Conversation H0')).not.toBeInTheDocument();
     if (mutation === 'rename') expect(screen.getByText('Changed title')).toBeInTheDocument();
   });
-  it('loads subsequent chronological messages once, retries failures and blocks writing into a partial thread', async () => {
+  it('pages older messages once by sequence cursor, retries failures, and never blocks writing into a partial thread', async () => {
     replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: firstMessages() })));
-    const pending = deferred<Reply>(); replies.set('/rev/conversation/A?limit=50&offset=50', pending.promise);
+    const pending = deferred<Reply>(); replies.set('/rev/conversation/A?limit=50&before=50', pending.promise);
     renderPage('/dashboard/rev-intell/A');
-    const more = await screen.findByRole('button', { name: 'Load more messages' });
-    expect(screen.getByRole('textbox', { name: 'Message Rev' })).toBeDisabled();
-    send('Do not send into partial history'); expect(streamRevAnswer).not.toHaveBeenCalled();
-    fireEvent.click(more); fireEvent.click(more);
-    expect(vi.mocked(api.get).mock.calls.filter(([path]) => path.includes('offset=50'))).toHaveLength(1);
-    await act(async () => pending.reject(new Error('offline')));
-    expect(screen.getByText('Paged question 0')).toBeInTheDocument();
-    replies.set('/rev/conversation/A?limit=50&offset=50', Promise.resolve(reply({ messages: [firstMessages()[49], { ...firstMessages()[0], id: 'm50', content: 'Paged question 50' }] })));
-    fireEvent.click(screen.getByRole('button', { name: 'Retry load more messages' }));
-    await screen.findByText('Paged question 50');
-    expect(screen.getAllByText('Paged question 49')).toHaveLength(1);
-    expect(screen.getByText('Paged question 0').compareDocumentPosition(screen.getByText('Paged question 50')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const more = await screen.findByRole('button', { name: 'Load older messages' });
+    expect(screen.getByText('Showing the most recent messages.')).toBeInTheDocument();
+    // Phase 5D: the send gate is gone — a turn can start while older history
+    // is still paging, addressed by a stable sequence cursor.
     expect(screen.getByRole('textbox', { name: 'Message Rev' })).toBeEnabled();
+    send('Question asked while paging'); expect(streams[0].request.conversationId).toBe('A');
+    await act(async () => {
+      streams[0].request.handlers.onFinal?.(answer('A', 'Answer while paging'));
+      streams[0].result.resolve({ conversationId: 'A', completed: true });
+    });
+    fireEvent.click(more); fireEvent.click(more);
+    expect(vi.mocked(api.get).mock.calls.filter(([path]) => path.includes('before=50'))).toHaveLength(1);
+    await act(async () => pending.reject(new Error('offline')));
+    expect(screen.getByRole('alert')).toHaveTextContent('More messages could not be loaded');
+    expect(screen.getByText('Paged question 50')).toBeInTheDocument();
+    replies.set('/rev/conversation/A?limit=50&before=50', Promise.resolve(reply({ messages: [{ id: 'm0', role: 'user', content: 'Paged question 0', sequence_number: 0, created_at: '2026-11-02T12:00:00Z' }, firstMessages()[0]] })));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry load older messages' }));
+    await screen.findByText('Paged question 0');
+    expect(screen.getAllByText('Paged question 50')).toHaveLength(1);
+    expect(screen.getByText('Paged question 0').compareDocumentPosition(screen.getByText('Paged question 50')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    send('New question after all messages'); expect(streams[0].request.conversationId).toBe('A');
   });
   it.each(['New Chat', 'B'])('ignores pending message pages after navigation to %s', async destination => {
     replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: firstMessages() })));
-    const pending = deferred<Reply>(); replies.set('/rev/conversation/A?limit=50&offset=50', pending.promise);
-    renderPage('/dashboard/rev-intell/A'); fireEvent.click(await screen.findByRole('button', { name: 'Load more messages' }));
+    const pending = deferred<Reply>(); replies.set('/rev/conversation/A?limit=50&before=50', pending.promise);
+    renderPage('/dashboard/rev-intell/A'); fireEvent.click(await screen.findByRole('button', { name: 'Load older messages' }));
     await historyReady();
     if (destination === 'B') { await select('B'); await screen.findByText('Message from B'); }
     else await clickNewConversation();
     await act(async () => pending.resolve(reply({ messages: [{ ...firstMessages()[0], id: 'late', content: 'Outdated page message' }] })));
     expect(screen.queryByText('Outdated page message')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Load more messages' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Load older messages' })).not.toBeInTheDocument();
     send('Current thread question'); expect(streams[0].request.conversationId).toBe(destination === 'B' ? 'B' : null);
   });
 });
@@ -1086,48 +1109,50 @@ describe('Phase 5.4 follow-up mobile modal stack', () => {
 });
 
 describe('Phase 5.4 follow-up long history', () => {
-  const page = (offset: number) => Array.from({ length: 50 }, (_, i) => ({ id: `long-${offset + i}`, role: 'user', content: `Long history message ${offset + i}`, created_at: '2026-11-02T12:00:00Z' }));
-  it('retrieves all three 50-message pages in order, retries safely and enables sending only at the verified end', async () => {
-    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: page(0) })));
-    const second = deferred<Reply>(); replies.set('/rev/conversation/A?limit=50&offset=50', second.promise);
-    replies.set('/rev/conversation/A?limit=50&offset=100', Promise.resolve(reply({ messages: page(100) })));
-    replies.set('/rev/conversation/A?limit=50&offset=150', Promise.resolve(reply({ messages: [] })));
-    renderPage('/dashboard/rev-intell/A'); await screen.findByText('Long history message 49');
-    expect(screen.getByText(/Load the remaining messages before continuing/)).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Message Rev' })).toBeDisabled();
-    fireEvent.click(screen.getByText('Load more messages').closest('button')!);
+  const page = (start: number) => Array.from({ length: 50 }, (_, i) => ({ id: `long-${start + i}`, role: 'user', content: `Long history message ${start + i}`, sequence_number: start + i, created_at: '2026-11-02T12:00:00Z' }));
+  it('opens on the newest page, sends while paging, and retrieves all three 50-message pages in order with safe retries', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: page(100) })));
+    const second = deferred<Reply>(); replies.set('/rev/conversation/A?limit=50&before=100', second.promise);
+    replies.set('/rev/conversation/A?limit=50&before=50', Promise.resolve(reply({ messages: page(0) })));
+    replies.set('/rev/conversation/A?limit=50&before=0', Promise.resolve(reply({ messages: [] })));
+    renderPage('/dashboard/rev-intell/A'); await screen.findByText('Long history message 149');
+    expect(screen.getByText('Showing the most recent messages.')).toBeInTheDocument();
+    // Phase 5D: no gate — the merchant writes while older history pages.
+    expect(screen.getByRole('textbox', { name: 'Message Rev' })).toBeEnabled();
+    send('Continue with partial history'); expect(streams[0].request.conversationId).toBe('A');
+    await act(async () => {
+      streams[0].request.handlers.onFinal?.(answer('A', 'Answer on partial history'));
+      streams[0].result.resolve({ conversationId: 'A', completed: true });
+    });
+    fireEvent.click(screen.getByText('Load older messages').closest('button')!);
     await act(async () => second.reject(new Error('temporary failure')));
     expect(screen.getByRole('alert')).toHaveTextContent('More messages could not be loaded');
     expect(screen.getAllByText(/^Long history message \d+$/)).toHaveLength(50);
-    replies.set('/rev/conversation/A?limit=50&offset=50', Promise.resolve(reply({ messages: page(50) })));
-    fireEvent.click(screen.getByLabelText('Retry load more messages'));
-    await screen.findByText('Long history message 99');
-    expect(screen.getByRole('textbox', { name: 'Message Rev' })).toBeDisabled();
-    fireEvent.click(screen.getByText('Load more messages').closest('button')!);
-    await screen.findByText('Long history message 149');
+    replies.set('/rev/conversation/A?limit=50&before=100', Promise.resolve(reply({ messages: page(50) })));
+    fireEvent.click(screen.getByLabelText('Retry load older messages'));
+    await screen.findByText('Long history message 50');
+    fireEvent.click(screen.getByText('Load older messages').closest('button')!);
+    await screen.findByText('Long history message 0');
     expect(screen.getAllByText(/^Long history message \d+$/).map(node => node.textContent)).toEqual(Array.from({ length: 150 }, (_, i) => `Long history message ${i}`));
-    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
-    fireEvent.click(screen.getByText('Load more messages').closest('button')!);
-    await waitFor(() => expect(screen.queryByText('Load more messages')).not.toBeInTheDocument());
-    expect(screen.queryByText(/Load the remaining messages before continuing/)).not.toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Message Rev' })).toBeEnabled();
+    fireEvent.click(screen.getByText('Load older messages').closest('button')!);
+    await waitFor(() => expect(screen.queryByText('Load older messages')).not.toBeInTheDocument());
+    expect(screen.queryByText('Showing the most recent messages.')).not.toBeInTheDocument();
     expect(vi.mocked(api.get).mock.calls.filter(([path]) => path.startsWith('/rev/conversation/A')).map(([path]) => path)).toEqual([
-      '/rev/conversation/A', '/rev/conversation/A?limit=50&offset=50', '/rev/conversation/A?limit=50&offset=50', '/rev/conversation/A?limit=50&offset=100', '/rev/conversation/A?limit=50&offset=150',
+      '/rev/conversation/A', '/rev/conversation/A?limit=50&before=100', '/rev/conversation/A?limit=50&before=100', '/rev/conversation/A?limit=50&before=50', '/rev/conversation/A?limit=50&before=0',
     ]);
-    send('Continue after complete history'); expect(streams[0].request.conversationId).toBe('A');
   });
   it.each(['resolve', 'reject'] as const)('ignores a late third-page %s after navigation', async completion => {
-    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: page(0) })));
-    replies.set('/rev/conversation/A?limit=50&offset=50', Promise.resolve(reply({ messages: page(50) })));
-    const third = deferred<Reply>(); replies.set('/rev/conversation/A?limit=50&offset=100', third.promise);
-    renderPage('/dashboard/rev-intell/A'); await screen.findByText('Long history message 49');
-    fireEvent.click(screen.getByText('Load more messages').closest('button')!); await screen.findByText('Long history message 99');
-    fireEvent.click(screen.getByText('Load more messages').closest('button')!);
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: page(100) })));
+    replies.set('/rev/conversation/A?limit=50&before=100', Promise.resolve(reply({ messages: page(50) })));
+    const third = deferred<Reply>(); replies.set('/rev/conversation/A?limit=50&before=50', third.promise);
+    renderPage('/dashboard/rev-intell/A'); await screen.findByText('Long history message 149');
+    fireEvent.click(screen.getByText('Load older messages').closest('button')!); await screen.findByText('Long history message 50');
+    fireEvent.click(screen.getByText('Load older messages').closest('button')!);
     await historyReady(); await select('B'); await screen.findByText('Message from B'); send('Current question');
-    await act(async () => completion === 'resolve' ? third.resolve(reply({ messages: page(100) })) : third.reject(new Error('late failure')));
+    await act(async () => completion === 'resolve' ? third.resolve(reply({ messages: page(0) })) : third.reject(new Error('late failure')));
     expect(screen.queryByText(/^Long history message/)).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.queryByText('Load more messages')).not.toBeInTheDocument();
+    expect(screen.queryByText('Load older messages')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Stop generating' })).toBeInTheDocument();
     expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/B');
   });
@@ -1631,9 +1656,10 @@ describe('Task 224 — Rev Intelligence conversation experience (305–311)', ()
     await screen.findByRole('heading', { name: 'Revenue decline' });
     return view;
   }
-  // Non-finding failures persist as "unknown", so the retry control is labelled
-  // "Ask again" (re-ask); only a pre-save finding rejection is "not-persisted" and
-  // labelled "Try again" (recover in place). Both re-send the same question.
+  // A failed or cancelled turn labels its recovery "Try again" (a true retry —
+  // in place through the server retry endpoint, or a resendable draft when
+  // there is nothing persisted to reuse); a successful turn says "Ask again"
+  // (re-ask as an explicit new turn).
   const retryButton = () => screen.queryByRole('button', { name: /try again|ask again/i });
   // Count how many user-message BUBBLES in the thread contain `text`. Task 223's
   // draft-preserving submission (acceptDraft clears the input only once the server
@@ -1801,7 +1827,7 @@ describe('Task 224 — Rev Intelligence conversation experience (305–311)', ()
       // announces the wait ("Retry in 2 seconds") while the visible text counts down.
       const button = screen.getByRole('button', { name: 'Retry in 2 seconds' });
       expect(button).toBeDisabled();
-      expect(button).toHaveTextContent('Ask again in 2s');
+      expect(button).toHaveTextContent('Try again in 2s');
     });
 
     it('re-sends the identical question on retry without duplicating it in the thread', async () => {
@@ -2037,5 +2063,159 @@ describe('Task 230 return journey', () => {
     expect(screen.queryByRole('button', { name: /return to command center/i })).toBeNull();
     expect(document.querySelector('a[href*="evil.example"]')).toBeNull();
     expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/A');
+  });
+});
+
+describe('Phase 5D conversation reliability', () => {
+  // api.post is mocked in this suite; the transport extras on ApiResponse are
+  // irrelevant here, so the fixture envelope is cast at the mock boundary.
+  const postReply = (payload: RevAnswerPayload): never => turnReply(payload) as never;
+  const msg = (id: string, role: string, content: unknown, sequence_number: number, extra: Record<string, unknown> = {}) => ({
+    id, role, content, sequence_number, created_at: '2026-11-02T12:00:00Z', ...extra,
+  });
+  const failedTurn = (code: string | null = 'INTELLIGENCE_UNAVAILABLE') => ({ messages: [
+    msg('u1', 'user', { text: 'Persisted question' }, 1),
+    msg('r1', 'rev', { error: true }, 2, { has_error: true, error_code: code }),
+  ] });
+  const unavailable = 'A supporting service did not respond. Verified information already shown remains available.';
+
+  it('rehydrates the completed turn when the server reports the retry already completed', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply(failedTurn())));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText(unavailable);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [
+      msg('u1', 'user', { text: 'Persisted question' }, 1),
+      msg('r2', 'rev', answer('A', 'Completed while away'), 3),
+    ] })));
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Completed', { error: { code: 'RETRY_ALREADY_COMPLETED' } }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText('Completed while away');
+    expect(vi.mocked(api.post)).toHaveBeenCalledWith('/rev/conversation/A/retry',
+      { message: 'Persisted question' }, expect.objectContaining({ timeoutMs: 120000 }));
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('Persisted question')).toHaveLength(1);
+  });
+
+  it('withholds a futile retry for a reloaded permanent failure and words it honestly', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply(failedTurn('INTELLIGENCE_NOT_CONFIGURED'))));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText('Rev Intelligence is being set up. Check back shortly.');
+    expect(screen.queryByText(/"error":true/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+
+  it('keeps a failed retry recoverable without duplicating the question', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply(failedTurn())));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText(unavailable);
+    vi.mocked(api.post)
+      .mockRejectedValueOnce(new ApiError(503, 'Unavailable', { conversation_id: 'A', error: { code: 'INTELLIGENCE_UNAVAILABLE' } }))
+      .mockResolvedValueOnce(postReply(answer('A', 'Second-attempt answer')));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(vi.mocked(api.post)).toHaveBeenCalledTimes(1));
+    await screen.findByText(unavailable);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText('Second-attempt answer');
+    expect(vi.mocked(api.post)).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByText('Persisted question')).toHaveLength(1);
+  });
+
+  it('retries a cancelled turn in place through the server retry endpoint', async () => {
+    renderPage('/dashboard/rev-intell/A'); await screen.findByText('Message from A');
+    send('Cancellable question');
+    await screen.findByRole('button', { name: 'Stop generating' });
+    await act(async () => { streams[0].request.handlers.onMeta?.({ conversation_id: 'A' }); });
+    fireEvent.click(screen.getByRole('button', { name: 'Stop generating' }));
+    await screen.findByText('Generation stopped.');
+    vi.mocked(api.post).mockResolvedValue(postReply(answer('A', 'Answer after cancel')));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText('Answer after cancel');
+    expect(vi.mocked(api.post)).toHaveBeenCalledWith('/rev/conversation/A/retry',
+      { message: 'Cancellable question' }, expect.objectContaining({ timeoutMs: 120000 }));
+    expect(screen.getAllByText('Cancellable question')).toHaveLength(1);
+  });
+
+  it('offers Generate response for a persisted question left unanswered by a refresh', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [
+      msg('u1', 'user', { text: 'Unanswered after refresh' }, 7),
+    ] })));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText('Unanswered after refresh');
+    vi.mocked(api.post).mockResolvedValue(postReply(answer('A', 'Late answer')));
+    fireEvent.click(await screen.findByRole('button', { name: 'Generate response' }));
+    await screen.findByText('Late answer');
+    expect(vi.mocked(api.post)).toHaveBeenCalledWith('/rev/conversation/A/retry',
+      { message: 'Unanswered after refresh' }, expect.objectContaining({ timeoutMs: 120000 }));
+    expect(screen.getAllByText('Unanswered after refresh')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Generate response' })).not.toBeInTheDocument();
+  });
+
+  it('reopens an image-assisted retry as a reattach draft instead of re-running it imageless', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [
+      msg('u1', 'user', { text: 'Image question', image_assisted: true }, 1),
+      msg('r1', 'rev', { error: true }, 2, { has_error: true, error_code: 'INTELLIGENCE_UNAVAILABLE' }),
+    ] })));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText(unavailable);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(vi.mocked(api.post)).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Question recovery')).toHaveTextContent('Reattach the original image');
+    expect(screen.getByPlaceholderText(/Ask (me|Rev)/)).toHaveValue('Image question');
+  });
+
+  it('reopens a server-flagged image retry as a reattach draft', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply(failedTurn())));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText(unavailable);
+    vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Image required', { error: { code: 'RETRY_IMAGE_REQUIRED' } }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByLabelText('Question recovery');
+    expect(screen.getByLabelText('Question recovery')).toHaveTextContent('Reattach the original image');
+    expect(screen.getByPlaceholderText(/Ask (me|Rev)/)).toHaveValue('Persisted question');
+  });
+
+  it('prefills instead of server-retrying a superseded failure whose question is no longer latest', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [
+      msg('u1', 'user', { text: 'Old question' }, 1),
+      msg('r1', 'rev', { error: true }, 2, { has_error: true, error_code: 'INTELLIGENCE_UNAVAILABLE' }),
+      msg('u2', 'user', { text: 'Newer question' }, 3),
+      msg('r2', 'rev', answer('A', 'Newer answer'), 4),
+    ] })));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText('Newer answer');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Try again' })[0]);
+    expect(vi.mocked(api.post)).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText(/Ask (me|Rev)/)).toHaveValue('Old question');
+  });
+
+  it('preserves evidence received before a failed final beneath the error', async () => {
+    renderPage('/dashboard/rev-intell/A'); await screen.findByText('Message from A');
+    send('Evidence question');
+    await act(async () => {
+      streams[0].request.handlers.onMeta?.({ conversation_id: 'A' });
+      streams[0].request.handlers.onEvidence?.({ items: [{ id: 'ev-1', label: 'Recorded metric' }] } as unknown as NonNullable<RevAnswerPayload["evidence"]>);
+      streams[0].request.handlers.onFinal?.({ ...answer('A', 'Unsupported success'), success: false, error: { code: 'INVESTIGATION_FAILED' } } as RevAnswerPayload);
+      streams[0].result.resolve({ conversationId: 'A', completed: true });
+    });
+    await screen.findByText('Rev couldn\u2019t complete this answer. Your question is saved; try again.');
+    expect(answerView).toHaveBeenCalledWith(expect.objectContaining({
+      evidence: expect.objectContaining({ items: [{ id: 'ev-1', label: 'Recorded metric' }] }),
+    }));
+  });
+
+  it('stops a retry cleanly and keeps it recoverable', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply(failedTurn())));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText(unavailable);
+    const pending = deferred<never>();
+    vi.mocked(api.post).mockReturnValueOnce(pending.promise);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('button', { name: 'Stop generating' });
+    fireEvent.click(screen.getByRole('button', { name: 'Stop generating' }));
+    await screen.findByText('Generation stopped.');
+    await act(async () => { pending.resolve(postReply(answer('A', 'Late retry answer'))); });
+    expect(screen.queryByText('Late retry answer')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
   });
 });

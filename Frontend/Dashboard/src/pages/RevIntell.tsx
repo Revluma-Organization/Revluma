@@ -95,6 +95,8 @@ interface Message {
   cancelled?:  boolean;
   /** The merchant's persisted thumbs rating for a Rev answer (ChatGPT-UI study §5). */
   feedback?:   "up" | "down" | null;
+  /** Persisted sequence number when known — the older-history paging cursor. */
+  sequence?:   number;
 }
 
 interface Conversation {
@@ -110,7 +112,9 @@ interface PersistedConversationMessage {
   content: unknown;
   created_at: string;
   has_error?: boolean;
+  error_code?: string | null;
   feedback_rating?: string | null;
+  sequence_number?: number;
 }
 
 interface FindingDetails {
@@ -164,6 +168,10 @@ const MESSAGE_PAGE_SIZE = 50;
 // never submitted longer than it will be persisted (no silent truncation, no
 // UI/DB inconsistency). A backend contract test asserts the two stay equal.
 const MAX_QUESTION_LENGTH = 2000;
+// Phase 5D: a true retry runs a full server investigation (up to the ~105s
+// server budget), so it carries its own timeout rather than the shared 30s
+// transport default, which would abort an honest long retry mid-answer.
+const RETRY_REQUEST_TIMEOUT_MS = 120_000;
 
 // Suggested opening questions for an empty conversation.
 //
@@ -277,6 +285,8 @@ function cleanError(code?: string | { status?: number } | (ApiError & { status?:
     REV_TURN_IN_PROGRESS: "Rev is still working on this question. Wait a moment, then refresh the conversation.",
     SUBMISSION_NOT_ACCEPTED: "Rev couldn’t accept this question. Try sending it again.",
     RETRY_NOT_ELIGIBLE: "This answer can’t be retried as-is. Rephrase the question or try again later.",
+    RETRY_ALREADY_COMPLETED: "This answer already completed. The conversation has been refreshed to show it.",
+    RETRY_IMAGE_REQUIRED: "This question was asked with an image. Re-attach the image and send it again.",
   };
   if (typeof code === "string" && revSpecific[code]) return revSpecific[code];
   // A structured code the server sent is a server outcome: an unmapped one is a
@@ -440,6 +450,17 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
             </div>
           </div>
         )}
+
+        {/* Phase 5D: evidence received before a failure stays visible — real
+            retrieved records are never hidden by the error state. */}
+        {msg.hasError && !msg.isStreaming && msg.payload && (msg.payload.evidence?.items?.length || msg.payload.evidence?.comparison_items?.length) ? (
+          <RevAnswerView
+            payload={msg.payload}
+            streaming={false}
+            evidenceOpen={evidenceOpen}
+            onOpenEvidence={() => onOpenEvidence?.(msg.id)}
+          />
+        ) : null}
 
         {!msg.hasError && !msg.cancelled && msg.payload && (
           <RevAnswerView
@@ -787,7 +808,7 @@ export default function RevIntell() {
   const [messagesMore, setMessagesMore] = useState(false);
   const [messagesMoreLoading, setMessagesMoreLoading] = useState(false);
   const [messagesMoreError, setMessagesMoreError] = useState<string | null>(null);
-  const messagesOffset = useRef(0);
+  const messagesOldestSeq = useRef<number | null>(null);
   const messagesPagePending = useRef(false);
   const reducedMotion = useReducedMotion();
   const [convLoading,    setConvLoading]    = useState(false);
@@ -1036,9 +1057,15 @@ export default function RevIntell() {
   // ── Load specific conversation ────────────────────────────────────────────
   const loadConversation = useCallback(async (convId: string, append = false) => {
     if (append && messagesPagePending.current) return;
+    // Older pages are addressed by the oldest loaded sequence. Without a
+    // known cursor there is nothing honest to ask for, so paging stops.
+    if (append && typeof messagesOldestSeq.current !== "number") {
+      setMessagesMore(false);
+      return;
+    }
     const request = ++conversationRequestRef.current;
     messagesPagePending.current = true;
-    const offset = append ? messagesOffset.current : 0;
+    const before = append ? messagesOldestSeq.current : null;
     if (append) {
       setMessagesMoreLoading(true);
       setMessagesMoreError(null);
@@ -1057,7 +1084,7 @@ export default function RevIntell() {
         data: {
           messages: PersistedConversationMessage[];
         };
-      }>(`/rev/conversation/${encodeURIComponent(convId)}${append ? `?limit=${MESSAGE_PAGE_SIZE}&offset=${offset}` : ""}`);
+      }>(`/rev/conversation/${encodeURIComponent(convId)}${before !== null ? `?limit=${MESSAGE_PAGE_SIZE}&before=${before}` : ""}`);
 
       if (request !== conversationRequestRef.current) return;
       const msgs = res.data.data?.messages;
@@ -1087,13 +1114,23 @@ export default function RevIntell() {
             else content = raw;
           } catch { content = raw; }
         }
+        const userContent = m.role === "user" && typeof raw === "object" && raw !== null
+          ? (raw as { image_assisted?: unknown }).image_assisted : undefined;
+        const persistedErrorCode = m.has_error && typeof m.error_code === "string" ? m.error_code : undefined;
         return {
           id:        m.id,
           role:      m.role as "user" | "rev",
-          content,
+          // Phase 5D: a reloaded failure shows its closed merchant wording
+          // (never raw persisted JSON) with the same recovery decision a live
+          // failure carries — no futile retry on permanent failures.
+          content:   m.has_error && !payload ? cleanError(persistedErrorCode) : content,
           timestamp: new Date(m.created_at),
           hasError:  m.has_error || false,
+          errorCode: persistedErrorCode,
+          retryable: m.has_error ? classifyRevResponseError(persistedErrorCode).retryable : undefined,
           persistence: "persisted",
+          sequence: typeof m.sequence_number === "number" ? m.sequence_number : undefined,
+          imageAssisted: m.role === "user" && userContent === true ? true : undefined,
           feedback: m.feedback_rating === "up" || m.feedback_rating === "down" ? m.feedback_rating : undefined,
           // Rehydrated Rev turns stay ratable even when the persisted content
           // predates message_id in payloads: the thread row IS the message.
@@ -1101,9 +1138,17 @@ export default function RevIntell() {
         };
       });
 
-      messagesOffset.current = offset + msgs.length;
-      setMessagesMore(msgs.length === MESSAGE_PAGE_SIZE);
-      setMessages(previous => [...new Map([...(append ? previous : []), ...parsed].map(item => [item.id, item])).values()]);
+      // Pages arrive ascending; an older page is prepended ahead of the
+      // loaded thread. A full page means older messages may remain.
+      if (parsed.length > 0 && typeof parsed[0].sequence === "number") {
+        messagesOldestSeq.current = parsed[0].sequence;
+      } else if (append) {
+        messagesOldestSeq.current = null;
+      } else {
+        messagesOldestSeq.current = null;
+      }
+      setMessagesMore(msgs.length === MESSAGE_PAGE_SIZE && messagesOldestSeq.current !== null);
+      setMessages(previous => [...new Map([...(append ? parsed : []), ...(append ? previous : parsed)].map(item => [item.id, item])).values()]);
       if (!append && !findingId) {
         // Phase 5C: the latest Rev turn that reports finding state decides.
         // A turn with an explicit null echo means the finding was deliberately
@@ -1178,7 +1223,7 @@ export default function RevIntell() {
     setConvError(null);
     setMessages([]);
     messagesPagePending.current = false;
-    messagesOffset.current = 0;
+    messagesOldestSeq.current = null;
     setMessagesMore(false);
     setMessagesMoreLoading(false);
     setMessagesMoreError(null);
@@ -1330,7 +1375,7 @@ export default function RevIntell() {
   // path that carries attachments — never silently drop an attachment.
   const send = useCallback(async (text: string) => {
     const trimmedLen = text.trim().length;
-    if (!trimmedLen || trimmedLen > MAX_QUESTION_LENGTH || turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError || messagesMore || messagesPagePending.current || (findingId !== null && !findingContext)) return;
+    if (!trimmedLen || trimmedLen > MAX_QUESTION_LENGTH || turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError || (findingId !== null && !findingContext)) return;
     if ((findingRetryDraft?.requiresImage || findingRetryDraft?.attachmentUnknown) && !imageAttachment) return;
     const turn = ++turnRequestRef.current;
     turnPendingRef.current = true;
@@ -1376,7 +1421,7 @@ export default function RevIntell() {
     const sid = `r${Date.now()}-${turn}`;
     setMessages(prev => {
       const placeholder: Message = { id: sid, role: "rev", content: "", timestamp: new Date(), isStreaming: true, steps: [], persistence: "unknown", imageAssisted: Boolean(imageAttachment) };
-      const question: Message = { id: `u${Date.now()}-${turn}`, role: "user", content: trimmed, timestamp: new Date() };
+      const question: Message = { id: `u${Date.now()}-${turn}`, role: "user", content: trimmed, timestamp: new Date(), imageAssisted: Boolean(imageAttachment) };
       const index = findingRetryDraft?.recoverInPlace ? prev.findIndex(message => message.id === findingRetryDraft.messageId) : -1;
       if (index === prev.length - 1 && index > 0 && prev[index].persistence === "not-persisted") {
         return prev.map((message, position) => position === index ? placeholder
@@ -1502,7 +1547,9 @@ export default function RevIntell() {
               findingRejected(code);
               const failure = classifyRevResponseError(code);
               patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code,
-                retryable: failure.retryable, retryAfterSeconds: failure.retryAfterSeconds, content: cleanError(code), payload: undefined,
+                retryable: failure.retryable, retryAfterSeconds: failure.retryAfterSeconds, content: cleanError(code),
+                // Phase 5D: evidence frames received before the failure are
+                // real retrieved records — preserved, never wiped.
                 persistence: message.persistence !== "persisted" && code && FINDING_ERRORS.includes(code) ? "not-persisted" : message.persistence }));
               return;
             }
@@ -1566,7 +1613,7 @@ export default function RevIntell() {
         }
       }
     }
-  }, [activeId, convLoading, convError, convNotFound, findingId, findingContext, findingLoading, findingError, findingRetryDraft, navigate, imageAttachment, loadConversations, messagesMore, returnHint]);
+  }, [activeId, convLoading, convError, convNotFound, findingId, findingContext, findingLoading, findingError, findingRetryDraft, navigate, imageAttachment, loadConversations, returnHint]);
 
   // ── Stop generation ───────────────────────────────────────────────────────
   const stopGeneration = useCallback(() => {
@@ -1578,26 +1625,205 @@ export default function RevIntell() {
     setMessages(previous => previous.map(message => message.isStreaming ? { ...message, isStreaming: false, cancelled: true } : message));
   }, []);
 
+  // ── True server retry (Phase 5D) ──────────────────────────────────────────
+  // POST /rev/conversation/:id/retry reuses the persisted user message
+  // server-side: no duplicate question, no duplicate failed turns. The retried
+  // answer arrives as one JSON final (the endpoint forwards to the JSON chat
+  // handler, not SSE), so the bubble shows an honest busy state and renders
+  // the full answer when it arrives — never fake token streaming.
+  const executeServerRetry = useCallback(async (question: string, bubbleId: string, convId: string, draftFallback?: {
+    messageId: string; recoverInPlace: boolean; requiresImage: boolean;
+    attachmentUnknown: boolean; persistenceUnknown: boolean;
+  }) => {
+    const turn = ++turnRequestRef.current;
+    turnPendingRef.current = true;
+    const isCurrent = () => turn === turnRequestRef.current;
+    announce("Retrying your question.");
+    setThinking(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setMessages(prev => prev.map(message => message.id === bubbleId
+      ? {
+        ...message, isStreaming: true, hasError: false, errorCode: undefined,
+        retryable: undefined, retryAfterSeconds: undefined, cancelled: false,
+        content: "", steps: [], payload: undefined,
+      }
+      : message));
+    try {
+      const res = await api.post<RevTurnPayload>(
+        `/rev/conversation/${encodeURIComponent(convId)}/retry`,
+        { message: question },
+        { signal: controller.signal, timeoutMs: RETRY_REQUEST_TIMEOUT_MS },
+      );
+      if (!isCurrent()) return;
+      const data = res.data;
+      if (!data?.success) {
+        const code = typeof data?.error?.code === "string" ? data.error.code : null;
+        const failure = classifyRevResponseError(code);
+        setMessages(prev => prev.map(message => message.id === bubbleId ? {
+          ...message, isStreaming: false, hasError: true, errorCode: code ?? undefined,
+          retryable: failure.retryable, retryAfterSeconds: failure.retryAfterSeconds,
+          content: cleanError(code ?? undefined),
+        } : message));
+        return;
+      }
+      void loadConversations();
+      const { content, payload } = normaliseTurn(data);
+      if (!isCurrent()) return;
+      setMessages(prev => prev.map(message => message.id === bubbleId ? {
+        ...message, isStreaming: false, persistence: "persisted", content, payload,
+        steps: data.investigation?.steps?.length ? data.investigation.steps : message.steps,
+      } : message));
+      announce("Your answer is ready.");
+    } catch (err) {
+      if (!isCurrent()) return;
+      if (controller.signal.aborted) {
+        setMessages(prev => prev.map(message => message.id === bubbleId
+          ? { ...message, isStreaming: false, cancelled: true } : message));
+        return;
+      }
+      const code = responseErrorCode(err);
+      if (code === "RETRY_ALREADY_COMPLETED") {
+        // The server holds the completed turn while the browser saw a failure
+        // (lost final, refresh mid-stream). Rehydrate from the truth.
+        announce("This answer already completed. Refreshing the conversation.");
+        if (abortRef.current === controller) abortRef.current = null;
+        turnPendingRef.current = false;
+        setThinking(false);
+        void loadConversation(convId);
+        return;
+      }
+      if (code === "RETRY_IMAGE_REQUIRED") {
+        // The failed question needs its image again: reopen it as an explicit
+        // draft that requires re-attaching, exactly like a fresh image turn.
+        if (abortRef.current === controller) abortRef.current = null;
+        turnPendingRef.current = false;
+        setThinking(false);
+        setFindingRetryDraft({
+          messageId: bubbleId, recoverInPlace: false, requiresImage: true,
+          attachmentUnknown: false, persistenceUnknown: false,
+        });
+        inputEditedRef.current = true;
+        setInput(question);
+        announce(cleanError(code));
+        inputRef.current?.focus();
+        setMessages(prev => prev.map(message => message.id === bubbleId
+          ? { ...message, isStreaming: false } : message));
+        return;
+      }
+      if (code === "RETRY_NOT_ELIGIBLE" && draftFallback) {
+        // The question was never persisted (failure before acceptance), so
+        // there is nothing to reuse: hand it back as an explicit draft to
+        // resend, instead of stranding the merchant on a dead end.
+        if (abortRef.current === controller) abortRef.current = null;
+        turnPendingRef.current = false;
+        setThinking(false);
+        setFindingRetryDraft(draftFallback);
+        inputEditedRef.current = true;
+        setInput(question);
+        announce("This answer could not be retried in place. Your question is ready to send again.");
+        inputRef.current?.focus();
+        setMessages(prev => prev.map(message => message.id === bubbleId
+          ? { ...message, isStreaming: false } : message));
+        return;
+      }
+      const failure = classifyRevFailure(err, code);
+      const failedBody = err instanceof ApiError ? err.body as { conversation_id?: unknown } | undefined : undefined;
+      const failedPersisted = typeof failedBody?.conversation_id === "string";
+      setMessages(prev => prev.map(message => message.id === bubbleId ? {
+        ...message, isStreaming: false, hasError: true, errorCode: code,
+        retryable: failure.retryable, retryAfterSeconds: failure.retryAfterSeconds,
+        persistence: failedPersisted ? "persisted" : message.persistence,
+        content: revTurnMessage(code, err),
+      } : message));
+    } finally {
+      if (isCurrent()) {
+        if (abortRef.current === controller) abortRef.current = null;
+        turnPendingRef.current = false;
+        setThinking(false);
+      }
+    }
+  }, [announce, loadConversation, loadConversations]);
+
   // Finding requests append new turns on the server. Only confirmed rejected,
   // unpersisted attempts can be recovered in place in the local thread.
+  // Phase 5D: a failed or cancelled turn whose question is persisted and
+  // latest is retried in place through the server retry endpoint. Anything
+  // else keeps the pre-filled draft: a successful turn (regenerate as an
+  // explicit new turn), a confirmed never-persisted attempt (nothing to
+  // reuse), a superseded failure (its question is no longer the latest — the
+  // server would re-run a newer turn), or an image-assisted question (its
+  // bytes are not persisted and must be re-attached). An unconfirmed attempt
+  // tries the server retry first and falls back to the draft on mismatch.
   const handleRetry = useCallback(async (source?: Message) => {
-    if (turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError || messagesMore) return;
+    if (turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError) return;
     const previous = source ?? [...messages].reverse().find(message => message.role === "rev");
     if (!previous) return;
     const index = messages.findIndex(message => message.id === previous?.id);
-    const question = messages.slice(0, index).reverse().find(message => message.role === "user")?.content;
+    const questionMessage = messages.slice(0, index).reverse().find(message => message.role === "user");
+    const question = questionMessage?.content;
     if (typeof question !== "string" || !question.trim()) return;
-    setFindingRetryDraft({
+    const requiresImage = previous?.imageAssisted === true || questionMessage?.imageAssisted === true;
+    const attachmentUnknown = previous?.imageAssisted === undefined && questionMessage?.imageAssisted === undefined;
+    const prefillDraft = () => {
+      setFindingRetryDraft({
+        messageId: previous.id,
+        recoverInPlace: previous?.persistence === "not-persisted" && index === messages.length - 1,
+        requiresImage,
+        attachmentUnknown,
+        persistenceUnknown: previous?.persistence !== "persisted" && previous?.persistence !== "not-persisted",
+      });
+      inputEditedRef.current = true;
+      setInput(question);
+      inputRef.current?.focus();
+    };
+    if (!previous.hasError && !previous.cancelled) { prefillDraft(); return; }
+    if (requiresImage) { prefillDraft(); return; }
+    if (previous.persistence === "not-persisted") { prefillDraft(); return; }
+    if (!activeId || index !== messages.length - 1) { prefillDraft(); return; }
+    // An unconfirmed ("unknown") attempt may still have been accepted — try
+    // the server retry, falling back to the draft if there is nothing to reuse.
+    const draftFallback = previous.persistence === "persisted" ? undefined : {
       messageId: previous.id,
-      recoverInPlace: previous?.persistence === "not-persisted" && index === messages.length - 1,
-      requiresImage: previous?.imageAssisted === true,
-      attachmentUnknown: previous?.imageAssisted === undefined,
-      persistenceUnknown: previous?.persistence !== "persisted" && previous?.persistence !== "not-persisted",
-    });
-    inputEditedRef.current = true;
-    setInput(question);
-    inputRef.current?.focus();
-  }, [convLoading, convError, convNotFound, findingLoading, findingError, messages, messagesMore]);
+      recoverInPlace: false,
+      requiresImage,
+      attachmentUnknown,
+      persistenceUnknown: true,
+    };
+    await executeServerRetry(question.trim(), previous.id, activeId, draftFallback);
+  }, [activeId, announce, convLoading, convError, convNotFound, executeServerRetry, findingLoading, findingError, messages]);
+
+  // Phase 5D: a refresh or interruption after acceptance leaves a persisted
+  // user question with no Rev turn after it. The retry endpoint reuses exactly
+  // that question, so the merchant gets a "Generate response" recovery instead
+  // of retyping — and no duplicate question is ever created.
+  const danglingUserTurn = !thinking && !convLoading && !convError && !convNotFound
+    && activeId !== null && messages.length > 0
+    && messages[messages.length - 1].role === "user"
+    && messages[messages.length - 1].persistence !== "not-persisted";
+  const retryDanglingTurn = useCallback(() => {
+    if (turnPendingRef.current || !danglingUserTurn || !activeId) return;
+    const last = messages[messages.length - 1];
+    if (typeof last.content !== "string" || !last.content.trim()) return;
+    if (last.imageAssisted === true) {
+      // Same honesty rule as handleRetry: re-attach, never re-run imageless.
+      setFindingRetryDraft({
+        messageId: last.id, recoverInPlace: false, requiresImage: true,
+        attachmentUnknown: false, persistenceUnknown: false,
+      });
+      inputEditedRef.current = true;
+      setInput(last.content);
+      inputRef.current?.focus();
+      return;
+    }
+    const sid = `r${Date.now()}-retry`;
+    const question = last.content.trim();
+    setMessages(prev => [...prev, {
+      id: sid, role: "rev", content: "", timestamp: new Date(),
+      isStreaming: true, steps: [], persistence: "unknown",
+    }]);
+    void executeServerRetry(question, sid, activeId);
+  }, [activeId, danglingUserTurn, executeServerRetry, messages]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); }
@@ -1761,7 +1987,7 @@ export default function RevIntell() {
     inputRef, value: input, onChange: resize, onKeyDown: handleKey,
     onSend: () => send(input), onFile: handleFile,
     thinking,
-    disabled: findingLoading || Boolean(findingError) || messagesMore || messagesMoreLoading,
+    disabled: findingLoading || Boolean(findingError),
     sendDisabled: Boolean((findingRetryDraft?.requiresImage || findingRetryDraft?.attachmentUnknown) && !imageAttachment),
     onStop: stopGeneration,
     card, border: bdr, t1, t2, isDark,
@@ -2158,11 +2384,13 @@ export default function RevIntell() {
         {/* Message thread */}
         {hasMessages && !convLoading && !convNotFound && !convError && (
           <div className="w-full max-w-2xl mx-auto px-4 pt-14 pb-4 lg:pt-6">
+            {messagesMore && <p role="status" className="mt-3 text-xs" style={{ color: t2 }}>Showing the most recent messages.</p>}
+            <LoadMore available={messagesMore} loading={messagesMoreLoading} error={messagesMoreError} onLoad={() => activeId && void loadConversation(activeId, true)} label="Load older messages" />
             {messages.map(msg => (
               <Bubble key={msg.id} msg={msg} onCopy={copy}
-                actionsDisabled={thinking || messagesMore || messagesMoreLoading}
+                actionsDisabled={thinking}
                 onRetry={() => void handleRetry(msg)} onSend={send}
-                retryLabel={msg.persistence === "not-persisted" && msg === messages[messages.length - 1] ? "Try again" : "Ask again"}
+                retryLabel={msg.hasError || msg.cancelled ? "Try again" : "Ask again"}
                 onOpenEvidence={(messageId) => setEvidenceFor(current => (current === messageId ? null : messageId))}
                 evidenceOpen={evidenceFor === msg.id}
                 onFeedback={submitFeedback}
@@ -2171,8 +2399,21 @@ export default function RevIntell() {
                 onReadAloud={toggleReadAloud}
                 isDark={isDark} t1={t1} t2={t2} />
             ))}
-            {messagesMore && <p role="status" className="mt-3 text-xs" style={{ color: t2 }}>Showing the start of this conversation. Load the remaining messages before continuing.</p>}
-            <LoadMore available={messagesMore} loading={messagesMoreLoading} error={messagesMoreError} onLoad={() => activeId && void loadConversation(activeId, true)} label="Load more messages" />
+            {danglingUserTurn && (
+              <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                padding: "10px 12px", borderRadius: 12, marginTop: 12,
+                background: isDark ? "rgba(255,255,255,0.04)" : "#F9FAFB",
+                border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "#EAECF0"}` }}>
+                <span style={{ fontSize: "0.82rem", color: t2 }}>Rev didn’t answer this question yet.</span>
+                <button onClick={retryDanglingTurn}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5,
+                    padding: "5px 12px", borderRadius: 999, fontSize: "0.76rem", fontWeight: 600,
+                    background: "rgba(31,6,172,0.08)", color: isDark ? "#b4a8ff" : "#1F06AC",
+                    border: "1px solid rgba(31,6,172,0.2)", cursor: "pointer", fontFamily: "inherit" }}>
+                  <RefreshCcw size={11} />Generate response
+                </button>
+              </div>
+            )}
             <div ref={bottomRef} />
           </div>
         )}
@@ -2198,7 +2439,7 @@ export default function RevIntell() {
                 <span className="text-[0.75rem]" style={{ color: t2 }}>{imageAttachment.name.slice(0, 40)}</span>
               </div>
             )}
-            <InputToolbar {...inputProps} placeholder="Ask Rev anything..." disabled={thinking || findingLoading || Boolean(findingError) || messagesMore || messagesMoreLoading} />
+            <InputToolbar {...inputProps} placeholder="Ask Rev anything..." disabled={thinking || findingLoading || Boolean(findingError)} />
             <p className="text-center text-[0.63rem] mt-2" style={{ color: t4 }}>
               Rev Intelligence · Powered by your store data · Responses grounded in evidence
             </p>

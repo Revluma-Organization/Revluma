@@ -64,6 +64,12 @@ const CODE_CLASSIFICATION: Record<string, { kind: RevFailureKind; retryable: boo
   REV_TURN_IN_PROGRESS:          { kind: "service_unavailable", retryable: true },
   SUBMISSION_NOT_ACCEPTED:       { kind: "server_error",        retryable: true },
   RETRY_NOT_ELIGIBLE:            { kind: "server_error",        retryable: false },
+  // Phase 5D: the retried turn already completed (a lost final, never a new
+  // failure), or the question needs its image re-attached. Neither is fixed
+  // by re-sending the identical retry, so no further "Try again" is offered —
+  // the page rehydrates the completed turn, or re-opens the image draft.
+  RETRY_ALREADY_COMPLETED:       { kind: "server_error",        retryable: false },
+  RETRY_IMAGE_REQUIRED:          { kind: "bad_request",         retryable: false },
   // Permanent / not-actionable-by-retry failures: re-sending the identical request
   // is futile, so the "Try again" control is withheld.
   INTELLIGENCE_NOT_CONFIGURED:   { kind: "server_error",        retryable: false },
