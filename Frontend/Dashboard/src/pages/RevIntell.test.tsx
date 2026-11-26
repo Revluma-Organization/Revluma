@@ -22,10 +22,16 @@ vi.mock('@/lib/revStream', () => {
   }
   return { streamRevAnswer: vi.fn(), RevStreamError: FixtureStreamError };
 });
-vi.mock('@/components/rev/RevAnswerView', () => ({ default: ({ payload, onOpenEvidence }: { payload: RevAnswerPayload; onOpenEvidence?: () => void }) => {
-  answerView(payload);
-  return <><p>{payload.text}</p><button onClick={onOpenEvidence}>Open evidence fixture</button></>;
-} }));
+// Phase 5E: the workspace renders RevInvestigationView (fully covered by its
+// own suite); page tests keep the stable fixture contract — payload recorded,
+// text rendered, evidence toggle available.
+vi.mock('@/components/rev/RevInvestigationView', () => {
+  const AnswerFixture = ({ payload, onOpenEvidence }: { payload: RevAnswerPayload; onOpenEvidence?: () => void }) => {
+    answerView(payload);
+    return <><p>{payload.text}</p><button onClick={onOpenEvidence}>Open evidence fixture</button></>;
+  };
+  return { default: AnswerFixture, RevInvestigationView: AnswerFixture };
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -951,7 +957,13 @@ describe('Phase 5.4 bounded pagination', () => {
       openHistory();
     }
     expect(screen.queryByText('Conversation H0')).not.toBeInTheDocument();
-    if (mutation === 'rename') expect(screen.getByText('Changed title')).toBeInTheDocument();
+    // Phase 5E: scope to the history list row — the workspace header now
+    // shows the same live title (covered in the 5E header block below). The
+    // rename dialog may still be closing, so the list is queried hidden.
+    if (mutation === 'rename') {
+      const history = screen.getByRole('dialog', { name: 'Conversation history', hidden: true });
+      expect(within(history).getByText('Changed title')).toBeInTheDocument();
+    }
   });
   it('pages older messages once by sequence cursor, retries failures, and never blocks writing into a partial thread', async () => {
     replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: firstMessages() })));
@@ -2217,5 +2229,160 @@ describe('Phase 5D conversation reliability', () => {
     await act(async () => { pending.resolve(postReply(answer('A', 'Late retry answer'))); });
     expect(screen.queryByText('Late retry answer')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  });
+});
+
+describe('Phase 5E evidence-first workspace', () => {
+  const originalMatchMedia = window.matchMedia;
+  let setWide: (wide: boolean) => void = () => {};
+  const mockViewport = (initialWide: boolean) => {
+    const state = { matches: initialWide };
+    const listeners = new Set<() => void>();
+    window.matchMedia = ((query: string) => ({
+      get matches() { return state.matches; },
+      media: query, onchange: null,
+      addListener: () => {}, removeListener: () => {},
+      addEventListener: (_type: string, fn: () => void) => { listeners.add(fn); },
+      removeEventListener: (_type: string, fn: () => void) => { listeners.delete(fn); },
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    setWide = (wide: boolean) => { state.matches = wide; listeners.forEach(fn => fn()); };
+  };
+  beforeEach(() => mockViewport(false));
+  afterEach(() => { window.matchMedia = originalMatchMedia; });
+
+  async function openFinding(finding = { id: findingOne, title: 'Revenue decline', severity: 'high', type: 'refund_increase' }) {
+    replies.set(`/rev/findings/${finding.id}`, Promise.resolve(reply({ finding })));
+    renderPage(`/dashboard/rev-intell?finding=${finding.id}`);
+    await screen.findByRole('heading', { name: finding.title });
+  }
+
+  it('links back to the Command Center preserving a sanitised return hint', async () => {
+    renderPage(`/dashboard/rev-intell?return_to=${encodeURIComponent('/dashboard/overview?section=signals')}`);
+    fireEvent.click(screen.getByRole('link', { name: 'Back to Command Center' }));
+    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/overview');
+    expect(screen.getByLabelText('Current search')).toHaveTextContent('?section=signals');
+  });
+
+  it('falls back to the Command Center root without a return hint', () => {
+    renderPage();
+    expect(screen.getByRole('link', { name: 'Back to Command Center' }).getAttribute('href')).toBe('/dashboard/overview');
+  });
+
+  it('shows the active conversation title, or New conversation when none is active', async () => {
+    renderPage();
+    await historyReady();
+    expect(screen.getByText('Conversation A')).toBeInTheDocument();
+    cleanup();
+    noHistoryToResume();
+    renderPage();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
+    expect(screen.getByText('New conversation')).toBeInTheDocument();
+  });
+
+  it('starts a new conversation from the header and keeps the return hint', async () => {
+    renderPage(`/dashboard/rev-intell/A?return_to=${encodeURIComponent('/dashboard/overview?section=health')}`);
+    await screen.findByText('Message from A');
+    fireEvent.click(screen.getByRole('button', { name: 'Start a new conversation' }));
+    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell');
+    expect(screen.getByLabelText('Current search')).toHaveTextContent('return_to=');
+    expect(screen.getByText('How can I help your revenue today?')).toBeInTheDocument();
+  });
+
+  it('badges a finding investigation as contextual and a plain thread as general', async () => {
+    await openFinding();
+    expect(screen.getByText('Finding context')).toBeInTheDocument();
+    expect(screen.queryByText('General')).not.toBeInTheDocument();
+    cleanup();
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText('Message from A');
+    expect(screen.getByText('General')).toBeInTheDocument();
+  });
+
+  it('shows the finding severity and category from the server record', async () => {
+    await openFinding();
+    const region = screen.getByRole('region', { name: 'Finding context' });
+    expect(within(region).getByText('High').getAttribute('aria-label')).toBe('Severity: High');
+    expect(within(region).getByText('Refund increase').getAttribute('aria-label')).toBe('Finding category: Refund increase');
+  });
+
+  it('renders an unknown severity as neutral raw text, never an invented level', async () => {
+    await openFinding({ id: findingOne, title: 'Odd severity', severity: 'urgent', type: 'refund_increase' });
+    const region = screen.getByRole('region', { name: 'Finding context' });
+    expect(within(region).getByText('urgent').getAttribute('aria-label')).toBe('Severity: urgent');
+    expect(within(region).queryByText('Low')).not.toBeInTheDocument();
+    expect(within(region).queryByText('Critical')).not.toBeInTheDocument();
+  });
+
+  it('shows Investigating while a turn is in flight and clears it after', async () => {
+    noHistoryToResume();
+    renderPage();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
+    expect(screen.queryByText('Investigating…')).not.toBeInTheDocument();
+    send('Investigate revenue');
+    expect(screen.getByText('Investigating…')).toBeInTheDocument();
+    await act(async () => {
+      streams[0].request.handlers.onFinal?.(answer('Created', 'Done'));
+      streams[0].result.resolve({ conversationId: 'Created', completed: true });
+    });
+    expect(screen.queryByText('Investigating…')).not.toBeInTheDocument();
+  });
+
+  it('reflects a rename in the header title as well as the history row', async () => {
+    vi.mocked(api.patch).mockResolvedValue({ ...reply(null), correlationId: 'test-correlation' });
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText('Message from A');
+    openHistory();
+    await screen.findByRole('button', { name: title('A') });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Rename conversation' })[0]);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Conversation name' }), { target: { value: 'Renamed live' } });
+    replies.set('/rev/conversations', Promise.resolve(reply([{ ...conversation('A'), title: 'Renamed live' }, conversation('B')])));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getAllByText('Renamed live')).toHaveLength(2));
+  });
+
+  it('keeps the drawer as the single history surface on narrow viewports', () => {
+    renderPage();
+    expect(screen.getByRole('button', { name: 'Open conversation history' })).toBeInTheDocument();
+    expect(screen.queryByTestId('rev-history-rail')).not.toBeInTheDocument();
+  });
+
+  it('shows the persistent rail instead of the drawer toggle on wide viewports', async () => {
+    mockViewport(true);
+    renderPage();
+    const rail = screen.getByTestId('rev-history-rail');
+    expect(rail).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open conversation history' })).not.toBeInTheDocument();
+    expect(await within(rail).findByRole('button', { name: title('A') })).toBeInTheDocument();
+    expect(within(rail).queryByRole('button', { name: 'Close conversation history' })).not.toBeInTheDocument();
+  });
+
+  it('selects a conversation from the rail', async () => {
+    mockViewport(true);
+    renderPage();
+    const rail = screen.getByTestId('rev-history-rail');
+    await within(rail).findByRole('button', { name: title('B') });
+    fireEvent.click(within(rail).getByRole('button', { name: title('B') }));
+    await waitFor(() => expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/B'));
+    expect(await screen.findByText('Message from B')).toBeInTheDocument();
+  });
+
+  it('searches history from the rail', async () => {
+    mockViewport(true);
+    renderPage();
+    const rail = screen.getByTestId('rev-history-rail');
+    await within(rail).findByRole('button', { name: title('A') });
+    fireEvent.change(within(rail).getByRole('textbox', { name: 'Search conversations' }), { target: { value: 'refund' } });
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations?q=refund'));
+  });
+
+  it('closes the drawer when the viewport widens to the rail', async () => {
+    renderPage();
+    await historyReady();
+    openHistory();
+    await screen.findByRole('dialog', { name: 'Conversation history' });
+    await act(async () => setWide(true));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Conversation history' })).not.toBeInTheDocument());
+    expect(screen.getByTestId('rev-history-rail')).toBeInTheDocument();
   });
 });

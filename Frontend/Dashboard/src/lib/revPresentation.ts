@@ -1,7 +1,7 @@
 import type {
-  EvidenceItem, EvidencePeriod, RevAnswerConfidence,
+  EvidenceItem, EvidencePeriod, InvestigationStep, RevAnswerConfidence,
   RevAnswerPayload, RevClaimConfidence, RevCoverageSummary,
-  RevConfidenceCategory, RevResponseSection,
+  RevConfidenceCategory, RevResponseSection, SpecialistsSummary,
 } from "./revStream";
 
 export const textValue = (value: unknown): string => typeof value === "string" ? value : "";
@@ -297,4 +297,58 @@ export function legacyResponseToPayload(value: unknown): RevAnswerPayload {
       ? response as NonNullable<RevAnswerPayload["response"]>
       : undefined,
   };
+}
+
+// ── Phase 5E: shared answer-state + disclosure helpers ──────────────────────
+// Moved verbatim from RevAnswerView so the workspace renderer
+// (RevInvestigationView) and the copilot renderer derive identical states,
+// pills and "How I checked" copy from the same functions.
+
+export type AnswerState = "verified" | "partial" | "unverified" | "unavailable" | "streaming";
+
+export const ANSWER_STATE_PILL: Record<AnswerState, { label: string; fg: string; bg: string }> = {
+  verified: { label: "Evidence verified", fg: "#067647", bg: "#ECFDF3" },
+  partial: { label: "Partial evidence", fg: "#B54708", bg: "#FFFAEB" },
+  unverified: { label: "Evidence unverified", fg: "#B54708", bg: "#FFFAEB" },
+  unavailable: { label: "Evidence unavailable", fg: "#475467", bg: "#F2F4F7" },
+  streaming: { label: "Investigating", fg: "#1F06AC", bg: "rgba(31,6,172,0.08)" },
+};
+
+export function deriveAnswerState(payload: RevAnswerPayload, streaming: boolean): AnswerState {
+  if (streaming) return "streaming";
+  const state = evidenceState(payload.evidence);
+  const degraded = recordList<SpecialistsSummary>(payload.specialists).some(specialist => specialist.status !== "success")
+    || ["partial", "insufficient_data", "failed"].includes(payload.investigation?.status)
+    || recordList<InvestigationStep>(payload.investigation?.steps)
+      .some(step => step.status !== "completed" && step.status !== "skipped");
+  return state === "verified" && degraded ? "partial" : state;
+}
+
+/** Honest wording for a step status — never claims completion for a step that did not complete. */
+const STEP_STATUS_WORD: Record<string, string> = {
+  pending: "did not run", running: "was still running", completed: "completed", failed: "failed",
+  skipped: "was not needed for this question",
+};
+
+export function stepStatusWord(status: unknown): string {
+  if (typeof status === "string" && STEP_STATUS_WORD[status]) return STEP_STATUS_WORD[status];
+  return textValue(status) || "unknown";
+}
+
+/** Primitive coverage entries only — objects are not flattened into invented prose. */
+export function coverageText(coverage?: Record<string, unknown>): string {
+  if (!coverage || typeof coverage !== "object") return "";
+  return Object.entries(coverage)
+    .filter(([, value]) => typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+    .map(([key, value]) => `${key}: ${String(value)}`)
+    .join(" · ");
+}
+
+export function freshnessText(freshness?: EvidenceItem["freshness"]): string {
+  if (!freshness || typeof freshness !== "object") return "";
+  const parts = [textValue(freshness.state), textValue(freshness.as_of)].filter(Boolean);
+  if (typeof freshness.age_minutes === "number" && Number.isFinite(freshness.age_minutes)) {
+    parts.push(`${Math.round(freshness.age_minutes)} minutes old`);
+  }
+  return parts.join(" · ");
 }

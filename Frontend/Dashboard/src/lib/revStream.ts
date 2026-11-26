@@ -149,6 +149,45 @@ export interface RevResponseProfile {
   reason: string;
 }
 
+// Phase 5E: the server-built selected-finding reference echoed on persisted
+// turns (Python `build_selected_finding`, contract `rev-selected-finding-v1`).
+// Every field is server-resolved under the authenticated organization — the
+// client renders it as context, never as verified evidence, and never trusts
+// client-supplied finding evidence over this echo.
+export interface SelectedFindingContext {
+  contract_version?: string;
+  finding_id: string;
+  finding_version?: string | null;
+  tenant?: { organization_id?: string; store_ids?: string[] };
+  investigation_id?: string;
+  title?: string;
+  type?: string;
+  lifecycle_state?: string;
+  current_validity?: string;
+  observation?: {
+    title?: string;
+    description?: string;
+    severity?: string;
+    dedupe_key?: string;
+  } | null;
+  metrics?: Record<string, unknown>;
+  period?: unknown;
+  currency?: string | null;
+  evidence_references?: string[];
+  evidence_quality?: string;
+  confidence?: string;
+  recommendation_history?: unknown[];
+  investigation_history?: unknown[];
+  limitations?: string[];
+  missing_information?: string[];
+  resource_references?: Array<{ resource?: string; source_id?: string; order_name?: string }>;
+  coverage?: { status?: string; complete?: boolean };
+  freshness?: { state?: string; as_of?: string | null };
+  selection_source?: string;
+  selected_at?: string | null;
+  invalidation?: { invalidated?: boolean; reason?: string | null };
+}
+
 export interface RevAnswerPayload {
   contract_version?: string;
   correlation_id?: string;

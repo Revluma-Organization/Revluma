@@ -4,11 +4,11 @@ import {
 } from "lucide-react";
 import RevMarkdown from "@/components/rev/RevMarkdown";
 import { CitationChip } from "@/components/rev/CitationChip";
-import { parseVerifiedComparison } from "@/lib/revComparison";
+import { RevVerifiedComparison } from "@/components/rev/RevVerifiedComparison";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import type { EvidenceItem, RevAnswerPayload, RevFact, RevHypothesis, RevRecommendation, SpecialistsSummary, InvestigationStep } from "@/lib/revStream";
 
-import { answerConfidence, answerSections, coverageDisclosure, coveredBy, evidenceState, formatPeriod, normaliseRevAnswer, recordList, stringList, textValue } from "@/lib/revPresentation";
+import { ANSWER_STATE_PILL, answerConfidence, answerSections, coverageDisclosure, coverageText, coveredBy, deriveAnswerState, formatPeriod, freshnessText, normaliseRevAnswer, recordList, stepStatusWord, stringList, textValue } from "@/lib/revPresentation";
 import { responseModeOf, type RevResponseMode } from "@/lib/revStream";
 
 interface Props {
@@ -24,106 +24,21 @@ interface Props {
   dark?: boolean;
 }
 
-type AnswerState = "verified" | "partial" | "unverified" | "unavailable" | "streaming";
-
-const STATE_PILL: Record<AnswerState, { label: string; fg: string; bg: string }> = {
-  verified: { label: "Evidence verified", fg: "#067647", bg: "#ECFDF3" },
-  partial: { label: "Partial evidence", fg: "#B54708", bg: "#FFFAEB" },
-  unverified: { label: "Evidence unverified", fg: "#B54708", bg: "#FFFAEB" },
-  unavailable: { label: "Evidence unavailable", fg: "#475467", bg: "#F2F4F7" },
-  streaming: { label: "Investigating", fg: "#1F06AC", bg: "rgba(31,6,172,0.08)" },
-};
-
-function deriveState(payload: RevAnswerPayload, streaming: boolean): AnswerState {
-  if (streaming) return "streaming";
-  const state = evidenceState(payload.evidence);
-  const degraded = recordList<SpecialistsSummary>(payload.specialists).some(specialist => specialist.status !== "success")
-    || ["partial", "insufficient_data", "failed"].includes(payload.investigation?.status)
-    || recordList<InvestigationStep>(payload.investigation?.steps)
-      .some(step => step.status !== "completed" && step.status !== "skipped");
-  return state === "verified" && degraded ? "partial" : state;
-}
-
-/** Honest wording for a step status — never claims completion for a step that did not complete. */
-const STEP_STATUS_WORD: Record<string, string> = {
-  pending: "did not run", running: "was still running", completed: "completed", failed: "failed",
-  skipped: "was not needed for this question",
-};
-
-function stepStatusWord(status: unknown): string {
-  if (typeof status === "string" && STEP_STATUS_WORD[status]) return STEP_STATUS_WORD[status];
-  return textValue(status) || "unknown";
-}
-
-/** Primitive coverage entries only — objects are not flattened into invented prose. */
-function coverageText(coverage?: Record<string, unknown>): string {
-  if (!coverage || typeof coverage !== "object") return "";
-  return Object.entries(coverage)
-    .filter(([, value]) => typeof value === "string" || typeof value === "number" || typeof value === "boolean")
-    .map(([key, value]) => `${key}: ${String(value)}`)
-    .join(" · ");
-}
-
-function freshnessText(freshness?: EvidenceItem["freshness"]): string {
-  if (!freshness || typeof freshness !== "object") return "";
-  const parts = [textValue(freshness.state), textValue(freshness.as_of)].filter(Boolean);
-  if (typeof freshness.age_minutes === "number" && Number.isFinite(freshness.age_minutes)) {
-    parts.push(`${Math.round(freshness.age_minutes)} minutes old`);
-  }
-  return parts.join(" · ");
-}
-
+// Phase 5E: answer state, pills and disclosure wording now live in
+// revPresentation, shared with the workspace renderer. Behaviour unchanged.
 const DISCLOSURE_HEADING: CSSProperties = {
   margin: "0 0 3px", fontSize: "0.64rem", fontWeight: 750,
   textTransform: "uppercase", letterSpacing: "0.05em",
 };
 const DISCLOSURE_LINE: CSSProperties = { margin: 0, fontSize: "0.72rem", lineHeight: 1.55 };
 
-/** Structured cards derived only from values explicitly present in Rev's verified answer. */
-function VerifiedComparison({ text, dark, strong, muted, border }: {
-  text: string; dark: boolean; strong: string; muted: string; border: string;
-}) {
-  const metrics = parseVerifiedComparison(text);
-  if (!metrics) return null;
-  return (
-    <section aria-label="Verified store performance comparison">
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <Database size={15} color="#1F06AC" />
-        <span style={{ color: strong, fontSize: 13, fontWeight: 750 }}>Verified performance evidence</span>
-        <span style={{ color: muted, fontSize: 11 }}>Rolling 7-day periods · UTC</span>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
-        {metrics.map((period, index) => (
-          <div key={index} style={{ border: `1px solid ${index === 0 ? "#1F06AC" : border}`, borderRadius: 12,
-            padding: 14, background: index === 0 ? (dark ? "#1b1740" : "#f4f2ff") : "transparent" }}>
-            <div style={{ color: strong, fontSize: 13, fontWeight: 750 }}>{period.title}</div>
-            <div style={{ color: muted, fontSize: 11, marginTop: 4, marginBottom: 12 }}>{period.dates}</div
-            >
-            {([["Orders", period.orders], ["Abandoned carts", period.carts], ["New profiles", period.customers],
-               ["First-time orders", period.firstTime], ["Returning orders", period.returning]] as Array<[string, string | null]>).map(([label, value]) => (
-              <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "5px 0" }}>
-                <span style={{ color: muted, fontSize: 12 }}>{label}</span>
-                <strong style={{ color: strong, fontSize: 13 }}>{value ?? "—"}</strong>
-              </div>
-            ))}
-            {period.cartValues.map((value, i) => <div key={`c${i}`} style={{ color: strong, fontSize: 12, marginTop: 6 }}>Recorded cart value: <strong>{value}</strong></div>)}
-            {period.values.map((value, i) => <div key={`v${i}`} style={{ color: strong, fontSize: 12, marginTop: 9 }}>Recorded order value: <strong>{value}</strong></div>)}
-            {period.discounts.map((value, i) => <div key={`d${i}`} style={{ color: muted, fontSize: 12, marginTop: 4 }}>Discounts: {value}</div>)}
-          </div>
-        ))}
-      </div>
-      <div style={{ fontSize: 12, color: muted, marginTop: 10 }}>Recorded merchant data, not verified net sales. Review the evidence limitations below.</div>
-    </section>
-  );
-}
-
 export function RevAnswerView({
   payload: original, streaming = false, evidenceOpen = false, onOpenEvidence, onFollowUp,
   onRetry, onCopy, copied = false, canRetry = false, dark = false,
 }: Props) {
   const payload = useMemo(() => normaliseRevAnswer(original) ?? original, [original]);
-  const state = useMemo(() => deriveState(payload, streaming), [payload, streaming]);
-  const pill = STATE_PILL[state];
+  const state = useMemo(() => deriveAnswerState(payload, streaming), [payload, streaming]);
+  const pill = ANSWER_STATE_PILL[state];
   const strong = dark ? "#F2F4F7" : "#101828";
   const muted = dark ? "#98A2B3" : "#667085";
   const border = dark ? "rgba(255,255,255,0.09)" : "#EAECF0";
@@ -300,7 +215,7 @@ export function RevAnswerView({
         />
       )}
 
-      {!streaming && !quiet && body && <VerifiedComparison text={body} dark={dark} strong={strong} muted={muted} border={border} />}
+      {!streaming && !quiet && body && <RevVerifiedComparison text={body} dark={dark} strong={strong} muted={muted} border={border} />}
 
       <div style={{ fontSize: "0.9rem", lineHeight: 1.65, color: strong }}>
         {body && <RevMarkdown text={body} tone={dark ? "dark" : "light"} streaming={streaming} />}
