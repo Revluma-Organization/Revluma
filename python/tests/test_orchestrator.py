@@ -3,6 +3,9 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+from sqlalchemy.exc import IntegrityError
+
 from src.agents import orchestrator as orchestrator_module
 from src.agents.base_agent import AgentResult
 from src.agents.revenue_agent import RevenueAgent
@@ -457,11 +460,18 @@ def test_message_pair_and_conversation_count_commit_atomically():
         correlation_id="correlation-1",
     )
 
-    assert db.execute.call_count == 3
-    select_sql = str(db.execute.call_args_list[0].args[0])
-    insert_sql = str(db.execute.call_args_list[1].args[0])
-    insert_params = db.execute.call_args_list[1].args[1]
-    update_sql = str(db.execute.call_args_list[2].args[0])
+    assert db.execute.call_count == 4
+    lock_sql = str(db.execute.call_args_list[0].args[0])
+    lock_params = db.execute.call_args_list[0].args[1]
+    select_sql = str(db.execute.call_args_list[1].args[0])
+    insert_sql = str(db.execute.call_args_list[2].args[0])
+    insert_params = db.execute.call_args_list[2].args[1]
+    update_sql = str(db.execute.call_args_list[3].args[0])
+    # Common serialization with Node: same advisory key domain, first
+    # statement in the inserting transaction, before the base read.
+    assert "pg_advisory_xact_lock" in lock_sql
+    assert "rev_conversation_sequence" in lock_sql
+    assert lock_params == {"c": "conversation-1"}
     assert "FOR UPDATE" in select_sql
     assert "organization_id" in insert_sql
     assert "user_id" in insert_sql
@@ -470,6 +480,90 @@ def test_message_pair_and_conversation_count_commit_atomically():
     assert "message_count = :message_count" in update_sql
     db.commit.assert_called_once()
     db.rollback.assert_not_called()
+
+
+def _persist_call(db, **overrides):
+    kwargs = dict(
+        title_hint="Revenue status",
+        orchestrator_mode="Analyst",
+        confidence_score=0.8,
+        business_state_id="state-1",
+        correlation_id="correlation-1",
+    )
+    kwargs.update(overrides)
+    return _persist_messages(
+        "conversation-1",
+        "organization-1",
+        "user-1",
+        "merchant message",
+        json.dumps({"situation": "Verified response"}),
+        "analysis",
+        ["revenue", "intelligence"],
+        db,
+        **kwargs,
+    )
+
+
+def _integrity_error():
+    return IntegrityError(
+        "INSERT INTO conversation_messages",
+        {},
+        Exception('duplicate key value violates unique constraint "uq_conversation_message_sequence"'),
+    )
+
+
+def test_persist_retries_once_on_unique_violation_then_succeeds():
+    db = MagicMock()
+    db.execute.return_value.fetchone.return_value = (4,)
+    calls = {"inserts": 0}
+    real_execute = db.execute
+
+    def flaky_execute(statement, params=None):
+        if "INSERT INTO conversation_messages" in str(statement):
+            calls["inserts"] += 1
+            if calls["inserts"] == 1:
+                raise _integrity_error()
+        return real_execute(statement, params)
+
+    db.execute = MagicMock(side_effect=flaky_execute)
+    db.execute.return_value.fetchone.return_value = (4,)
+
+    _persist_call(db)
+
+    assert calls["inserts"] == 2
+    db.commit.assert_called_once()
+    db.rollback.assert_called_once()
+
+
+def test_persist_raises_after_second_unique_violation():
+    db = MagicMock()
+    db.execute.return_value.fetchone.return_value = (4,)
+
+    select_result = MagicMock()
+    select_result.fetchone.return_value = (4,)
+
+    def always_conflict(statement, params=None):
+        if "INSERT INTO conversation_messages" in str(statement):
+            raise _integrity_error()
+        return select_result
+
+    db.execute = MagicMock(side_effect=always_conflict)
+
+    with pytest.raises(IntegrityError):
+        _persist_call(db)
+
+    db.commit.assert_not_called()
+    assert db.rollback.call_count == 2
+
+
+def test_persist_non_integrity_failure_stays_non_fatal():
+    db = MagicMock()
+    db.execute.side_effect = RuntimeError("database offline")
+
+    assert _persist_call(db) is None
+
+    db.commit.assert_not_called()
+    db.rollback.assert_called_once()
 
 
 def test_store_connection_intent_is_specific():
