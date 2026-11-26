@@ -14,10 +14,10 @@ import Lenis from "lenis";
  *   composed path is read, so links inside the sections' shadow roots work;
  *   the page's scroll-padding-top keeps targets clear of the fixed nav, and
  *   the URL hash still updates.
- * - Anything marked data-lenis-prevent (the waitlist modal) and any nested
- *   scroll area scroll natively.
- * - While the page is locked (the modal sets body overflow: hidden) the
- *   smoothing pauses.
+ * - Anything marked data-lenis-prevent and any nested scroll area scroll
+ *   natively.
+ * - While the page is locked (body overflow: hidden, e.g. the mobile menu)
+ *   the smoothing pauses.
  */
 
 declare global {
@@ -58,8 +58,7 @@ export function startSmoothScroll(): Lenis | null {
   });
   window.__rlLenis = lenis;
 
-  // Pause while something locks the page (the waitlist modal sets
-  // body overflow: hidden while it is open).
+  // Pause while something locks the page (body overflow: hidden).
   const sync = () => {
     if (document.body.style.overflow === "hidden") lenis.stop();
     else lenis.start();

@@ -7,7 +7,7 @@ export type NavLink = { readonly label: string; readonly href: string };
 /**
  * Where the hero's links point. The standalone landing app uses the defaults;
  * the embed on the current homepage (src/embed.tsx) only links to sections
- * that exist there and opens the existing waitlist modal for "Join".
+ * that exist there; "Join" goes to the /waitlist application page.
  */
 export type LandingConfig = {
   navLinks: readonly NavLink[];
@@ -15,7 +15,7 @@ export type LandingConfig = {
   joinHref: string;
   /** The hero's secondary "Sign Up" CTA (the real account sign-up page). */
   signUpHref: string;
-  /** Optional handler for every "Join Waitlist" CTA (opens the Founding Merchants waitlist). */
+  /** Optional click handler for every "Join Waitlist" CTA (tests and hosts that need one). */
   onJoin?: (event: MouseEvent<HTMLAnchorElement>) => void;
 };
 

@@ -54,7 +54,7 @@ describe("Landing hero", () => {
   it("links the hero CTAs to the waitlist and the sign-up page", () => {
     render(<App />);
     const hero = screen.getByRole("region", { name: /know where/i });
-    expect(within(hero).getByRole("link", { name: new RegExp(CTA.primary.label) })).toHaveAttribute("href", "#founding-merchants");
+    expect(within(hero).getByRole("link", { name: new RegExp(CTA.primary.label) })).toHaveAttribute("href", "/waitlist");
     expect(within(hero).getByRole("link", { name: CTA.secondary.label })).toHaveAttribute("href", SIGN_UP_URL);
   });
 

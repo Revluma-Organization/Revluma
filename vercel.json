@@ -103,6 +103,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/waitlist/application/:path*",
+      "destination": "/api/waitlist/application?path=:path*"
+    },
+    {
       "source": "/dashboard/:path*",
       "destination": "/dashboard/index"
     }

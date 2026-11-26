@@ -15,228 +15,50 @@ function escapeHtml(str) {
 }
 
 const emailService = {
+  // Confirmation for a submitted Founding Merchants application. It says the
+  // application arrived and how we will be in touch. It does not promise
+  // acceptance, early access, pricing or features.
   async sendWelcomeEmail(recipientEmail, userData) {
     try {
+      const position = Number.isInteger(userData.waitlist_position) && userData.waitlist_position > 0 ? userData.waitlist_position : null;
       const msg = {
         to: recipientEmail,
         from: process.env.SENDGRID_FROM_EMAIL,
-        subject: 'Welcome to the Revluma Waitlist! 🎉🚀',
+        subject: 'We received your Revluma Founding Merchants application',
+        text: [
+          `Hi ${userData.full_name},`,
+          '',
+          'Thanks for applying to the Revluma Founding Merchants program. Your application has been received.',
+          'You are now being considered for Founding Merchant access. We read every application and will contact you at this email address about next steps.',
+          position ? `Your place in the review queue: #${position}.` : '',
+          '',
+          'The Revluma Team',
+        ].filter((line) => line !== '').join('\n'),
         html: `
           <!DOCTYPE html>
           <html>
             <head>
               <meta charset="UTF-8">
-              <style>
-                body {
-                  font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                  line-height: 1.6;
-                  color: #333;
-                  background-color: #f9f9f9;
-                }
-                .container {
-                  max-width: 600px;
-                  margin: 0 auto;
-                  background-color: #ffffff;
-                  padding: 40px;
-                  border-radius: 12px;
-                  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-                }
-                .header {
-                  text-align: center;
-                  margin-bottom: 30px;
-                  border-bottom: 2px solid #f0f0f0;
-                  padding-bottom: 20px;
-                }
-                .logo {
-                  font-size: 28px;
-                  font-weight: 800;
-                  background: linear-gradient(135deg, #ffffff, #d8d8ff 45%, #b5b5ff);
-                  -webkit-background-clip: text;
-                  -webkit-text-fill-color: transparent;
-                  background-clip: text;
-                  margin-bottom: 10px;
-                }
-                .subtitle {
-                  font-size: 14px;
-                  color: #666;
-                  font-weight: 500;
-                }
-                h1 {
-                  font-size: 24px;
-                  font-weight: 700;
-                  color: #0a0a0a;
-                  margin: 20px 0 15px 0;
-                }
-                .greeting {
-                  font-size: 16px;
-                  color: #333;
-                  margin-bottom: 15px;
-                }
-                .position-box {
-                  background: linear-gradient(135deg, #f5f5ff 0%, #f0f0ff 100%);
-                  border-left: 4px solid #7c5cff;
-                  padding: 20px;
-                  margin: 25px 0;
-                  border-radius: 8px;
-                }
-                .position-label {
-                  font-size: 13px;
-                  font-weight: 600;
-                  color: #666;
-                  text-transform: uppercase;
-                  letter-spacing: 0.5px;
-                  margin-bottom: 8px;
-                }
-                .position-number {
-                  font-size: 48px;
-                  font-weight: 800;
-                  color: #7c5cff;
-                  margin: 0;
-                }
-                .position-text {
-                  font-size: 13px;
-                  color: #777;
-                  margin-top: 8px;
-                }
-                .content {
-                  font-size: 15px;
-                  color: #555;
-                  line-height: 1.8;
-                  margin: 20px 0;
-                }
-                .features {
-                  background-color: #fafafa;
-                  padding: 20px;
-                  border-radius: 8px;
-                  margin: 25px 0;
-                }
-                .features-title {
-                  font-size: 14px;
-                  font-weight: 700;
-                  color: #0a0a0a;
-                  margin-bottom: 15px;
-                }
-                .feature-item {
-                  font-size: 14px;
-                  color: #555;
-                  margin: 10px 0;
-                  padding-left: 25px;
-                  position: relative;
-                }
-                .feature-item:before {
-                  content: "✓";
-                  position: absolute;
-                  left: 0;
-                  color: #7c5cff;
-                  font-weight: bold;
-                  font-size: 16px;
-                }
-                .cta-section {
-                  text-align: center;
-                  margin: 30px 0;
-                }
-                .cta-button {
-                  display: inline-block;
-                  background: linear-gradient(135deg, #7c5cff 0%, #6b4df0 100%);
-                  color: white;
-                  padding: 14px 32px;
-                  border-radius: 8px;
-                  text-decoration: none;
-                  font-weight: 600;
-                  font-size: 14px;
-                  transition: transform 0.2s;
-                }
-                .cta-button:hover {
-                  transform: translateY(-2px);
-                }
-                .divider {
-                  border: 0;
-                  border-top: 1px solid #e0e0e0;
-                  margin: 30px 0;
-                }
-                .footer {
-                  text-align: center;
-                  padding-top: 20px;
-                  border-top: 1px solid #f0f0f0;
-                  font-size: 13px;
-                  color: #999;
-                }
-                .footer-text {
-                  margin: 8px 0;
-                }
-                .closing {
-                  font-weight: 600;
-                  color: #333;
-                  margin-top: 15px;
-                }
-              </style>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
             </head>
-            <body>
-              <div class="container">
-                <!-- Header -->
-                <div class="header">
-                  <div class="logo">Revluma</div>
-                  <div class="subtitle">Revenue Recovery & Growth Intelligence</div>
-                </div>
-
-                <!-- Main Greeting -->
-                <h1>Welcome to the Revluma Waitlist! 🎉🚀</h1>
-                <p class="greeting">Hi <strong>${escapeHtml(userData.full_name)}</strong>,</p>
-
-                <!-- Waitlist Position Box -->
-                <div class="position-box">
-                  <div class="position-label">Your Waitlist Position</div>
-                  <div class="position-number">#${userData.waitlist_position}</div>
-                  <div class="position-text">You're on the list and we're counting down to early access</div>
-                </div>
-
-                <!-- Thank You & Message -->
-                <div class="content">
-                  <p>Thank you for joining us early and believing in what we're building.</p>
-                  <p><strong>Revluma</strong> is designed to help eCommerce brands like yours:</p>
-                </div>
-
-                <!-- Features -->
-                <div class="features">
-                  <div class="features-title">What Revluma Brings to Your Business</div>
-                  <div class="feature-item">Recover lost revenue from abandoned carts and churning customers</div>
-                  <div class="feature-item">Improve customer retention with AI-powered insights</div>
-                  <div class="feature-item">Reduce operational chaos with intelligent automation</div>
-                  <div class="feature-item">Make smarter decisions with AI-powered analytics</div>
-                </div>
-
-                <!-- Next Steps -->
-                <div class="content">
-                  <p>We'll keep you updated with our progress and let you know as soon as early access becomes available. Your position will determine priority access to the platform.</p>
-                  <p><strong>Stay tuned for:</strong></p>
-                  <ul style="color: #555; font-size: 14px; line-height: 1.8;">
-                    <li>Exclusive beta features</li>
-                    <li>Founding member benefits</li>
-                    <li>Special early-bird pricing</li>
-                    <li>Direct founder access</li>
-                  </ul>
-                </div>
-
-                <!-- Closing -->
-                <div class="content">
-                  <p>We're excited to have you with us.</p>
-                  <p class="closing">The Revluma Team</p>
-                </div>
-
-                <hr class="divider">
-
-                <!-- Footer -->
-                <div class="footer">
-                  <div class="footer-text">📧 <strong>Questions?</strong> Reply to this email or visit us at revluma.com</div>
-                  <div class="footer-text">🔒 Your data is safe. We never share your information with third parties.</div>
-                </div>
+            <body style="margin:0;padding:32px 12px;background:#fbfaf8;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#0c0a1d;">
+              <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e8e6e1;border-radius:20px;padding:36px 32px;">
+                <div style="font-size:18px;font-weight:800;letter-spacing:-0.02em;margin-bottom:28px;">Revluma</div>
+                <h1 style="margin:0 0 14px;font-size:24px;line-height:1.2;letter-spacing:-0.02em;">Your application has been received</h1>
+                <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#3f3d4e;">Hi <strong>${escapeHtml(userData.full_name)}</strong>,</p>
+                <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#3f3d4e;">Thanks for applying to the Revluma Founding Merchants program. You are now being considered for Founding Merchant access.</p>
+                <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#3f3d4e;">We read every application ourselves and will contact you at this email address about next steps.</p>
+                ${position ? `<div style="margin:0 0 22px;padding:14px 16px;border:1px solid #e8e6e1;border-radius:14px;background:#f4f2ee;font-size:14px;color:#3f3d4e;">Your place in the review queue: <strong style="color:#0c0a1d;">#${position}</strong></div>` : ''}
+                <p style="margin:0;font-size:15px;line-height:1.6;color:#3f3d4e;">The Revluma Team</p>
+                <hr style="border:0;border-top:1px solid #eeece7;margin:28px 0 16px;">
+                <p style="margin:0;font-size:12.5px;line-height:1.5;color:#6b6977;">Questions? Reply to this email. We only use your answers to review your application and shape Revluma.</p>
               </div>
             </body>
           </html>
         `,
       };
 
-      const result = await sgMail.send(msg);
+      await sgMail.send(msg);
       logger.info('welcome_email_sent');
       return true;
     } catch (error) {
@@ -246,7 +68,36 @@ const emailService = {
       throw error;
     }
   },
-  
+
+  // One-time code to continue a Founding Merchants application on another
+  // device. The code is never logged.
+  async sendWaitlistResumeCode(recipientEmail, { full_name, code }) {
+    const msg = {
+      to: recipientEmail,
+      from: process.env.SENDGRID_FROM_EMAIL,
+      subject: `${code} is your code to continue your Revluma application`,
+      text: `Hi ${full_name},\n\nUse this code to continue your Revluma Founding Merchants application: ${code}\n\nIt expires in 15 minutes and works once. If you did not ask for it, you can ignore this email.\n\nThe Revluma Team`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+          <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+          <body style="margin:0;padding:32px 12px;background:#fbfaf8;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#0c0a1d;">
+            <div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e8e6e1;border-radius:20px;padding:36px 32px;">
+              <div style="font-size:18px;font-weight:800;letter-spacing:-0.02em;margin-bottom:28px;">Revluma</div>
+              <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#3f3d4e;">Hi <strong>${escapeHtml(full_name)}</strong>, use this code to continue your Founding Merchants application:</p>
+              <div style="margin:22px 0;padding:16px 0;border-radius:14px;background:#eeebff;color:#1f06ac;font-size:30px;font-weight:700;letter-spacing:8px;text-align:center;">${escapeHtml(code)}</div>
+              <p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#5e5c6b;">It expires in 15 minutes and works once. If you did not ask for it, you can ignore this email.</p>
+              <p style="margin:0;font-size:15px;line-height:1.6;color:#3f3d4e;">The Revluma Team</p>
+            </div>
+          </body>
+        </html>
+      `,
+    };
+    await sgMail.send(msg);
+    logger.info('waitlist_resume_code_sent');
+    return true;
+  },
+
   async sendVerificationEmail(recipientEmail, userName, verificationCode) {
     if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
       logger.error('verification_email_not_configured', {

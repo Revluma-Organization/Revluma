@@ -37,7 +37,7 @@ const logger = require('../utils/logger');
  * - Refresh: 30 per 15 minutes per IP
  * - Resend verification: 3 per 10 minutes per IP
  * - General API: 60 per minute per IP
- * - Waitlist join / referral check: separate tighter limits
+ * - Waitlist application / resume codes / referral check: separate tighter limits
  */
 
 // A rate-limit check must cost milliseconds; a hung Redis must not hang auth.
@@ -261,11 +261,32 @@ const ingestLimiter = createLimiter('ingest', {
   error: 'Too many requests. Please try again later.',
 });
 
-// Waitlist join — public lead capture
-const waitlistJoinLimiter = createLimiter('waitlist-join', {
+// Founding Merchants application — start, step saves and submit. A full
+// application is about five writes; this leaves room for edits and retries.
+const waitlistApplicationLimiter = createLimiter('waitlist-application', {
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 40,
+  error: 'Too many saves in a short time. Please wait a few minutes and try again.',
+});
+
+// Application resume / status reads (page loads, refreshes).
+const waitlistResumeLimiter = createLimiter('waitlist-resume', {
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 120,
+  error: 'Too many requests. Please wait a few minutes and try again.',
+});
+
+// One-time resume codes: requests send email, verifications guess a code.
+const waitlistCodeRequestLimiter = createLimiter('waitlist-code-request', {
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  error: 'Too many code requests. Please wait 15 minutes and try again.',
+});
+
+const waitlistCodeVerifyLimiter = createLimiter('waitlist-code-verify', {
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10,
-  error: 'Too many waitlist submissions. Please try again later.',
+  error: 'Too many code attempts. Please wait 15 minutes and try again.',
 });
 
 // Referral code live-check — typed as users fill the form
@@ -293,7 +314,10 @@ module.exports = {
   resendLimiter,
   apiLimiter,
   ingestLimiter,
-  waitlistJoinLimiter,
+  waitlistApplicationLimiter,
+  waitlistResumeLimiter,
+  waitlistCodeRequestLimiter,
+  waitlistCodeVerifyLimiter,
   referralCheckLimiter,
   passwordResetLimiter,
   // Exported for tests and diagnostics.

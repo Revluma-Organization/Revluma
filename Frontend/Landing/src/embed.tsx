@@ -13,7 +13,7 @@
  * Built by `npm run build:embed` into Frontend/landing-hero/ (see vercel.json).
  */
 import { StrictMode, useLayoutEffect } from "react";
-import type { MouseEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import fontCss from "./fonts.css?inline";
 import appCss from "./index.css?inline";
@@ -30,6 +30,7 @@ import { PricingSection } from "./components/pricing/PricingSection";
 import { FinalCtaSection } from "./components/final-cta/FinalCtaSection";
 import { FooterSection } from "./components/footer/FooterSection";
 import { startSmoothScroll } from "./motion/smoothScroll";
+import { waitlistHref } from "./waitlist/referral";
 import { enhanceInteractions } from "./motion/interactions";
 
 // Only sections that exist on the current homepage. "Platform" leads to the
@@ -41,13 +42,10 @@ export const EMBED_CONFIG: LandingConfig = {
     { label: "FAQ", href: "#faq" },
   ],
   signInHref: "/auth/login",
-  joinHref: "#join",
+  // Every "Join Waitlist" CTA opens the Founding Merchants application page,
+  // carrying a referral code from the homepage URL (?ref=) when there is one.
+  joinHref: waitlistHref(),
   signUpHref: "/auth/signup",
-  // The homepage's Alpine waitlist modal listens for `open-waitlist` on window.
-  onJoin: (event: MouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault();
-    window.dispatchEvent(new CustomEvent("open-waitlist"));
-  },
 };
 
 /** Host element id -> what renders in its shadow root. */
