@@ -84,7 +84,7 @@
   "rewrites": [
     {
       "source": "/forgot-password",
-      "destination": "/dashboard/index"
+      "destination": "/auth/forgottenpassword.html"
     },
     {
       "source": "/dashboard/:path*",
