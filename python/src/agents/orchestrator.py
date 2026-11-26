@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from numbers import Number
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from .base_agent import AgentResult
 from .revenue_agent import RevenueAgent
@@ -1419,79 +1420,112 @@ def _persist_messages(
     business_state_id: str | None = None,
     correlation_id: str = "",
 ) -> None:
-    """Persist both turns and the conversation count in one locked transaction."""
-    try:
-        row = db.execute(
-            text("""
-                SELECT message_count
-                FROM conversations
-                WHERE id = :c AND organization_id = :o AND user_id = :u
-                FOR UPDATE
-            """),
-            {"c": conv_id, "o": organization_id, "u": user_id},
-        ).fetchone()
-        if row is None:
-            raise RuntimeError("Conversation ownership could not be verified.")
-        base_seq = int(row[0])
+    """Persist both turns and the conversation count in one locked transaction.
 
-        agent_label = ",".join(agents_used) if agents_used else None
-
-        db.execute(text("""
-            INSERT INTO conversation_messages
-                (id, conversation_id, organization_id, user_id, role, content,
-                 sequence_number, agent_name, orchestrator_mode,
-                 confidence_score, business_state_id, correlation_id, created_at)
-            VALUES
-                (:id1, :c, :o, :u, 'user', CAST(:m AS jsonb), :seq1,
-                 NULL, :mode, NULL, :state_id, :correlation_id, NOW()),
-                (:id2, :c, :o, :u, 'rev', CAST(:r AS jsonb), :seq2,
-                 :agent_name, :mode, :confidence, :state_id, :correlation_id, NOW())
-        """), {
-            "id1":   str(uuid.uuid4()),
-            "id2":   str(uuid.uuid4()),
-            "c":     conv_id,
-            "o":     organization_id,
-            "u":     user_id,
-            "m":     json.dumps({"text": merchant_message}),
-            "r":     json.dumps({"text": rev_reply, "response_type": reply_type}),
-            "seq1":  base_seq + 1,
-            "seq2":  base_seq + 2,
-            "agent_name": agent_label,
-            "mode": orchestrator_mode,
-            "confidence": confidence_score,
-            "state_id": business_state_id,
-            "correlation_id": correlation_id or str(uuid.uuid4()),
-        })
-        title = None
-        if title_hint:
-            title = title_hint[:80] + ("..." if len(title_hint) > 80 else "")
-        db.execute(text("""
-            UPDATE conversations
-            SET last_activity_at = NOW(),
-                message_count = :message_count,
-                title = COALESCE(title, :title),
-                mode = COALESCE(:mode, mode),
-                updated_at = NOW()
-            WHERE id = :c AND organization_id = :o AND user_id = :u
-        """), {
-            "message_count": base_seq + 2,
-            "title": title,
-            "mode": orchestrator_mode,
-            "c": conv_id,
-            "o": organization_id,
-            "u": user_id,
-        })
-        db.commit()
-    except Exception as exc:
-        # Non-fatal: a persistence failure must never break the response
-        logger.error(
-            "persist_messages_error",
-            extra={"error_type": type(exc).__name__},
-        )
+    Takes Node's per-conversation advisory lock first (identical key
+    expressions to Backend/src/services/revSequence.js), so Node and Python
+    allocators for one conversation are mutually exclusive, each inside its
+    own inserting transaction. A unique violation (23505) retries once with
+    a fresh base read, then raises: a failed insert must never report success.
+    """
+    for _persist_attempt in range(2):
         try:
-            db.rollback()
-        except Exception:
-            logger.error("persist_messages_rollback_failed")
+            # Common serialization with every Node writer. Transaction-scoped:
+            # releases on commit/rollback with no explicit unlock.
+            db.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock(hashtext('rev_conversation_sequence'),"
+                    " hashtext(CAST(:c AS text)))"
+                ),
+                {"c": conv_id},
+            )
+            row = db.execute(
+                text("""
+                    SELECT message_count
+                    FROM conversations
+                    WHERE id = :c AND organization_id = :o AND user_id = :u
+                    FOR UPDATE
+                """),
+                {"c": conv_id, "o": organization_id, "u": user_id},
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Conversation ownership could not be verified.")
+            base_seq = int(row[0])
+
+            agent_label = ",".join(agents_used) if agents_used else None
+
+            db.execute(text("""
+                INSERT INTO conversation_messages
+                    (id, conversation_id, organization_id, user_id, role, content,
+                     sequence_number, agent_name, orchestrator_mode,
+                     confidence_score, business_state_id, correlation_id, created_at)
+                VALUES
+                    (:id1, :c, :o, :u, 'user', CAST(:m AS jsonb), :seq1,
+                     NULL, :mode, NULL, :state_id, :correlation_id, NOW()),
+                    (:id2, :c, :o, :u, 'rev', CAST(:r AS jsonb), :seq2,
+                     :agent_name, :mode, :confidence, :state_id, :correlation_id, NOW())
+            """), {
+                "id1":   str(uuid.uuid4()),
+                "id2":   str(uuid.uuid4()),
+                "c":     conv_id,
+                "o":     organization_id,
+                "u":     user_id,
+                "m":     json.dumps({"text": merchant_message}),
+                "r":     json.dumps({"text": rev_reply, "response_type": reply_type}),
+                "seq1":  base_seq + 1,
+                "seq2":  base_seq + 2,
+                "agent_name": agent_label,
+                "mode": orchestrator_mode,
+                "confidence": confidence_score,
+                "state_id": business_state_id,
+                "correlation_id": correlation_id or str(uuid.uuid4()),
+            })
+            title = None
+            if title_hint:
+                title = title_hint[:80] + ("..." if len(title_hint) > 80 else "")
+            db.execute(text("""
+                UPDATE conversations
+                SET last_activity_at = NOW(),
+                    message_count = :message_count,
+                    title = COALESCE(title, :title),
+                    mode = COALESCE(:mode, mode),
+                    updated_at = NOW()
+                WHERE id = :c AND organization_id = :o AND user_id = :u
+            """), {
+                "message_count": base_seq + 2,
+                "title": title,
+                "mode": orchestrator_mode,
+                "c": conv_id,
+                "o": organization_id,
+                "u": user_id,
+            })
+            db.commit()
+            return
+        except IntegrityError:
+            # 23505 despite the shared lock (manual SQL racing us, or a
+            # lock-order anomaly): roll back and retry once with a fresh base
+            # read, then fail loudly. Swallowing this would report turns that
+            # were never persisted.
+            try:
+                db.rollback()
+            except Exception:
+                logger.error("persist_messages_rollback_failed")
+            if _persist_attempt == 1:
+                logger.error("persist_messages_unique_violation_final")
+                raise
+            logger.warning("persist_messages_unique_violation_retry")
+        except Exception as exc:
+            # Non-fatal (unchanged for non-integrity failures): other
+            # persistence failures must never break the response.
+            logger.error(
+                "persist_messages_error",
+                extra={"error_type": type(exc).__name__},
+            )
+            try:
+                db.rollback()
+            except Exception:
+                logger.error("persist_messages_rollback_failed")
+            return
 
 def _get_or_create_conversation(org_id, user_id, conv_id, db):
     if conv_id:

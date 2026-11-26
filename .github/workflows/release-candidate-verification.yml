@@ -195,6 +195,20 @@ jobs:
             exit "$status"
           fi
 
+      - name: C2 Node/Python serialization regression (two-session proof)
+        working-directory: Backend
+        env:
+          RELEASE_CANDIDATE_ISOLATED_DB: 'true'
+        run: |
+          set +e
+          node src/tests/c2NodePythonSerialization.regression.js 2>&1 | tee /tmp/c2-node-python-serialization.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(tail -n 25 /tmp/c2-node-python-serialization.log | tr '\n' ' ' | tr -s ' ')
+            echo "::error title=c2-node-python-serialization::${summary:0:1200}"
+            exit "$status"
+          fi
+
       - name: Financial integrity SQL checks
         working-directory: Backend
         run: |
