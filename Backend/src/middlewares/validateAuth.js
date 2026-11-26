@@ -59,26 +59,28 @@ const validateRegister = [
         .custom(value => value === true)
         .withMessage('You must accept the terms and conditions'),
 
+    // Store details are collected by onboarding (PUT /api/v1/onboarding/store)
+    // after the email is verified. Older clients may still send them here.
     body('storeSetup.brand_name')
+        .optional({ values: 'falsy' })
         .trim()
-        .notEmpty()
-        .withMessage('Brand name is required'),
+        .isLength({ max: 120 })
+        .withMessage('Brand name must be 120 characters or fewer'),
 
     body('storeSetup.storeUrl')
-        .notEmpty()
-        .withMessage('Store URL is required')
+        .optional({ values: 'falsy' })
         .isURL()
         .withMessage('Please provide a valid store URL'),
 
     body('storeSetup.storeCategory')
+        .optional({ values: 'falsy' })
         .trim()
-        .notEmpty()
-        .withMessage('Store category is required'),
+        .isLength({ max: 80 }),
 
     body('storeSetup.country')
+        .optional({ values: 'falsy' })
         .trim()
-        .notEmpty()
-        .withMessage('Country is required'),
+        .isLength({ max: 80 }),
 
     validateRequest
 ];

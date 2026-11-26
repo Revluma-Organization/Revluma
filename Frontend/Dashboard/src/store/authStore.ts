@@ -55,14 +55,12 @@ interface AuthUserResponse {
 interface AuthEnvelope {
   requires_2fa?: boolean;
   temp_token?: string;
-  resetToken?: string;
   data?: {
     requires_2fa?: boolean;
     temp_token?: string;
     access_token?: string;
     refresh_token?: string;
     user?: AuthUserResponse;
-    resetToken?: string;
   };
 }
 
@@ -79,9 +77,6 @@ interface AuthActions {
   selectWorkspace: (organizationId: string) => Promise<void>;
   clearError: () => void;
   changePassword: (current: string, newPass: string, confirm: string) => Promise<void>;
-  requestOtp: (email: string) => Promise<void>;
-  verifyOtp: (email: string, otp: string) => Promise<{ resetToken: string }>;
-  resetPassword: (email: string, resetToken: string, newPassword: string) => Promise<void>;
   /** Reset in-memory auth state after a cross-tab logout (storage already cleared). */
   resetLocalAuthState: () => void;
   synchroniseSession: () => void;
@@ -144,51 +139,6 @@ export const useAuthStore = create<AuthStore>()(
     set({ loading: false });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to change password';
-    set({ loading: false, error: message });
-    throw err;
-  }
-},
-
-      requestOtp: async (email) => {
-  set({ loading: true, error: null });
-  try {
-    await api.post('/auth/forgot-password', { email });
-    set({ loading: false });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to request OTP';
-    set({ loading: false, error: message });
-    throw err;
-  }
-},
-
-      verifyOtp: async (email, otp) => {
-  set({ loading: true, error: null });
-  try {
-    const res = await api.post<AuthEnvelope>('/auth/forgot-password/verify', {
-      email,
-      code: otp,
-    });
-    set({ loading: false });
-    return res.data.resetToken || res.data.data.resetToken;
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Invalid OTP';
-    set({ loading: false, error: message });
-    throw err;
-  }
-},
-
-      resetPassword: async (email, resetToken, newPassword) => {
-  set({ loading: true, error: null });
-  try {
-        await api.post('/auth/forgot-password/reset', {
-        email: email,
-        reset_token: resetToken,
-        new_password: newPassword,
-        password: newPassword,
-      });
-    set({ loading: false });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to reset password';
     set({ loading: false, error: message });
     throw err;
   }

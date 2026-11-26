@@ -138,6 +138,7 @@ model users {
   email                      String                       @unique
   password_hash              String?
   google_id                  String?                      @unique
+  apple_id                   String?                      @unique
   email_verified             Boolean?                     @default(false)
   accepted_terms             Boolean                      @default(false)
   accepted_privacy_policy    Boolean                      @default(false)
@@ -867,7 +868,7 @@ model subscriptions {
   paystack_subscription_code String?
   paystack_plan_code         String?
   amount_kobo                Int?
-  currency                   String?       @default("NGN")
+  currency                   String?       @default("USD")
   current_period_start       DateTime?     @db.Timestamptz(6)
   current_period_end         DateTime?     @db.Timestamptz(6)
   trial_ends_at              DateTime?     @db.Timestamptz(6)
@@ -888,7 +889,7 @@ model payment_transactions {
   paystack_event     String
   plan               String?
   amount_kobo        Int?
-  currency           String?       @default("NGN")
+  currency           String?       @default("USD")
   status             String?       @default("pending")
   metadata           Json?
   created_at         DateTime?     @default(now()) @db.Timestamptz(6)

@@ -1,277 +1,164 @@
-import { FC, useState, type FormEvent } from "react";
+import { FC, useState } from "react";
 import { motion } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
-import {
-  ArrowLeft,
-  Lock,
-  ShieldCheck,
-  CreditCard,
-  CheckCircle2,
-  Loader2,
-  User
-} from "lucide-react";
+import { useAuthStore } from "@/store/authStore";
+import { ArrowLeft, Lock, ShieldCheck, CheckCircle2, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+
+// Card details are never collected here. "Continue to Paystack" asks the
+// backend for a Paystack checkout (amount decided server-side, always USD)
+// and sends the merchant to Paystack's hosted page to pay.
+// Prices mirror the backend PLANS in subscriptionController.js.
+export const CHECKOUT_PLANS = {
+  starter: { name: "Starter", monthly: 29, annualPerMonth: 23 },
+  premium: { name: "Premium", monthly: 79, annualPerMonth: 63 },
+} as const;
+
+type PlanId = keyof typeof CHECKOUT_PLANS;
+type Cycle = "monthly" | "annual";
+
+const LEGACY_PLANS: Record<string, PlanId> = { growth: "starter", scale: "premium" };
+
+export function resolveCheckoutSelection(rawPlan: string | null | undefined, rawCycle: string | null | undefined) {
+  const key = String(rawPlan || "starter").trim().toLowerCase();
+  const plan: PlanId = key in CHECKOUT_PLANS ? (key as PlanId) : LEGACY_PLANS[key] || "starter";
+  const cycle: Cycle = rawCycle === "annual" || rawCycle === "yearly" ? "annual" : "monthly";
+  const config = CHECKOUT_PLANS[plan];
+  const total = cycle === "annual" ? config.annualPerMonth * 12 : config.monthly;
+  return { plan, cycle, name: config.name, perMonth: cycle === "annual" ? config.annualPerMonth : config.monthly, total };
+}
+
+const usd = (amount: number) => `$${amount.toLocaleString("en-US")}`;
 
 export const Checkout: FC = () => {
-    const navigate = useNavigate();
+  const navigate = useNavigate();
   const location = useLocation();
-  
+  const user = useAuthStore((state) => state.user);
+
   // Plan and cycle come from the Subscription page (router state) or the
-  // upgrade modal (?plan=&interval= query string). "yearly" maps to "annual".
+  // upgrade modal (?plan=&interval= query string).
   const query = new URLSearchParams(location.search);
   const state = (location.state || {}) as { plan?: string; cycle?: string };
-  const plan = state.plan || query.get("plan") || "starter";
-  const rawCycle = state.cycle || query.get("interval") || "monthly";
-  const cycle = rawCycle === "yearly" ? "annual" : rawCycle;
+  const selection = resolveCheckoutSelection(state.plan || query.get("plan"), state.cycle || query.get("interval"));
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  
-  // Form State
-  const [holderName, setHolderName] = useState<string>("");
-  const [cardNumber, setCardNumber] = useState<string>("");
-  const [expiry, setExpiry] = useState<string>("");
-  const [cvv, setCvv] = useState<string>("");
 
-    const handleCheckoutSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleContinue = async () => {
     setIsSubmitting(true);
     setErrorMsg(null);
-
-      // API taken from choose-plan html
     try {
       const res = await api.post<{ success: boolean; data?: { authorization_url: string }; error?: string }>(
         "/subscriptions/initialize",
-        {
-          plan: plan,
-          billing_cycle: cycle,
-          currency: "NGN", 
-        },
-        { skipAuthRedirect: true }
+        { plan: selection.plan, billing_cycle: selection.cycle, currency: "USD" },
+        { skipAuthRedirect: true },
       );
-
       if (res.data.data?.authorization_url) {
         window.location.href = res.data.data.authorization_url;
-      } else {
-        setErrorMsg(res.data.error || "Could not initialize payment. Please try again.");
-        setIsSubmitting(false);
+        return;
       }
+      setErrorMsg(res.data.error || "Could not start checkout. Please try again.");
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : "Network error. Check your connection and try again.");
-      setIsSubmitting(false);
     }
+    setIsSubmitting(false);
   };
-  
-  const handleGoBack = () => {
-  navigate(-1); 
-};
-  
+
   return (
     <div className="min-h-screen w-full bg-slate-50 px-4 py-12 dark:bg-slate-950 sm:px-6 lg:px-8">
-      <motion.div 
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="mx-auto max-w-2xl"
-      >
-        {/* Top Navigation */}
+      <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="mx-auto max-w-xl">
         <div className="mb-8 flex items-center justify-between">
-          <button 
-            onClick={handleGoBack}
-            className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
           >
             <ArrowLeft className="h-4 w-4" />
             <span>Back</span>
           </button>
           <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
             <Lock className="h-4 w-4" />
-            <span className="text-sm font-semibold">Secure Checkout</span>
+            <span className="text-sm font-semibold">Secure checkout</span>
           </div>
         </div>
 
-        {/* Main Checkout Form */}
-        <form onSubmit={handleCheckoutSubmit} className="space-y-8">
-          
-          {/* Step 1: Contact Information */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-600 text-xs font-bold text-white shadow-md">
-                1
-              </div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Contact Information</h2>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Review your plan</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">You will pay on Paystack&apos;s secure page. Revluma never sees your card details.</p>
+
+        <section aria-label="Order summary" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/50">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Plan</p>
+              <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white" data-testid="checkout-plan">
+                Revluma {selection.name}
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {selection.cycle === "annual" ? `${usd(selection.perMonth)}/month, billed yearly` : "Billed monthly"}
+              </p>
             </div>
-            
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/50">
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Full Name</Label>
-                  <div className="relative">
-                    <User className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      disabled
-                      value="Workspace Owner" // This can be dynamically pulled from AuthStore later
-                      className="w-full rounded-xl border border-slate-200 bg-slate-100 py-2.5 pl-10 pr-3.5 text-sm text-slate-500 cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Email Address</Label>
-                  <input
-                    type="email"
-                    disabled
-                    value="owner@revluma.com" // Dynamically pull from AuthStore later
-                    className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2.5 text-sm text-slate-500 cursor-not-allowed dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
-                  />
-                </div>
-              </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-slate-900 dark:text-white" data-testid="checkout-total">
+                {usd(selection.total)}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">USD {selection.cycle === "annual" ? "per year" : "per month"}</p>
             </div>
           </div>
 
-          {/* Step 2: Payment Method */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-600 text-xs font-bold text-white shadow-md">
-                2
-              </div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Payment Method</h2>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/50">
-              {/* Card Selector */}
-              <div className="mb-6 flex gap-3">
-                <div className="flex items-center gap-2 rounded-lg border-2 border-sky-600 bg-sky-50 px-4 py-2.5 dark:bg-sky-500/10">
-                  <CreditCard className="h-5 w-5 text-sky-600 dark:text-sky-400" />
-                  <span className="text-sm font-bold text-sky-700 dark:text-sky-300">Card</span>
-                </div>
-                {/* Future proofing for when we add Bank Transfer */}
-                <div className="flex cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 opacity-50 dark:border-slate-800 dark:bg-slate-900">
-                  <span className="text-sm font-medium text-slate-500">Bank Transfer</span>
-                </div>
-              </div>
-
-              <div className="space-y-5">
-                <div className="space-y-1.5">
-                  <Label htmlFor="checkout-card" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Card Number
-                  </Label>
-                  <div className="relative">
-                    <input
-                      id="checkout-card"
-                      type="text"
-                      placeholder="0000 0000 0000 0000"
-                      value={cardNumber}
-                      onChange={(e) => setCardNumber(e.target.value)}
-                      required
-                      className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-3.5 pr-10 font-mono text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder-slate-500"
-                    />
-                    <CreditCard className="absolute right-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-300 dark:text-slate-600" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-5">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="checkout-exp" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      Expiry Date
-                    </Label>
-                    <input
-                      id="checkout-exp"
-                      type="text"
-                      placeholder="MM/YY"
-                      value={expiry}
-                      onChange={(e) => setExpiry(e.target.value)}
-                      required
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 font-mono text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder-slate-500"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="checkout-cvv" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      CVV
-                    </Label>
-                    <input
-                      id="checkout-cvv"
-                      type="password"
-                      maxLength={4}
-                      placeholder="123"
-                      value={cvv}
-                      onChange={(e) => setCvv(e.target.value)}
-                      required
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 font-mono text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder-slate-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="checkout-name" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Name on Card
-                  </Label>
-                  <input
-                    id="checkout-name"
-                    type="text"
-                    placeholder="Enter name on card"
-                    value={holderName}
-                    onChange={(e) => setHolderName(e.target.value)}
-                    required
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder-slate-500"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-                    {/* Submit Action Area */}
-          <div className="pt-2 flex flex-col gap-4">
-            
-            {/* Save Card Checkbox */}
-            <div className="flex items-center gap-2.5 px-1">
-              <input
-                type="checkbox"
-                id="save-card"
-                defaultChecked
-                className="h-4 w-4 cursor-pointer rounded border-slate-300 text-sky-600 accent-sky-600 focus:ring-sky-600 dark:border-slate-700"
-              />
-              <Label htmlFor="save-card" className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
-                Save this card for faster payments
-              </Label>
-            </div>
-
-                        {/* Error Message Display */}
-            {errorMsg && (
-              <div className="rounded-lg border border-red-500/20 bg-red-50 p-3 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-400">
-                {errorMsg}
+          <dl className="mt-6 space-y-3 border-t border-slate-100 pt-5 text-sm dark:border-slate-800">
+            {user?.email && (
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500 dark:text-slate-400">Account</dt>
+                <dd className="truncate font-medium text-slate-900 dark:text-white">{user.email}</dd>
               </div>
             )}
-
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex h-14 w-full items-center justify-center rounded-xl bg-sky-600 text-base font-bold text-white shadow-xl shadow-sky-600/20 transition-all hover:bg-sky-500 active:scale-[0.99]"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <div className="flex w-full items-center justify-between px-2">
-                  <div className="flex items-center gap-2">
-                    <Lock className="h-5 w-5" />
-                    <span>Pay Securely</span>
-                  </div>
-                  <span className="text-xl leading-none">›</span>
-                </div>
-              )}
-            </Button>
-            
-            <div className="mt-2 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-              <ShieldCheck className="h-4 w-4 text-emerald-500" />
-              <span>Your data is safe and encrypted via Paystack Vault.</span>
+            <div className="flex justify-between gap-4">
+              <dt className="text-slate-500 dark:text-slate-400">Currency</dt>
+              <dd className="font-medium text-slate-900 dark:text-white">US dollars (USD)</dd>
             </div>
-          </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-slate-500 dark:text-slate-400">Renews</dt>
+              <dd className="font-medium text-slate-900 dark:text-white">{selection.cycle === "annual" ? "Every year" : "Every month"}, cancel anytime</dd>
+            </div>
+          </dl>
 
-          </form>
+          <ul className="mt-5 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+            <li className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Pay by card on Paystack
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Your plan is active as soon as payment is confirmed
+            </li>
+          </ul>
+        </section>
+
+        {errorMsg && (
+          <div role="alert" className="mt-5 rounded-lg border border-red-500/20 bg-red-50 p-3 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-400">
+            {errorMsg}
+          </div>
+        )}
+
+        <Button
+          type="button"
+          onClick={handleContinue}
+          disabled={isSubmitting}
+          className="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-sky-600 text-base font-bold text-white shadow-xl shadow-sky-600/20 transition-all hover:bg-sky-500 active:scale-[0.99]"
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" /> Opening Paystack...
+            </>
+          ) : (
+            <>
+              Continue to Paystack <ExternalLink className="h-4 w-4" />
+            </>
+          )}
+        </Button>
+
+        <div className="mt-4 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+          <ShieldCheck className="h-4 w-4 text-emerald-500" />
+          <span>Payments are processed and secured by Paystack.</span>
+        </div>
       </motion.div>
     </div>
   );

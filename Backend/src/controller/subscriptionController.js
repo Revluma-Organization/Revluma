@@ -20,26 +20,24 @@ const dbConfig = require('../configs/database');
 const prisma   = dbConfig.prisma;
 
 // ── Plan registry — single source of truth for pricing ───────────────────────
-// Amounts are in kobo (NGN) and cents (USD). NEVER accept amounts from the client.
+// Every plan is billed in US dollars. Amounts are in cents (Paystack's
+// smallest USD unit; the legacy column name amount_kobo is kept). NEVER accept
+// amounts from the client.
 // Plans match the public pricing page: Starter $29/mo and Premium $79/mo, with
 // yearly billing 20% off ($23 and $63 per month, billed annually). Enterprise is
 // sold by the team (mailto on the pricing page) and has no self-serve checkout.
-// NGN amounts keep the existing ₦1,000 per $1 list-price convention.
+const BILLING_CURRENCY = 'USD';
 const PLANS = {
   starter: {
     name:         'Revluma Starter',
-    monthly_ngn:  29000 * 100,   // ₦29,000 in kobo
-    annual_ngn:   23000 * 12 * 100,
     monthly_usd:  29 * 100,      // $29 in cents
-    annual_usd:   23 * 12 * 100,
+    annual_usd:   23 * 12 * 100, // $276 a year
     features:     ['1 Shopify store', 'Core store intelligence', 'Ranked Top Priorities', 'Essential Rev Intelligence access'],
   },
   premium: {
     name:         'Revluma Premium',
-    monthly_ngn:  79000 * 100,   // ₦79,000 in kobo
-    annual_ngn:   63000 * 12 * 100,
     monthly_usd:  79 * 100,      // $79 in cents
-    annual_usd:   63 * 12 * 100,
+    annual_usd:   63 * 12 * 100, // $756 a year
     features:     ['Everything in Starter', 'Deeper business investigations', 'Higher Rev Intelligence allowance', 'Priority support'],
   },
 };
@@ -85,14 +83,19 @@ async function paystackRequest(method, path, data = {}) {
 }
 
 // ── Amount resolver — server-side only ───────────────────────────────────────
-function resolveAmount(plan, billing_cycle, currency) {
+function resolveAmount(plan, billing_cycle, currency = BILLING_CURRENCY) {
   const planConfig = PLANS[normalizePlan(plan)];
   if (!planConfig) throw new Error(`Unknown plan: ${plan}`);
-  const isAnnual = billing_cycle === 'annual';
-  if (currency === 'USD') {
-    return isAnnual ? planConfig.annual_usd : planConfig.monthly_usd;
-  }
-  return isAnnual ? planConfig.annual_ngn : planConfig.monthly_ngn;
+  if (currency !== BILLING_CURRENCY) throw new Error(`Unsupported currency: ${currency}`);
+  return billing_cycle === 'annual' ? planConfig.annual_usd : planConfig.monthly_usd;
+}
+
+// A Paystack charge only counts when it is for exactly what the server asked
+// for: same amount, same currency. Anything else is logged and not honoured.
+function chargeMatches(expected, charged) {
+  return Boolean(expected && charged)
+    && Number(charged.amount) === Number(expected.amount_kobo)
+    && String(charged.currency || '').toUpperCase() === String(expected.currency || BILLING_CURRENCY).toUpperCase();
 }
 
 // ── Get authenticated org — throws if not found ───────────────────────────────
@@ -107,25 +110,44 @@ async function getAuthenticatedOrg(userId, organizationId) {
   return org;
 }
 
+// Body (optional): { plan: "starter"|"premium", billing_cycle: "monthly"|"annual" }
+// The trial is of the plan the merchant picked, so checkout and billing show
+// the right plan when it ends. Defaults to Starter. Nothing is charged.
 exports.startTrial = async (req, res, next) => {
   try {
+    const body = req.body || {};
+    const requestedPlan = body.plan == null || body.plan === '' ? 'starter' : normalizePlan(body.plan);
+    if (!requestedPlan) {
+      return res.status(400).json({ success: false, error: 'Invalid plan. Choose starter or premium.' });
+    }
+    const billingCycle = body.billing_cycle === 'annual' ? 'annual' : 'monthly';
     const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     const existing = await prisma.subscriptions.findUnique({
       where: { organization_id: org.id },
-      select: { status: true, trial_ends_at: true },
+      select: { status: true, trial_ends_at: true, plan: true },
     });
     if (existing?.status === 'active') {
       return res.status(409).json({ success: false, error: 'Workspace already has an active subscription.' });
     }
     if (existing?.status === 'trialing' && existing.trial_ends_at > new Date()) {
-      return res.status(200).json({ success: true, data: { status: 'in_trial', trial_ends_at: existing.trial_ends_at } });
+      // Already trialing: switching plan during the trial is allowed; the end date is not extended.
+      const updated = await prisma.subscriptions.update({
+        where: { organization_id: org.id },
+        data: { plan: requestedPlan, billing_cycle: billingCycle, updated_at: new Date() },
+        select: { plan: true, billing_cycle: true, trial_ends_at: true },
+      });
+      return res.status(200).json({ success: true, data: { ...updated, status: 'in_trial' } });
+    }
+    // One free trial per workspace.
+    if (existing?.trial_ends_at) {
+      return res.status(409).json({ success: false, code: 'TRIAL_USED', error: 'Your free trial has already been used. Choose a plan to continue.' });
     }
     const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
     const subscription = await prisma.subscriptions.upsert({
       where: { organization_id: org.id },
-      create: { organization_id: org.id, plan: 'free', billing_cycle: 'monthly', status: 'trialing', trial_ends_at: trialEndsAt },
-      update: { status: 'trialing', trial_ends_at: trialEndsAt, cancelled_at: null, updated_at: new Date() },
-      select: { plan: true, status: true, trial_ends_at: true },
+      create: { organization_id: org.id, plan: requestedPlan, billing_cycle: billingCycle, currency: BILLING_CURRENCY, status: 'trialing', trial_ends_at: trialEndsAt },
+      update: { plan: requestedPlan, billing_cycle: billingCycle, status: 'trialing', trial_ends_at: trialEndsAt, cancelled_at: null, updated_at: new Date() },
+      select: { plan: true, billing_cycle: true, status: true, trial_ends_at: true },
     });
     return res.status(200).json({ success: true, data: { ...subscription, status: 'in_trial' } });
   } catch (error) {
@@ -136,13 +158,15 @@ exports.startTrial = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/subscriptions/initialize
 // Requires: authenticateToken
-// Body: { plan: "starter"|"premium", billing_cycle: "monthly"|"annual", currency: "NGN"|"USD" }
+// Body: { plan: "starter"|"premium", billing_cycle: "monthly"|"annual" }
+// Charged in USD. An explicit currency other than USD is rejected.
 // (legacy "growth"/"scale" are accepted and mapped to starter/premium)
 // Returns: { authorization_url, reference }
 // ─────────────────────────────────────────────────────────────────────────────
 exports.initialize = async (req, res, next) => {
   try {
-    const { billing_cycle = 'monthly', currency = 'NGN' } = req.body;
+    const { billing_cycle = 'monthly' } = req.body;
+    const currency = req.body.currency == null ? BILLING_CURRENCY : String(req.body.currency).toUpperCase();
     const plan = normalizePlan(req.body.plan);
 
     // Validate plan — server determines amount, not client
@@ -152,8 +176,8 @@ exports.initialize = async (req, res, next) => {
     if (!['monthly', 'annual'].includes(billing_cycle)) {
       return res.status(400).json({ success: false, error: 'Invalid billing_cycle. Choose: monthly or annual.' });
     }
-    if (!['NGN', 'USD'].includes(currency)) {
-      return res.status(400).json({ success: false, error: 'Invalid currency. Choose: NGN or USD.' });
+    if (currency !== BILLING_CURRENCY) {
+      return res.status(400).json({ success: false, error: 'All plans are billed in USD.' });
     }
 
     // Always resolve amount server-side — ignore any amount from request body
@@ -283,7 +307,7 @@ exports.verify = async (req, res, next) => {
 
     const pendingTx = await prisma.payment_transactions.findUnique({
       where: { paystack_reference: reference },
-      select: { organization_id: true, status: true, plan: true },
+      select: { organization_id: true, status: true, plan: true, amount_kobo: true, currency: true },
     });
 
     if (!pendingTx) {
@@ -330,6 +354,19 @@ exports.verify = async (req, res, next) => {
     const txData  = paystackRes.data;
     const meta    = txData.metadata || {};
 
+    if (!chargeMatches(pendingTx, txData)) {
+      logger.error('payment_amount_mismatch', {
+        reference,
+        expected: { amount: pendingTx.amount_kobo, currency: pendingTx.currency },
+        charged:  { amount: txData.amount, currency: txData.currency },
+      });
+      await prisma.payment_transactions.updateMany({
+        where: { paystack_reference: reference },
+        data:  { status: 'failed', paystack_event: 'amount_mismatch' },
+      });
+      return res.status(402).json({ success: false, error: 'The payment did not match your plan. Contact support and we will sort it out.' });
+    }
+
     // Re-validate the metadata against server state — do not trust client-supplied metadata
     const expectedPlan = pendingTx.plan;
     const billing      = meta.billing_cycle || 'monthly';
@@ -350,7 +387,7 @@ exports.verify = async (req, res, next) => {
         status:               'active',
         paystack_customer_id: txData.customer?.customer_code || null,
         amount_kobo:          txData.amount,
-        currency:             txData.currency || 'NGN',
+        currency:             txData.currency || BILLING_CURRENCY,
         current_period_start: now,
         current_period_end:   periodEnd,
       },
@@ -360,7 +397,7 @@ exports.verify = async (req, res, next) => {
         status:               'active',
         paystack_customer_id: txData.customer?.customer_code || null,
         amount_kobo:          txData.amount,
-        currency:             txData.currency || 'NGN',
+        currency:             txData.currency || BILLING_CURRENCY,
         current_period_start: now,
         current_period_end:   periodEnd,
         cancelled_at:         null,
@@ -448,6 +485,22 @@ exports.webhook = async (req, res) => {
         const orgId = meta.organization_id;
         if (!orgId) { logger.warn('webhook_no_org_id', { event: event.event }); break; }
 
+        // When the charge started from our checkout, it must match what we asked for.
+        if (data.reference) {
+          const initiated = await prisma.payment_transactions.findUnique({
+            where: { paystack_reference: data.reference },
+            select: { organization_id: true, amount_kobo: true, currency: true },
+          });
+          if (initiated && (initiated.organization_id !== orgId || !chargeMatches(initiated, data))) {
+            logger.error('webhook_charge_mismatch', {
+              reference: data.reference,
+              expected: { amount: initiated.amount_kobo, currency: initiated.currency },
+              charged:  { amount: data.amount, currency: data.currency },
+            });
+            break;
+          }
+        }
+
         const now     = new Date();
         const billing = meta.billing_cycle || 'monthly';
         const end     = new Date(now);
@@ -468,7 +521,7 @@ exports.webhook = async (req, res) => {
             paystack_event:     'charge.success',
             plan:               meta.plan || 'unknown',
             amount_kobo:        data.amount || 0,
-            currency:           data.currency || 'NGN',
+            currency:           data.currency || BILLING_CURRENCY,
             status:             'success',
             metadata:           meta,
           },
@@ -613,3 +666,5 @@ exports.cancel = async (req, res, next) => {
 exports.PLANS = PLANS;
 exports.normalizePlan = normalizePlan;
 exports.resolveAmount = resolveAmount;
+exports.chargeMatches = chargeMatches;
+exports.BILLING_CURRENCY = BILLING_CURRENCY;

@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&family=Archivo+Black&display=swap" rel="stylesheet" />
   <script src="../assets/js/apiConfig.js"></script>
+  <script src="../assets/js/auth-client.js"></script>
   <style>
     /* Page-specific layout; shared components live in auth-theme.css. */
     .setup-progress { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; font-size: 13px; font-weight: 600; color: var(--muted); animation: rvRise 0.4s ease-out both; }
@@ -111,6 +112,12 @@
               <input type="hidden" id="platform" name="platform" value="shopify">
 
               <div class="field">
+                <label for="storeName">Store name</label>
+                <input type="text" id="storeName" name="storeName" class="input-field" placeholder="Your store's name" autocomplete="organization" maxlength="120" aria-describedby="storeNameError" required>
+                <p id="storeNameError" class="field-error" role="alert" aria-live="polite"></p>
+              </div>
+
+              <div class="field">
                 <label for="storeUrl">Store address</label>
                 <input type="text" id="storeUrl" name="storeUrl" class="input-field" placeholder="yourstore.myshopify.com" autocomplete="url" inputmode="url" spellcheck="false" autocapitalize="off" aria-describedby="storeUrlHint storeUrlError" required>
                 <p id="storeUrlHint" class="field-hint">Your myshopify.com address or your store's own domain.</p>
@@ -208,12 +215,22 @@
   </div>
 
   <script>
+    // Each step is saved to the server (PUT /api/v1/onboarding/...) before the
+    // merchant moves on. A local draft keeps typed answers if a save fails.
     document.addEventListener('DOMContentLoaded', async () => {
+      const auth = window.revlumaAuth;
+      const DRAFT_KEY = 'rv-onboarding';
+      const toLogin = () => window.location.replace('/auth/login.html');
+      if (!auth || !auth.isAuthenticated()) { toLogin(); return; }
+
       const glassReady = loadGlassmorphismCard();
-      let currentStep = 1;
+      const storeName = document.getElementById('storeName');
+      const storeUrl = document.getElementById('storeUrl');
+      const category = document.getElementById('storeCategory');
+      const orders = document.getElementById('monthlyOrders');
+      const FIELD_ERRORS = { store_name: 'storeNameError', store_url: 'storeUrlError', store_category: 'categoryError', monthly_orders: 'ordersError', goals: 'goalsError' };
 
       function showStep(n) {
-        currentStep = n;
         [1, 2].forEach((i) => {
           const el = document.getElementById('step' + i);
           el.classList.toggle('hidden', i !== n);
@@ -232,45 +249,111 @@
         el.classList.toggle('visible', !!message);
       }
 
+      function setBusy(button, busy, label) {
+        button.disabled = busy;
+        button.setAttribute('aria-busy', String(busy));
+        const text = button.querySelector('span');
+        if (!button.dataset.label) button.dataset.label = text.textContent;
+        text.textContent = busy ? label : button.dataset.label;
+      }
+
+      function readDraft() {
+        try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}') || {}; } catch (_) { return {}; }
+      }
+      function writeDraft(patch) {
+        try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...readDraft(), ...patch })); } catch (_) { /* storage unavailable */ }
+      }
+
+      async function handleSaveError(err, fallbackTitle) {
+        if (err && err.status === 401) { toLogin(); return; }
+        if (err && err.field && FIELD_ERRORS[err.field]) { setError(FIELD_ERRORS[err.field], err.message); return; }
+        await glassReady;
+        const offline = !err || !err.status;
+        showGlassmorphismCard('error', fallbackTitle,
+          offline ? 'We could not reach Revluma. Check your connection and try again. Your answers are kept on this device.' : (err.message || 'Please try again.'),
+          null, 'Try again');
+      }
+
       // Single-choice pill groups
-      function setupPills(attr, inputId, errorId) {
+      function setupPills(attr, input, errorId) {
         const buttons = document.querySelectorAll('[data-' + attr + ']');
-        const input = document.getElementById(inputId);
-        buttons.forEach((btn) => btn.addEventListener('click', () => {
+        const select = (btn) => {
           buttons.forEach((b) => { b.classList.remove('selected'); b.setAttribute('aria-checked', 'false'); });
           btn.classList.add('selected');
           btn.setAttribute('aria-checked', 'true');
           input.value = btn.dataset[attr];
           setError(errorId, '');
-        }));
+        };
+        buttons.forEach((btn) => btn.addEventListener('click', () => select(btn)));
+        return (value) => { const btn = document.querySelector('[data-' + attr + '="' + value + '"]'); if (btn) select(btn); };
       }
-      setupPills('category', 'storeCategory', 'categoryError');
-      setupPills('orders', 'monthlyOrders', 'ordersError');
+      const pickCategory = setupPills('category', category, 'categoryError');
+      const pickOrders = setupPills('orders', orders, 'ordersError');
 
       // Multi-choice goals
+      const setGoal = (btn, on) => { btn.classList.toggle('selected', on); btn.setAttribute('aria-checked', String(on)); };
       document.querySelectorAll('[data-goal]').forEach((btn) => btn.addEventListener('click', () => {
-        const on = !btn.classList.contains('selected');
-        btn.classList.toggle('selected', on);
-        btn.setAttribute('aria-checked', String(on));
+        setGoal(btn, !btn.classList.contains('selected'));
         setError('goalsError', '');
       }));
 
-      const storeUrl = document.getElementById('storeUrl');
-      storeUrl.addEventListener('input', () => { setError('storeUrlError', ''); storeUrl.removeAttribute('aria-invalid'); });
-
-      document.getElementById('step1Form').addEventListener('submit', (e) => {
-        e.preventDefault();
-        let valid = true;
-        const url = storeUrl.value.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
-        if (!url) {
-          setError('storeUrlError', 'Please enter your store address.'); valid = false;
-        } else if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(url)) {
-          setError('storeUrlError', 'That does not look like a store address. Try yourstore.myshopify.com.'); valid = false;
+      function fill(answers) {
+        if (answers.name) storeName.value = answers.name;
+        if (answers.url) storeUrl.value = answers.url.replace(/^https:\/\//, '');
+        if (answers.category) pickCategory(answers.category);
+        if (answers.monthly_orders) pickOrders(answers.monthly_orders);
+        if (Array.isArray(answers.goals) && answers.goals.length) {
+          document.querySelectorAll('[data-goal]').forEach((btn) => setGoal(btn, answers.goals.includes(btn.dataset.goal)));
         }
-        if (!valid) { storeUrl.setAttribute('aria-invalid', 'true'); storeUrl.focus(); }
-        if (!document.getElementById('storeCategory').value) { setError('categoryError', 'Please pick a category.'); valid = false; }
-        if (!document.getElementById('monthlyOrders').value) { setError('ordersError', 'Please pick a range.'); valid = false; }
-        if (valid) showStep(2);
+      }
+
+      // Resume from what the server already has; fall back to the local draft.
+      const draft = readDraft();
+      fill({ name: draft.store_name, url: draft.store_url, category: draft.store_category, monthly_orders: draft.monthly_orders, goals: draft.goals });
+      try {
+        const saved = (await auth.getOnboarding()).data || {};
+        fill({ ...saved.store, goals: saved.goals });
+        if (saved.step >= 2 && !saved.completed) showStep(2);
+      } catch (err) {
+        if (err && err.status === 401) { toLogin(); return; }
+        // Anything else: the page still works; saving reports problems.
+      }
+
+      [storeName, storeUrl].forEach((input) => input.addEventListener('input', () => {
+        setError(input.id + 'Error', '');
+        input.removeAttribute('aria-invalid');
+      }));
+
+      document.getElementById('step1Form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        let firstInvalid = null;
+        const name = storeName.value.trim();
+        const url = storeUrl.value.trim().replace(/^https?:\/\//i, '').replace(/[/?#].*$/, '');
+        if (!name) { setError('storeNameError', 'Please enter your store name.'); firstInvalid = firstInvalid || storeName; }
+        if (!url) {
+          setError('storeUrlError', 'Please enter your store address.'); firstInvalid = firstInvalid || storeUrl;
+        } else if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(url)) {
+          setError('storeUrlError', 'That does not look like a store address. Try yourstore.myshopify.com.'); firstInvalid = firstInvalid || storeUrl;
+        }
+        if (!category.value) { setError('categoryError', 'Please pick a category.'); firstInvalid = firstInvalid || category; }
+        if (!orders.value) { setError('ordersError', 'Please pick a range.'); firstInvalid = firstInvalid || orders; }
+        if (firstInvalid) {
+          if (firstInvalid.type !== 'hidden') { firstInvalid.setAttribute('aria-invalid', 'true'); firstInvalid.focus(); }
+          return;
+        }
+
+        const answers = { store_name: name, store_url: url, store_category: category.value, monthly_orders: orders.value };
+        writeDraft(answers);
+        const button = document.getElementById('step1Submit');
+        setBusy(button, true, 'Saving…');
+        try {
+          await auth.saveOnboardingStore(answers);
+          showStep(2);
+        } catch (err) {
+          await handleSaveError(err, 'Could not save your store');
+        } finally {
+          setBusy(button, false);
+        }
       });
 
       document.getElementById('step2Back').addEventListener('click', () => showStep(1));
@@ -279,27 +362,22 @@
         e.preventDefault();
         const goals = Array.from(document.querySelectorAll('[data-goal].selected')).map((b) => b.dataset.goal);
         if (!goals.length) { setError('goalsError', 'Pick at least one so we know where to start.'); return; }
+        writeDraft({ goals });
 
-        // Keep the answers on this device until the dashboard asks for them.
+        const button = document.getElementById('step2Submit');
+        setBusy(button, true, 'Saving…');
         try {
-          localStorage.setItem('rv-onboarding', JSON.stringify({
-            platform: 'shopify',
-            store_url: storeUrl.value.trim(),
-            store_category: document.getElementById('storeCategory').value,
-            monthly_orders: document.getElementById('monthlyOrders').value,
-            goals,
-            completed_at: new Date().toISOString(),
-          }));
-          const auth = JSON.parse(localStorage.getItem('rv-auth') || '{}');
-          if (auth.state) {
-            auth.state.onboarding_completed = true;
-            localStorage.setItem('rv-auth', JSON.stringify(auth));
-          }
-        } catch (_) { /* storage unavailable: continue anyway */ }
+          await auth.saveOnboardingGoals(goals);
+        } catch (err) {
+          setBusy(button, false);
+          await handleSaveError(err, 'Could not save your answers');
+          return;
+        }
+        try { localStorage.removeItem(DRAFT_KEY); } catch (_) { /* ignore */ }
 
         await glassReady;
         const next = () => { window.location.href = '/auth/choose-plan.html'; };
-        showGlassmorphismCard('success', 'Store profile saved', 'Next, choose the plan you want to try free for 7 days.', next, 'Choose a Plan');
+        showGlassmorphismCard('success', 'Store profile saved', 'Next, choose the plan you want to try free for 7 days.', next, 'Choose your plan');
         setTimeout(next, 3000);
       });
     });

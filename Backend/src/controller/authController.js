@@ -28,6 +28,7 @@ const { isPasswordPwned } = require('../utils/passwordBreach');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 const { OAuth2Client } = require('google-auth-library');
+const { verifyAppleIdentityToken, appleDisplayName, appleWebConfig } = require('../utils/appleIdentity');
 
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
@@ -71,6 +72,29 @@ const TRUSTED_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const PASSWORD_COMPLEXITY =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
+
+// Signup creates the workspace before onboarding asks about the store, so it
+// starts with honest placeholders ("Unspecified", no store URL) that
+// PUT /api/v1/onboarding/store replaces. Optional storeSetup values from
+// older clients are still honoured.
+function provisionalOrganizationData(ownerId, { storeSetup, preferences, fallbackName }) {
+  const setup = storeSetup && typeof storeSetup === 'object' ? storeSetup : {};
+  const text = (value, max) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null);
+  const firstName = text(fallbackName, 80)?.split(/\s+/)[0];
+  const companyName = text(setup.brand_name, 120) || text(setup.company_name, 120) || (firstName ? `${firstName}'s store` : 'My store');
+  const storeUrl = text(setup.storeUrl, 2048);
+  return {
+    owner_id: ownerId,
+    company_name: companyName,
+    website_url: storeUrl,
+    store_url: storeUrl,
+    industry: text(setup.storeCategory, 80) || text(setup.industry, 80) || 'Unspecified',
+    country: text(setup.country, 80) || 'Unspecified',
+    state_region: text(setup.state, 80),
+    monthly_revenue_range: text(preferences?.monthlyRevenue, 40),
+    slug: createOrganizationSlug(companyName, ownerId),
+  };
+}
 
 function createOrganizationSlug(companyName, uniqueId) {
   const baseSlug = String(companyName || 'organization')
@@ -315,17 +339,7 @@ exports.register = async (req, res, next) => {
       });
 
       const organization = await tx.organizations.create({
-        data: {
-          owner_id: user.id,
-          company_name: storeSetup.brand_name,
-          website_url: storeSetup.storeUrl || null,
-          store_url: storeSetup.storeUrl || null,
-          industry: storeSetup.storeCategory,
-          country: storeSetup.country,
-          state_region: storeSetup.state || null,
-          monthly_revenue_range: preferences?.monthlyRevenue || null,
-          slug: createOrganizationSlug(storeSetup.brand_name, user.id),
-        },
+        data: provisionalOrganizationData(user.id, { storeSetup, preferences, fallbackName: account.firstName }),
       });
 
       // RBAC: create the owner membership row
@@ -604,10 +618,6 @@ exports.googleLogin = async (req, res, next) => {
           });
         }
 
-        const organization = req.body.organization || req.body.storeSetup || {};
-        const companyName = organization.brand_name || organization.company_name || payload.name || email.split('@')[0];
-        const country = organization.country || 'Unspecified';
-        const industry = organization.storeCategory || organization.industry || 'Unspecified';
 
         const result = await prisma.$transaction(async (tx) => {
           const createdUser = await tx.users.create({
@@ -623,17 +633,11 @@ exports.googleLogin = async (req, res, next) => {
             },
           });
           const createdOrganization = await tx.organizations.create({
-            data: {
-              owner_id: createdUser.id,
-              company_name: companyName,
-              website_url: organization.storeUrl || null,
-              store_url: organization.storeUrl || null,
-              industry,
-              country,
-              state_region: organization.state || null,
-              monthly_revenue_range: req.body.preferences?.monthlyRevenue || null,
-              slug: createOrganizationSlug(companyName, createdUser.id),
-            },
+            data: provisionalOrganizationData(createdUser.id, {
+              storeSetup: req.body.organization || req.body.storeSetup,
+              preferences: req.body.preferences,
+              fallbackName: payload.given_name || payload.name,
+            }),
           });
           await tx.organization_members.create({
             data: {
@@ -709,6 +713,175 @@ exports.linkGoogleAccount = async (req, res, next) => {
       success: true,
       data: { google_linked: true },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── SIGN IN WITH APPLE ───────────────────────────────────────────────────────
+// Same account rules as Google: an Apple identity signs in to the account it is
+// linked to; an email that already has a Revluma account must be linked from a
+// signed-in session first (APPLE_ACCOUNT_LINK_REQUIRED), so nobody can take
+// over an account just by controlling the same address at Apple.
+
+function appleError(res, error) {
+  if (error.statusCode) {
+    return res.status(error.statusCode).json({ success: false, error: error.message, ...(error.code ? { code: error.code } : {}) });
+  }
+  logger.warn('apple_login_invalid_credential', { error: error.message });
+  return res.status(401).json({ success: false, error: 'Invalid Apple credential.' });
+}
+
+// Public: lets the sign-in pages show the Apple button only when Apple is set up.
+exports.appleConfig = (req, res) => {
+  res.set('Cache-Control', 'public, max-age=300');
+  return res.status(200).json({ success: true, data: appleWebConfig() });
+};
+
+exports.appleLogin = async (req, res, next) => {
+  try {
+    const { id_token: idToken, nonce, terms_agreed: termsAgreed, user: appleUser } = req.body || {};
+    let identity;
+    try {
+      identity = await verifyAppleIdentityToken(idToken, nonce);
+    } catch (error) {
+      return appleError(res, error);
+    }
+
+    let user = await prisma.users.findUnique({ where: { apple_id: identity.sub } });
+
+    if (!user) {
+      if (!identity.email) {
+        return res.status(400).json({
+          success: false,
+          code: 'APPLE_EMAIL_REQUIRED',
+          error: 'Apple did not share an email address. Remove Revluma from "Sign in with Apple" in your Apple ID settings, then try again and choose to share an email.',
+        });
+      }
+
+      const existing = await prisma.users.findFirst({
+        where: { email: { equals: identity.email, mode: 'insensitive' } },
+      });
+      if (existing) {
+        if (existing.status === 'suspended' || existing.status === 'deleted') {
+          return res.status(403).json({ success: false, error: 'Account unavailable.' });
+        }
+        if (existing.apple_id && existing.apple_id !== identity.sub) {
+          return res.status(409).json({
+            success: false,
+            code: 'APPLE_ACCOUNT_CONFLICT',
+            error: 'This email is linked to a different Apple ID.',
+          });
+        }
+        return res.status(409).json({
+          success: false,
+          code: 'APPLE_ACCOUNT_LINK_REQUIRED',
+          error: 'An account already exists for this email. Log in with your password or Google, then we will link your Apple ID.',
+        });
+      }
+
+      if (termsAgreed !== true) {
+        return res.status(400).json({
+          success: false,
+          code: 'TERMS_REQUIRED',
+          error: 'terms_agreed must be true when creating an Apple account.',
+        });
+      }
+
+      const name = appleDisplayName(appleUser);
+      const fullName = name.fullName || (identity.isPrivateEmail ? 'Revluma merchant' : identity.email.split('@')[0]);
+      try {
+        user = await prisma.$transaction(async (tx) => {
+          const createdUser = await tx.users.create({
+            data: {
+              full_name: fullName,
+              email: identity.email,
+              password_hash: null,
+              apple_id: identity.sub,
+              email_verified: true,
+              accepted_terms: true,
+              accepted_privacy_policy: true,
+              onboarding_completed: false,
+            },
+          });
+          const createdOrganization = await tx.organizations.create({
+            data: provisionalOrganizationData(createdUser.id, { fallbackName: name.firstName }),
+          });
+          await tx.organization_members.create({
+            data: {
+              organization_id: createdOrganization.id,
+              user_id: createdUser.id,
+              role: 'owner',
+              status: 'active',
+              joined_at: new Date(),
+            },
+          });
+          return createdUser;
+        });
+        logger.info('apple_account_created', { userId: user.id, privateRelay: identity.isPrivateEmail });
+      } catch (error) {
+        // Two tabs finishing the same Apple sign-up at once: the loser retries.
+        if (error?.code === 'P2002') {
+          return res.status(409).json({ success: false, code: 'APPLE_RETRY', error: 'Your account is being set up. Please try signing in with Apple again.' });
+        }
+        throw error;
+      }
+    }
+
+    if (user.status === 'suspended' || user.status === 'deleted') {
+      return res.status(403).json({ success: false, error: 'Account unavailable.' });
+    }
+
+    return res.status(200).json({ success: true, data: await issuePasswordSession(req, res, user) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.linkAppleAccount = async (req, res, next) => {
+  try {
+    let identity;
+    try {
+      identity = await verifyAppleIdentityToken(req.body?.id_token, req.body?.nonce);
+    } catch (error) {
+      return appleError(res, error);
+    }
+
+    const user = await prisma.users.findUnique({ where: { id: req.user.id } });
+    if (!user || user.status !== 'active') {
+      return res.status(401).json({ success: false, error: 'Account unavailable.' });
+    }
+    if (!identity.email || user.email.toLowerCase() !== identity.email) {
+      return res.status(409).json({
+        success: false,
+        code: 'APPLE_EMAIL_MISMATCH',
+        error: 'The Apple ID email must match your Revluma account email.',
+      });
+    }
+    if (user.apple_id && user.apple_id !== identity.sub) {
+      return res.status(409).json({
+        success: false,
+        code: 'APPLE_ACCOUNT_CONFLICT',
+        error: 'A different Apple ID is already linked to this account.',
+      });
+    }
+
+    const linkedUser = await prisma.users.findUnique({ where: { apple_id: identity.sub } });
+    if (linkedUser && linkedUser.id !== user.id) {
+      return res.status(409).json({
+        success: false,
+        code: 'APPLE_ACCOUNT_CONFLICT',
+        error: 'This Apple ID is already linked to another Revluma account.',
+      });
+    }
+
+    await prisma.users.update({
+      where: { id: user.id },
+      data: { apple_id: identity.sub, email_verified: true, updated_at: new Date() },
+    });
+    logger.info('apple_account_linked', { userId: user.id });
+
+    return res.status(200).json({ success: true, data: { apple_linked: true } });
   } catch (error) {
     next(error);
   }

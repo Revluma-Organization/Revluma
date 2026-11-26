@@ -22,6 +22,9 @@ router.post('/login', validateLogin, loginLimiter, authController.login);
 router.post('/refresh', refreshLimiter, authController.refresh);
 router.post('/google', loginLimiter, authController.googleLogin);
 router.post('/google/link', authenticateToken, loginLimiter, authController.linkGoogleAccount);
+router.get('/apple/config', authController.appleConfig);
+router.post('/apple', loginLimiter, authController.appleLogin);
+router.post('/apple/link', authenticateToken, loginLimiter, authController.linkAppleAccount);
 
 // Password reset flow (public, unauthenticated)
 router.post('/forgot-password', validateForgotPassword, passwordResetLimiter, authController.forgotPassword);

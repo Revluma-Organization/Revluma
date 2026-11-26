@@ -127,7 +127,7 @@ export const BillingOverview: FC = () => {
       }>("/billing/start-trial");
 
       if (res.data?.success) {
-        setToastMessage("Your 14-day free trial has been activated!");
+        setToastMessage("Your 7-day free trial has been activated!");
         await fetchBillingOverview(); // Refresh subscription data from backend
       }
     } catch (err) {

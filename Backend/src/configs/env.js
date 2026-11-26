@@ -23,6 +23,13 @@ if (!process.env.PAYSTACK_SECRET_KEY) {
   console.warn('[WARN] PAYSTACK_SECRET_KEY not set — payment endpoints will not function');
 }
 
+// Sign in with Apple is optional: without APPLE_CLIENT_ID (the Services ID) the
+// Apple button stays hidden and /auth/apple returns 503 APPLE_NOT_CONFIGURED.
+// APPLE_REDIRECT_URI is optional and defaults to <FRONTEND_URL>/auth/login.
+if (!process.env.APPLE_CLIENT_ID) {
+  console.warn('[WARN] APPLE_CLIENT_ID not set — Sign in with Apple is disabled');
+}
+
 const missingVars = [];
 
 // Validate each required variable
