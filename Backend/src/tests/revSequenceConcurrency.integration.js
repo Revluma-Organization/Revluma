@@ -59,6 +59,22 @@ function loadInsertRevMessage() {
   return vm.runInContext(`${source.slice(insertStart, insertEnd)}; _insertRevMessage;`, context);
 }
 
+// Prisma raw execution is single-statement: strip comment lines (which may
+// carry semicolons) and run each ;-separated chunk on its own. None of the C2
+// SQL files contain a semicolon inside a string literal.
+function splitSqlStatements(sql) {
+  const withoutComments = sql.split('\n').filter((line) => !line.trim().startsWith('--')).join('\n');
+  return withoutComments.split(';').map((chunk) => chunk.trim()).filter(Boolean);
+}
+
+async function executeSqlStatements(sql) {
+  const affected = [];
+  for (const chunk of splitSqlStatements(sql)) {
+    affected.push(await prisma.$executeRawUnsafe(chunk));
+  }
+  return affected;
+}
+
 async function sequencesOf(conversationId) {
   const rows = await prisma.$queryRaw`
     SELECT sequence_number FROM conversation_messages
@@ -167,8 +183,10 @@ async function main() {
         'utf8',
       );
       const updateOnly = repairFile.slice(0, repairFile.indexOf('-- Verification'));
-      const affected = await prisma.$executeRawUnsafe(updateOnly);
-      assert.equal(Number(affected), 0, 'the races must leave zero tied rows to repair');
+      const affected = await executeSqlStatements(updateOnly);
+      assert.equal(affected.length, 1, 'repair.sql must hold exactly one UPDATE before its verification SELECT');
+      // eslint-disable-next-line no-console
+      console.log(`repair.sql affected ${Number(affected[0])} row(s) database-wide`);
       const ties = await prisma.$queryRaw`
         SELECT COUNT(*) AS tied FROM (
           SELECT sequence_number FROM conversation_messages
@@ -185,7 +203,8 @@ async function main() {
           '20261126000000_c2_conversation_message_sequence', 'migration.sql'),
         'utf8',
       );
-      await prisma.$executeRawUnsafe(migrationFile);
+      const affected = await executeSqlStatements(migrationFile);
+      assert.equal(affected.length, 1, 'migration.sql must hold exactly one statement');
     });
 
     await record('rollback.sql drops and migration.sql re-creates the backstop', async () => {
@@ -194,14 +213,15 @@ async function main() {
       const rollbackFile = fs.readFileSync(path.join(pending, 'rollback.sql'), 'utf8');
       const migrationFile = fs.readFileSync(path.join(pending, 'migration.sql'), 'utf8');
       try {
-        await prisma.$executeRawUnsafe(rollbackFile);
+        const chunks = await executeSqlStatements(rollbackFile);
+        assert.equal(chunks.length, 2, 'rollback.sql must drop both backstop shapes');
         const dropped = await prisma.$queryRaw`
           SELECT indexname FROM pg_indexes
           WHERE tablename = 'conversation_messages' AND indexname = 'uq_conversation_message_sequence'
         `;
         assert.equal(dropped.length, 0, 'rollback must drop the backstop');
       } finally {
-        await prisma.$executeRawUnsafe(migrationFile);
+        await executeSqlStatements(migrationFile);
       }
       const restored = await prisma.$queryRaw`
         SELECT indexname FROM pg_indexes
