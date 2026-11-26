@@ -74,9 +74,12 @@ describe("Command Center — Premium Hybrid Redesign V1", () => {
     expect(briefing.compareDocumentPosition(evidenceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(evidenceHeading.compareDocumentPosition(healthHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    // Hybrid 2-column layout marker present and no tables used
-    expect(container.querySelector('[data-briefing-layout="hybrid"]')).toBeTruthy();
-    expect(container.querySelectorAll("table")).toHaveLength(0);
+    // Hybrid 2-column layout marker present and no tables used inside the briefing layout
+    // (the Stage 4 signals table below the briefing is the page's only table).
+    const briefingLayout = container.querySelector('[data-briefing-layout="hybrid"]') as HTMLElement;
+    expect(briefingLayout).toBeTruthy();
+    expect(briefingLayout.querySelectorAll("table")).toHaveLength(0);
+    expect(container.querySelectorAll("table")).toHaveLength(1);
   });
 
   it("renders the Welcome Experience with merchant name, supporting line, compact store row, sync time, and working Refresh", async () => {
