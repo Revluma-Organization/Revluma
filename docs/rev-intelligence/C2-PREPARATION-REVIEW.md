@@ -94,12 +94,13 @@ Sandbox-runnable (no database), all green:
   parser + delegation pins) — all pass. No contract was weakened; two were
   extended to pin the new behaviour.
 
-Real-PostgreSQL (release-candidate disposable DB, runs in CI — see §7):
+Real-PostgreSQL (release-candidate disposable DB, green in CI — see §7):
 
-- `revSequenceConcurrency.integration.js` (new, 7 scenarios): backstop-present
-  check, 8-way parallel accepts → seqs 1–8, 8-way parallel real-`_insertRevMessage`
-  → 9–16, mixed 4+4 race → 17–24 (all distinct and gapless), tuple-predicate
-  shape through Prisma params, `repair.sql` validity + zero-tie proof,
+- `revSequenceConcurrency.integration.js` (new, 9 scenarios): backstop-present
+  check, 8-way parallel accepts all completing without duplicates, accepted
+  sequences contiguous 1–8, 8-way parallel real-`_insertRevMessage` → 9–16,
+  mixed 4+4 race → 17–24 (all distinct and gapless), tuple-predicate shape
+  through Prisma params, `repair.sql` validity + zero-tie proof,
   `migration.sql` idempotent apply, rollback→recreate round-trip. Fixture rows
   cleaned up; the backstop is restored in a `finally`.
 
@@ -110,11 +111,23 @@ it runs in CI on every PR.
 
 ## 7. CI results
 
-PR: (number below once opened). Checks: `Backend test suite`, `backend`,
-`python-regressions`, `Prisma bootstrap, financial and security regressions`
-(includes the new Rev sequence concurrency step), `Dashboard suite and
-production build`, `Vercel`. Result: PENDING — this document is updated with the
-outcome before any merge request.
+PR #516, `e108a45`: **all 12 checks pass** — `Backend test suite`,
+`Dashboard suite and production build`, `Prisma bootstrap, financial and
+security regressions`, `Vercel`, `Vercel Preview Comments`, `backend`, and
+`task025`–`task030`. Release-candidate run `45881350697`: the Prisma regression
+job passes in 2m2s, including both C2 probes, the accepts prefix
+(scenarios 0–2), the serial baseline, and the full nine-scenario run
+(scenarios 0–8).
+
+The concurrency integration earned its place: the real-PG accept race failed
+until two real defects were fixed. First, the advisory-lock SELECT needed the
+repo-standard `::text` cast because Prisma cannot deserialize bare `void`.
+Second — the final blocker — the shipped Phase 5D `//` comment was embedded
+inside the accept `INSERT…SELECT` template. PostgreSQL has no `//` comments, so
+every real accept transaction failed (`trailing junk after numeric literal`);
+unit mocks captured that SQL without executing it. `e108a45` moves the comment
+outside the shipped SQL and pins a regression assertion that accept SQL
+contains no `//`.
 
 ## 8. Contracts preserved (5B–5E)
 
