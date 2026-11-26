@@ -27,6 +27,8 @@ const { safePersistedNarrative } = require('../services/revClaimGuardrails');
 const { retryabilityForError, investigationOutcomeFromTransportError } = require('../services/revInvestigationOutcomes');
 const { withTimeout, TIMEOUT_POLICY_MS, safeId } = require('../services/revFailureContract');
 const { validateSubmission, acceptSubmission, replayBody } = require('../services/revSubmission');
+const revSequence = require('../services/revSequence');
+const { parsePageCursor, nextPageCursor } = require('../services/revConversationPaging');
 const revMetrics = require('../services/revOperationalMetrics');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -187,7 +189,6 @@ exports.chat = async (req, res, next) => {
   let activeConvId = null;
   let acceptedOrg = null;
   let reuseUserMessage = false;
-  let revSequence = null;
   const startTime     = Date.now();
 
   try {
@@ -288,12 +289,9 @@ exports.chat = async (req, res, next) => {
       await verifyConversationOwnership(conversationId, org.id);
     }
 
-    const seqResult = await prisma.$queryRaw`
-      SELECT COALESCE(MAX(sequence_number), 0)::int as max_seq
-      FROM conversation_messages
-      WHERE conversation_id = ${activeConvId}::uuid
-    `;
-    revSequence = (Number(seqResult[0]?.max_seq) || 0) + 1;
+    // C2 single-writer: no sequence number is precomputed here. Both rev-row
+    // writes below allocate MAX(sequence_number)+1 under the conversation
+    // lock at write time, so concurrent turns can no longer share a number.
 
     const merchantContext = await require('../services/revMerchantContext').buildMerchantContext(prisma, org.id);
     let conversationContext;
@@ -338,17 +336,22 @@ exports.chat = async (req, res, next) => {
       const failedMsgId = uuidv4();
       const failedContent = JSON.stringify({ error: true, correlation_id: correlationId, execution_id: executionId });
       persistenceStage = 'failed_turn_write';
-      await prisma.$executeRaw`
-        INSERT INTO conversation_messages (
-          id, conversation_id, organization_id, user_id,
-          role, content, sequence_number, correlation_id,
-          has_error, error_code, error_message
-        ) VALUES (
-          ${failedMsgId}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
-          'rev', ${failedContent}::jsonb, ${revSequence}, ${correlationId}::uuid,
-          true, ${mlResult.error.code}, ${mlResult.error.message}
-        )
-      `;
+      await revSequence.withSequenceAllocationRetry(() => prisma.$transaction(async (tx) => {
+        await revSequence.acquireConversationWriteLock(tx, activeConvId);
+        await tx.$executeRaw`
+          INSERT INTO conversation_messages (
+            id, conversation_id, organization_id, user_id,
+            role, content, sequence_number, correlation_id,
+            has_error, error_code, error_message
+          )
+          SELECT
+            ${failedMsgId}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
+            'rev', ${failedContent}::jsonb, COALESCE(MAX(sequence_number), 0) + 1, ${correlationId}::uuid,
+            true, ${mlResult.error.code}, ${mlResult.error.message}
+          FROM conversation_messages
+          WHERE conversation_id = ${activeConvId}::uuid
+        `;
+      }));
       persistenceStage = 'conversation_update';
       await prisma.$executeRaw`
         UPDATE conversations
@@ -452,21 +455,26 @@ exports.chat = async (req, res, next) => {
     const execution       = _executionPersistenceFields(revContent);
 
     persistenceStage = 'rev_turn_write';
-    await prisma.$executeRaw`
-      INSERT INTO conversation_messages (
-        id, conversation_id, organization_id, user_id,
-        role, content, sequence_number,
-        agent_name, model_name, model_provider,
-        correlation_id, confidence_score, has_error,
-        input_tokens, output_tokens, metadata
-      ) VALUES (
-        ${revMsgId}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
-        'rev', ${revContentStr}::jsonb, ${revSequence},
-        ${agentNameStr}, ${execution.modelName}, ${execution.modelProvider},
-        ${correlationId}::uuid, ${confidenceScore}, false,
-        ${execution.inputTokens}, ${execution.outputTokens}, ${execution.metadata}::jsonb
-      )
-    `;
+    await revSequence.withSequenceAllocationRetry(() => prisma.$transaction(async (tx) => {
+      await revSequence.acquireConversationWriteLock(tx, activeConvId);
+      await tx.$executeRaw`
+        INSERT INTO conversation_messages (
+          id, conversation_id, organization_id, user_id,
+          role, content, sequence_number,
+          agent_name, model_name, model_provider,
+          correlation_id, confidence_score, has_error,
+          input_tokens, output_tokens, metadata
+        )
+        SELECT
+          ${revMsgId}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
+          'rev', ${revContentStr}::jsonb, COALESCE(MAX(sequence_number), 0) + 1,
+          ${agentNameStr}, ${execution.modelName}, ${execution.modelProvider},
+          ${correlationId}::uuid, ${confidenceScore}, false,
+          ${execution.inputTokens}, ${execution.outputTokens}, ${execution.metadata}::jsonb
+        FROM conversation_messages
+        WHERE conversation_id = ${activeConvId}::uuid
+      `;
+    }));
 
     persistenceStage = 'finding_context_write';
     await _persistFindingContext(activeConvId, org.id, mlResult.data);
@@ -557,7 +565,7 @@ exports.chat = async (req, res, next) => {
         persistenceStage = 'failed_turn_write';
         await _insertRevMessage({
           organizationId: acceptedOrg.id, userId: req.user.id, conversationId: activeConvId,
-          sequenceNumber: revSequence, correlationId,
+          correlationId,
           content: { response_type: 'error', error: true, read_only: true, correlation_id: correlationId, execution_id: executionId },
           hasError: true, errorCode: error.code || 'INTELLIGENCE_UNAVAILABLE',
           errorMessage: error.publicMessage || 'Rev could not complete this response. Please retry.',
@@ -683,8 +691,20 @@ exports.getConversation = async (req, res, next) => {
     // messages (offset paging would shift under concurrent inserts). The wire
     // format stays ascending, so existing consumers are unaffected. `offset`
     // is no longer used and is ignored when present.
-    const beforeRaw = parseInt(req.query.before, 10);
-    const before = Number.isInteger(beforeRaw) && beforeRaw >= 0 ? beforeRaw : null;
+    // C2: `before` keeps its exact legacy semantics; the optional `before_id`
+    // selects the tuple predicate over the total order (sequence_number, id),
+    // and every page orders deterministically so a tie can never shift a
+    // page boundary.
+    let before;
+    let beforeId;
+    try {
+      ({ before, beforeId } = parsePageCursor(req.query));
+    } catch (cursorError) {
+      return res.status(cursorError.statusCode || 400).json({
+        success: false,
+        error: { code: cursorError.code || 'VALIDATION_ERROR', message: cursorError.message || 'Invalid page cursor.' },
+      });
+    }
 
     const messages = before === null ? await prisma.$queryRaw`
       SELECT * FROM (
@@ -699,10 +719,10 @@ exports.getConversation = async (req, res, next) => {
           ON fb.message_id = cm.id AND fb.user_id = ${req.user.id}::uuid
         WHERE cm.conversation_id = ${id}::uuid
           AND cv.organization_id = ${org.id}::uuid
-        ORDER BY cm.sequence_number DESC
+        ORDER BY cm.sequence_number DESC, cm.id DESC
         LIMIT ${limit}
-      ) newest ORDER BY sequence_number ASC
-    ` : await prisma.$queryRaw`
+      ) newest ORDER BY sequence_number ASC, id ASC
+    ` : beforeId === null ? await prisma.$queryRaw`
       SELECT * FROM (
         SELECT
           cm.id, cm.role, cm.content, cm.sequence_number,
@@ -716,9 +736,26 @@ exports.getConversation = async (req, res, next) => {
         WHERE cm.conversation_id = ${id}::uuid
           AND cv.organization_id = ${org.id}::uuid
           AND cm.sequence_number < ${before}
-        ORDER BY cm.sequence_number DESC
+        ORDER BY cm.sequence_number DESC, cm.id DESC
         LIMIT ${limit}
-      ) newest ORDER BY sequence_number ASC
+      ) newest ORDER BY sequence_number ASC, id ASC
+    ` : await prisma.$queryRaw`
+      SELECT * FROM (
+        SELECT
+          cm.id, cm.role, cm.content, cm.sequence_number,
+          cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
+          cm.created_at, cm.metadata->'client_context' AS client_context,
+          fb.rating AS feedback_rating
+        FROM conversation_messages cm
+        JOIN conversations cv ON cv.id = cm.conversation_id
+        LEFT JOIN conversation_message_feedback fb
+          ON fb.message_id = cm.id AND fb.user_id = ${req.user.id}::uuid
+        WHERE cm.conversation_id = ${id}::uuid
+          AND cv.organization_id = ${org.id}::uuid
+          AND (cm.sequence_number, cm.id) < (${before}, ${beforeId}::uuid)
+        ORDER BY cm.sequence_number DESC, cm.id DESC
+        LIMIT ${limit}
+      ) newest ORDER BY sequence_number ASC, id ASC
     `;
 
     const safeMessages = messages.map((message) => ({
@@ -731,7 +768,7 @@ exports.getConversation = async (req, res, next) => {
       data: {
         conversation: conv,
         messages: safeMessages,
-        pagination: { limit, before },
+        pagination: { limit, before, before_id: beforeId, ...nextPageCursor(safeMessages, limit) },
       },
     });
   } catch (error) {
@@ -1530,7 +1567,7 @@ function _sanitizeAgentAnswer(answer) {
 }
 
 async function _insertRevMessage({
-  organizationId, userId, conversationId, sequenceNumber, correlationId, content,
+  organizationId, userId, conversationId, correlationId, content,
   hasError = false, errorCode = null, errorMessage = null, investigation = null,
   agentsUsed = [], confidenceScore = null, latencyMs = null,
 }) {
@@ -1540,23 +1577,31 @@ async function _insertRevMessage({
   const toolStatuses = investigation?.tools_used
     ? JSON.stringify({ tools_used: investigation.tools_used }).slice(0, 10_000) : null;
   const execution = _executionPersistenceFields(content);
-  await prisma.$executeRaw`
-    INSERT INTO conversation_messages (
-      id, conversation_id, organization_id, user_id, role, content,
-      sequence_number, agent_name, model_name, model_provider, correlation_id,
-      confidence_score, has_error, error_code, error_message, tool_calls,
-      tool_results, latency_ms, orchestrator_mode, confidence_basis,
-      input_tokens, output_tokens, metadata
-    ) VALUES (
-      ${messageId}::uuid, ${conversationId}::uuid, ${organizationId}::uuid,
-      ${userId}::uuid, 'rev', ${contentStr}::jsonb, ${sequenceNumber},
-      ${(agentsUsed || []).join(',')}, ${execution.modelName}, ${execution.modelProvider},
-      ${correlationId}::uuid, ${confidenceScore}, ${hasError}, ${errorCode},
-      ${errorMessage}, ${steps}::jsonb, ${toolStatuses}::jsonb, ${latencyMs},
-      ${investigation?.intent || null}, ${content?.response?.confidence?.basis || null},
-      ${execution.inputTokens}, ${execution.outputTokens}, ${execution.metadata}::jsonb
-    )
-  `;
+  // C2 single-writer: the rev row's sequence number is allocated under the
+  // conversation lock at write time. Precomputed numbers raced across
+  // concurrent turns; the retry covers a non-cooperating writer.
+  await revSequence.withSequenceAllocationRetry(() => prisma.$transaction(async (tx) => {
+    await revSequence.acquireConversationWriteLock(tx, conversationId);
+    await tx.$executeRaw`
+      INSERT INTO conversation_messages (
+        id, conversation_id, organization_id, user_id, role, content,
+        sequence_number, agent_name, model_name, model_provider, correlation_id,
+        confidence_score, has_error, error_code, error_message, tool_calls,
+        tool_results, latency_ms, orchestrator_mode, confidence_basis,
+        input_tokens, output_tokens, metadata
+      )
+      SELECT
+        ${messageId}::uuid, ${conversationId}::uuid, ${organizationId}::uuid,
+        ${userId}::uuid, 'rev', ${contentStr}::jsonb, COALESCE(MAX(sequence_number), 0) + 1,
+        ${(agentsUsed || []).join(',')}, ${execution.modelName}, ${execution.modelProvider},
+        ${correlationId}::uuid, ${confidenceScore}, ${hasError}, ${errorCode},
+        ${errorMessage}, ${steps}::jsonb, ${toolStatuses}::jsonb, ${latencyMs},
+        ${investigation?.intent || null}, ${content?.response?.confidence?.basis || null},
+        ${execution.inputTokens}, ${execution.outputTokens}, ${execution.metadata}::jsonb
+      FROM conversation_messages
+      WHERE conversation_id = ${conversationId}::uuid
+    `;
+  }));
   return messageId;
 }
 
@@ -1717,7 +1762,7 @@ exports.chatStream = async (req, res, next) => {
   const startedAt = Date.now();
   let sse = null;
   let activeConvId = null;
-  let sequenceNumber = null;
+  let turnAccepted = false;
   let finished = false;
   let requestMetricRecorded = false;
   let persistenceStage = null;
@@ -1786,13 +1831,9 @@ exports.chatStream = async (req, res, next) => {
       activeConvId = requestedConversationId;
     }
 
-    const seqResult = await prisma.$queryRaw`
-      SELECT COALESCE(MAX(sequence_number), 0)::int AS max_seq
-      FROM conversation_messages
-      WHERE conversation_id = ${activeConvId}::uuid
-    `;
-    const revSequence = (Number(seqResult[0]?.max_seq) || 0) + 1;
-    sequenceNumber = revSequence;
+    // C2 single-writer: no sequence is precomputed before the stream. Every
+    // rev-row write allocates under the conversation lock at write time.
+    turnAccepted = true;
 
     res.status(200);
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -1865,7 +1906,6 @@ exports.chatStream = async (req, res, next) => {
         organizationId: org.id,
         userId: req.user.id,
         conversationId: activeConvId,
-        sequenceNumber: revSequence,
         correlationId,
         content,
         investigation: data.investigation,
@@ -1904,7 +1944,7 @@ exports.chatStream = async (req, res, next) => {
     if (streamed.error?.code === 'CANCELLED') {
       await _insertRevMessage({
         organizationId: org.id, userId: req.user.id, conversationId: activeConvId,
-        sequenceNumber: revSequence, correlationId,
+        correlationId,
         content: { response_type: 'cancelled', text: '', cancelled: true, read_only: true },
         hasError: true, errorCode: 'CANCELLED',
         errorMessage: 'Generation stopped by the merchant.',
@@ -1930,7 +1970,7 @@ exports.chatStream = async (req, res, next) => {
     persistenceStage = 'failed_turn_write';
     await _insertRevMessage({
       organizationId: org.id, userId: req.user.id, conversationId: activeConvId,
-      sequenceNumber: revSequence, correlationId,
+      correlationId,
       content: _failedTurnContent(error),
       hasError: true, errorCode: error.code, errorMessage: error.message,
       latencyMs: Date.now() - startedAt,
@@ -1969,11 +2009,11 @@ exports.chatStream = async (req, res, next) => {
       revMetrics.record('rev_persistence_failures_total', 1, { stage: persistenceStage });
       persistenceStage = null;
     }
-    if (org && activeConvId && sequenceNumber) {
+    if (org && activeConvId && turnAccepted) {
       try {
         await _insertRevMessage({
           organizationId: org.id, userId: req.user.id, conversationId: activeConvId,
-          sequenceNumber, correlationId,
+          correlationId,
           content: { response_type: 'error', error: true, read_only: true },
           hasError: true, errorCode: error.code || 'STREAM_FAILED',
           errorMessage: 'Rev could not complete this response. Please retry.',

@@ -137,6 +137,20 @@ jobs:
             exit "$status"
           fi
 
+      - name: Rev sequence concurrency on real PostgreSQL
+        working-directory: Backend
+        env:
+          RELEASE_CANDIDATE_ISOLATED_DB: 'true'
+        run: |
+          set +e
+          node src/tests/revSequenceConcurrency.integration.js 2>&1 | tee /tmp/rev-sequence-concurrency.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(tail -n 25 /tmp/rev-sequence-concurrency.log | tr '\n' ' ' | tr -s ' ')
+            echo "::error title=rev-sequence-concurrency::${summary:0:1200}"
+            exit "$status"
+          fi
+
       - name: Financial integrity SQL checks
         working-directory: Backend
         run: |

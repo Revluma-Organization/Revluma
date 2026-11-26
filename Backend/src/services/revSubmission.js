@@ -1,4 +1,5 @@
 const { v4: uuidv4, v5: uuidv5 } = require('uuid');
+const revSequence = require('./revSequence');
 
 const MAX_QUESTION_LENGTH = 2000;
 const REQUEST_CONVERSATION_NAMESPACE = '6f35db54-8925-4e0f-9ef4-2cf8db85f97b';
@@ -105,6 +106,10 @@ function ensureSameSubmission(accepted, message, requestedConversationId) {
  * never starts another investigation. New conversation ids are deterministically
  * derived by the server from the request id, so a retry before the first meta
  * frame cannot create a second empty conversation.
+ *
+ * C2 single-writer: the user row's sequence number is allocated under a
+ * per-conversation advisory lock, and the whole accept transaction retries
+ * (bounded) on a unique violation from a non-cooperating writer.
  */
 async function acceptSubmission({ prisma, organizationId, userId, message, requestId, requestedConversationId = null, imageAssisted = false, clientContext = null }) {
   const existing = await findAcceptedSubmission(prisma, organizationId, requestId);
@@ -117,7 +122,7 @@ async function acceptSubmission({ prisma, organizationId, userId, message, reque
   // persistence. Keeping both writes in the same transaction prevents a failed
   // second write (or a process interruption between writes) from leaving an
   // active, restorable-looking conversation with no messages.
-  const { conversationId, inserted } = await prisma.$transaction(async (tx) => {
+  const { conversationId, inserted } = await revSequence.withSequenceAllocationRetry(() => prisma.$transaction(async (tx) => {
     let acceptedConversationId = requestedConversationId;
     if (acceptedConversationId) {
       const owned = await tx.$queryRaw`
@@ -135,6 +140,11 @@ async function acceptSubmission({ prisma, organizationId, userId, message, reque
         ON CONFLICT (id) DO NOTHING
       `;
     }
+
+    // C2 single-writer: serialize sequence allocation for this conversation.
+    // The lock is taken after ownership is verified, so unauthorized requests
+    // never serialize against legitimate writers.
+    await revSequence.acquireConversationWriteLock(tx, acceptedConversationId);
 
     // Stage 1 (H2): scripted-traffic annotation rides in the existing metadata
     // column. No schema change; ordinary merchant turns store NULL as before.
@@ -154,7 +164,7 @@ async function acceptSubmission({ prisma, organizationId, userId, message, reque
       ON CONFLICT (organization_id, conversation_id, role, correlation_id) DO NOTHING
     `;
     return { conversationId: acceptedConversationId, inserted };
-  });
+  }));
   if (Number(inserted) === 0) {
     const accepted = await findAcceptedSubmission(prisma, organizationId, requestId);
     if (!accepted) throw submissionError(409, 'SUBMISSION_NOT_ACCEPTED', 'The question was not accepted. Please retry.');
