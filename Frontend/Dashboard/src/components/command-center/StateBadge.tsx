@@ -18,34 +18,34 @@ const STATE_STYLES: Record<
   { pill: string; dot: string; defaultLabel: string; pulse?: boolean }
 > = {
   current: {
-    pill: "border-[#ABEFC6] bg-[#ECFDF3] text-[#067647]",
-    dot: "bg-[#12B76A]",
+    pill: "border-success-line bg-success-soft text-success",
+    dot: "bg-success-bright",
     defaultLabel: "Current",
   },
   updating: {
-    pill: "border-[#D4D3FA] bg-[#EEF0FF] text-[#4438E8]",
-    dot: "bg-[#4438E8]",
+    pill: "border-brand-line bg-brand-mist text-brand",
+    dot: "bg-brand",
     defaultLabel: "Updating",
     pulse: true,
   },
   stale: {
-    pill: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]",
-    dot: "bg-[#D97706]",
+    pill: "border-warning-line bg-warning-soft text-warning",
+    dot: "bg-warning-strong",
     defaultLabel: "Stale",
   },
   unavailable: {
-    pill: "border-[#FECACA] bg-[#FEF2F2] text-[#B42318]",
-    dot: "bg-[#DC2626]",
+    pill: "border-danger-line bg-danger-soft text-danger",
+    dot: "bg-danger-strong",
     defaultLabel: "Unavailable",
   },
   empty: {
-    pill: "border-[#E7E9EF] bg-[#F4F5F8] text-[#525866]",
-    dot: "bg-[#98A2B3]",
+    pill: "border-line bg-workspace text-ink-steel",
+    dot: "bg-ink-faint",
     defaultLabel: "Empty",
   },
   partial: {
-    pill: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]",
-    dot: "bg-[#D97706]",
+    pill: "border-warning-line bg-warning-soft text-warning",
+    dot: "bg-warning-strong",
     defaultLabel: "Partial coverage",
   },
 };

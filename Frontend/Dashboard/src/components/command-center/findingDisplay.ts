@@ -1,6 +1,7 @@
 import { AlertTriangle, Eye, Gauge, Siren } from "lucide-react";
 import type { CommandCenterAppState } from "./StateBadge";
 import type { Finding, SignalCategoryId } from "./types";
+import { palette } from "./tokens";
 
 /**
  * Shared finding display helpers for the minimal priority card and its
@@ -142,10 +143,10 @@ export function getSeverityMeta(severity: Finding["severity"]): SeverityMeta {
     return {
       label: "Critical",
       longLabel: "Critical priority",
-      base: "#E5484D",
-      deep: "#A12A22",
-      softBg: "#FFF5F4",
-      border: "#F3C7C3",
+      base: palette.severity.critical.base,
+      deep: palette.severity.critical.deep,
+      softBg: palette.severity.critical.softBg,
+      border: palette.severity.critical.border,
       glowRgba: "rgba(229, 72, 77, 0.16)",
       frameFrom: "rgba(229, 72, 77, 0.55)",
       impactBars: 3,
@@ -156,10 +157,10 @@ export function getSeverityMeta(severity: Finding["severity"]): SeverityMeta {
     return {
       label: "High",
       longLabel: "High priority",
-      base: "#F07832",
-      deep: "#9A4A12",
-      softBg: "#FFF6F0",
-      border: "#F5D3B8",
+      base: palette.severity.high.base,
+      deep: palette.severity.high.deep,
+      softBg: palette.severity.high.softBg,
+      border: palette.severity.high.border,
       glowRgba: "rgba(240, 120, 50, 0.16)",
       frameFrom: "rgba(240, 120, 50, 0.55)",
       impactBars: 3,
@@ -170,10 +171,10 @@ export function getSeverityMeta(severity: Finding["severity"]): SeverityMeta {
     return {
       label: "Medium",
       longLabel: "Medium priority",
-      base: "#E5A126",
-      deep: "#925B13",
-      softBg: "#FFFDF4",
-      border: "#F2DDB8",
+      base: palette.severity.medium.base,
+      deep: palette.severity.medium.deep,
+      softBg: palette.severity.medium.softBg,
+      border: palette.severity.medium.border,
       glowRgba: "rgba(229, 161, 38, 0.18)",
       frameFrom: "rgba(229, 161, 38, 0.6)",
       impactBars: 2,
@@ -183,10 +184,10 @@ export function getSeverityMeta(severity: Finding["severity"]): SeverityMeta {
   return {
     label: "Low",
     longLabel: "Low priority",
-    base: "#6475E8",
-    deep: "#39449F",
-    softBg: "#F4F6FF",
-    border: "#D8D7FA",
+    base: palette.severity.low.base,
+    deep: palette.severity.low.deep,
+    softBg: palette.severity.low.softBg,
+    border: palette.severity.low.border,
     glowRgba: "rgba(100, 117, 232, 0.16)",
     frameFrom: "rgba(100, 117, 232, 0.55)",
     impactBars: 1,

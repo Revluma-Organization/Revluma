@@ -5,7 +5,7 @@ import { ArrowRight, ShieldAlert, ShieldCheck, Sparkles, X } from "lucide-react"
 import { cn } from "@/lib/utils";
 import { SheetOverlay, SheetPortal, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { StateBadge } from "./StateBadge";
-import { cc } from "./tokens";
+import { cc, palette } from "./tokens";
 import {
   categoryLabelFor,
   confidenceTextFor,
@@ -113,7 +113,7 @@ export function FindingDetailsDrawer({
 
   return (
     <SheetPortal>
-      <SheetOverlay className="bg-[#17152F]/45 backdrop-blur-[2px] motion-reduce:animate-none" />
+      <SheetOverlay className="bg-scrim/45 backdrop-blur-[2px] motion-reduce:animate-none" />
       <SheetPrimitive.Content
         aria-label={`Full details for priority ${rank}: ${finding.title}`}
         style={{
@@ -141,10 +141,10 @@ export function FindingDetailsDrawer({
           }}
         >
           <div className="flex items-center justify-between gap-3 pr-10">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#667085]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-tertiary">
               Priority details
             </p>
-            <span className="font-mono text-[11px] font-semibold tabular-nums text-[#475467]">
+            <span className="font-mono text-[11px] font-semibold tabular-nums text-slate-600">
               #{rank}
             </span>
           </div>
@@ -155,7 +155,7 @@ export function FindingDetailsDrawer({
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
               style={{
                 borderColor: severity.border,
-                background: `linear-gradient(140deg, #FFFFFF 0%, ${severity.softBg} 100%)`,
+                background: `linear-gradient(140deg, white 0%, ${severity.softBg} 100%)`,
                 boxShadow: `0 6px 14px -8px ${severity.glowRgba}, inset 0 1px 0 rgba(255, 255, 255, 0.9)`,
                 color: severity.deep,
               }}
@@ -169,14 +169,14 @@ export function FindingDetailsDrawer({
               >
                 {severity.longLabel}
               </p>
-              <p className="mt-0.5 truncate text-[11.5px] text-[#667085]">{categoryLabel}</p>
+              <p className="mt-0.5 truncate text-[11.5px] text-ink-tertiary">{categoryLabel}</p>
             </div>
             <span
               className={cn(
                 "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-4",
                 verified
-                  ? "border-[#C9C7FA] bg-[#F0EDFF] text-[#3525B8]"
-                  : "border-[#F0B8B2] bg-[#FFF8F7] text-[#9C2B25]",
+                  ? "border-brand-lineStrong bg-brand-soft text-brand-deep"
+                  : "border-danger-line bg-danger-soft text-danger-limited",
               )}
             >
               {verified ? (
@@ -195,7 +195,7 @@ export function FindingDetailsDrawer({
 
           <SheetPrimitive.Close
             className={cn(
-              "absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/60 bg-white/80 text-[#475467] backdrop-blur-md transition-colors hover:bg-white hover:text-[#17191F]",
+              "absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/60 bg-white/80 text-slate-600 backdrop-blur-md transition-colors hover:bg-white hover:text-ink",
               cc.focus,
             )}
           >
@@ -207,22 +207,22 @@ export function FindingDetailsDrawer({
         {/* Scrollable body */}
         <div className="min-w-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
           <SheetTitle asChild>
-            <h2 className="text-balance text-[19px] font-semibold leading-[1.3] tracking-[-0.02em] text-[#101828]">
+            <h2 className="text-balance text-[19px] font-semibold leading-[1.3] tracking-[-0.02em] text-slate-900">
               {finding.title}
             </h2>
           </SheetTitle>
           <SheetDescription asChild>
-            <p className="mt-1.5 text-[12px] tabular-nums text-[#667085]">
+            <p className="mt-1.5 text-[12px] tabular-nums text-ink-tertiary">
               {categoryLabel} · Detected {relativeTime(detectedIso)}
             </p>
           </SheetDescription>
-          <p className="mt-3 text-[13.5px] leading-[1.65] text-[#344054]">
+          <p className="mt-3 text-[13.5px] leading-[1.65] text-ink-soft">
             {finding.description}
           </p>
 
           {/* Key evidence tiles for every recorded observation */}
           <div className="mt-5">
-            <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#667085]">
+            <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-ink-tertiary">
               Key evidence
             </h3>
             {availableObservations.length > 0 ? (
@@ -241,13 +241,13 @@ export function FindingDetailsDrawer({
                         "inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
                     }}
                   >
-                    <p className="truncate text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[#667085]">
+                    <p className="truncate text-[10.5px] font-semibold uppercase tracking-[0.07em] text-ink-tertiary">
                       {obs.label}
                     </p>
-                    <p className="mt-1 break-words text-[16px] font-semibold tabular-nums tracking-[-0.01em] text-[#101828]">
+                    <p className="mt-1 break-words text-[16px] font-semibold tabular-nums tracking-[-0.01em] text-slate-900">
                       <MetricValue item={obs} />
                     </p>
-                    <p className="mt-0.5 text-[11px] capitalize text-[#98A2B3]">
+                    <p className="mt-0.5 text-[11px] capitalize text-ink-faint">
                       {obs.period.replaceAll("_", " ")}
                     </p>
                   </div>
@@ -255,7 +255,7 @@ export function FindingDetailsDrawer({
               </div>
             ) : (
               <p
-                className="mt-2.5 rounded-xl border border-white/60 bg-white/70 px-3.5 py-3 text-[12.5px] text-[#667085] backdrop-blur-md"
+                className="mt-2.5 rounded-xl border border-white/60 bg-white/70 px-3.5 py-3 text-[12.5px] text-ink-tertiary backdrop-blur-md"
                 style={{
                   boxShadow:
                     "inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
@@ -264,7 +264,7 @@ export function FindingDetailsDrawer({
                 No verified observations recorded for this finding.
               </p>
             )}
-            <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-[#667085]">
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-ink-tertiary">
               <span>{periodLabel}</span>
               <span aria-hidden="true">·</span>
               <span>
@@ -282,7 +282,7 @@ export function FindingDetailsDrawer({
             className="relative mt-5 overflow-hidden rounded-xl px-4 py-3.5 ring-1 ring-white/10"
             style={{
               background:
-                "radial-gradient(360px 140px at 12% -40px, rgba(120, 110, 255, 0.5), transparent 65%), linear-gradient(118deg, #17152F 0%, #241A63 55%, #2B13CF 130%)",
+                palette.gradient.band,
               boxShadow:
                 "0 10px 22px -14px rgba(23, 21, 47, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.14)",
             }}
@@ -294,13 +294,13 @@ export function FindingDetailsDrawer({
                 style={{
                   background: "rgba(255, 255, 255, 0.1)",
                   boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.18)",
-                  color: "#D9D4FF",
+                  color: palette.band.spark,
                 }}
               >
                 <Sparkles className="h-3.5 w-3.5" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#C9C2FF]">
+                <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-band-accent">
                   Recommended next step
                 </p>
                 {finding.recommendation.available && finding.recommendation.step ? (
@@ -309,22 +309,22 @@ export function FindingDetailsDrawer({
                       {finding.recommendation.step}
                     </p>
                     {finding.recommendation.expected_result && (
-                      <p className="text-[12px] leading-relaxed text-[#D9D4EC]">
+                      <p className="text-[12px] leading-relaxed text-band-body">
                         {finding.recommendation.expected_result}
                       </p>
                     )}
-                    <p className="pt-0.5 text-[11px] text-[#A9A3C7]">
+                    <p className="pt-0.5 text-[11px] text-band-faint">
                       Read-only merchant action, not executed by Revluma.
                     </p>
                   </div>
                 ) : finding.recommendation.prerequisites.length > 0 ? (
-                  <ul className="mt-1 space-y-1 text-[12.5px] leading-relaxed text-[#EDEAFF]">
+                  <ul className="mt-1 space-y-1 text-[12.5px] leading-relaxed text-band">
                     {finding.recommendation.prerequisites.map((prereq, idx) => (
                       <li key={idx}>{prereq}</li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-1 text-[12.5px] leading-relaxed text-[#EDEAFF]">
+                  <p className="mt-1 text-[12.5px] leading-relaxed text-band">
                     Review this signal in Rev Intelligence with its underlying records.
                   </p>
                 )}
@@ -333,7 +333,7 @@ export function FindingDetailsDrawer({
           </div>
 
           {finding.priority.tie?.statement && (
-            <p className="mt-4 rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-[12px] text-[#1F06AC] backdrop-blur-md">
+            <p className="mt-4 rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-[12px] text-brand-deeper backdrop-blur-md">
               {finding.priority.tie.statement}
             </p>
           )}
@@ -349,10 +349,10 @@ export function FindingDetailsDrawer({
             >
               <div className="divide-y divide-slate-200/70">
                 <div className="pb-3.5">
-                  <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#667085]">
+                  <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-ink-tertiary">
                     Why this is the priority
                   </h3>
-                  <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-[#475467]">
+                  <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-slate-600">
                     {(finding.priority.rationale.length > 0
                       ? finding.priority.rationale
                       : ["Ranked by verified severity, freshness, and coverage."]
@@ -363,10 +363,10 @@ export function FindingDetailsDrawer({
                 </div>
 
                 <div className="py-3.5">
-                  <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#667085]">
+                  <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-ink-tertiary">
                     Confidence
                   </h3>
-                  <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-[#475467]">
+                  <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-slate-600">
                     {(finding.confidence.rationale.length > 0
                       ? finding.confidence.rationale
                       : [confidenceText]
@@ -377,10 +377,10 @@ export function FindingDetailsDrawer({
                 </div>
 
                 <div className="pt-3.5">
-                  <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#667085]">
+                  <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-ink-tertiary">
                     Limits of this conclusion
                   </h3>
-                  <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-[#475467]">
+                  <ul className="mt-2 space-y-1 text-[12.5px] leading-relaxed text-slate-600">
                     {(finding.limitations.length > 0
                       ? finding.limitations
                       : ["No additional evidence limitations recorded."]
@@ -401,43 +401,43 @@ export function FindingDetailsDrawer({
                 "inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
             }}
           >
-            <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#667085]">
+            <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-ink-tertiary">
               Evidence and provenance
             </h3>
             <dl className="mt-2.5 grid gap-x-4 gap-y-2.5 text-[12px] sm:grid-cols-2">
               <div>
-                <dt className="font-medium text-[#667085]">Finding ID</dt>
-                <dd className="mt-0.5 break-all font-mono text-[11px] text-[#172033]">
+                <dt className="font-medium text-ink-tertiary">Finding ID</dt>
+                <dd className="mt-0.5 break-all font-mono text-[11px] text-ink">
                   {finding.id}
                 </dd>
               </div>
               <div>
-                <dt className="font-medium text-[#667085]">Ranking method</dt>
-                <dd className="mt-0.5 font-mono text-[11px] text-[#172033]">
+                <dt className="font-medium text-ink-tertiary">Ranking method</dt>
+                <dd className="mt-0.5 font-mono text-[11px] text-ink">
                   {finding.priority.method_version}
                 </dd>
               </div>
               <div>
-                <dt className="font-medium text-[#667085]">Coverage run</dt>
-                <dd className="mt-0.5 text-[#172033]">
+                <dt className="font-medium text-ink-tertiary">Coverage run</dt>
+                <dd className="mt-0.5 text-ink">
                   {finding.coverage.run_id || "Not recorded"}
                 </dd>
               </div>
               <div>
-                <dt className="font-medium text-[#667085]">Lifecycle validity</dt>
-                <dd className="mt-0.5 text-[#172033]">
+                <dt className="font-medium text-ink-tertiary">Lifecycle validity</dt>
+                <dd className="mt-0.5 text-ink">
                   {finding.lifecycle.current_validity.replaceAll("_", " ")}
                 </dd>
               </div>
               <div>
-                <dt className="font-medium text-[#667085]">Detected</dt>
-                <dd className="mt-0.5 tabular-nums text-[#172033]">
+                <dt className="font-medium text-ink-tertiary">Detected</dt>
+                <dd className="mt-0.5 tabular-nums text-ink">
                   {dateTime(finding.detected_at)}
                 </dd>
               </div>
               <div>
-                <dt className="font-medium text-[#667085]">Last verified</dt>
-                <dd className="mt-0.5 tabular-nums text-[#172033]">
+                <dt className="font-medium text-ink-tertiary">Last verified</dt>
+                <dd className="mt-0.5 tabular-nums text-ink">
                   {dateTime(finding.last_verified_at)}
                 </dd>
               </div>
@@ -445,8 +445,8 @@ export function FindingDetailsDrawer({
 
             {!isPrimary && finding.limitations.length > 0 && (
               <div className="mt-3.5">
-                <p className="text-[12px] font-semibold text-[#172033]">Limitations</p>
-                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12.5px] text-[#475467]">
+                <p className="text-[12px] font-semibold text-ink">Limitations</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12.5px] text-slate-600">
                   {finding.limitations.map((item, idx) => (
                     <li key={idx}>{item}</li>
                   ))}
@@ -456,8 +456,8 @@ export function FindingDetailsDrawer({
 
             {finding.unknowns.length > 0 && (
               <div className="mt-3.5">
-                <p className="text-[12px] font-semibold text-[#172033]">Unknowns</p>
-                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12.5px] text-[#475467]">
+                <p className="text-[12px] font-semibold text-ink">Unknowns</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12.5px] text-slate-600">
                   {finding.unknowns.map((item, idx) => (
                     <li key={idx}>{item}</li>
                   ))}
@@ -467,10 +467,10 @@ export function FindingDetailsDrawer({
 
             {finding.evidence.references.length > 0 && (
               <div className="mt-3.5">
-                <p className="text-[12px] font-semibold text-[#172033]">Evidence references</p>
+                <p className="text-[12px] font-semibold text-ink">Evidence references</p>
                 <ul className="mt-1 space-y-0.5">
                   {finding.evidence.references.map((ref) => (
-                    <li key={ref.id} className="font-mono text-[11px] text-[#475467]">
+                    <li key={ref.id} className="font-mono text-[11px] text-slate-600">
                       {ref.source_type}: {ref.source_record_id}
                     </li>
                   ))}
@@ -479,7 +479,7 @@ export function FindingDetailsDrawer({
             )}
 
             {finding.evidence.duplicate_finding_ids.length > 0 && (
-              <p className="mt-3 text-[11px] text-[#667085]">
+              <p className="mt-3 text-[11px] text-ink-tertiary">
                 Deduplicated records retained: {finding.evidence.duplicate_finding_ids.join(", ")}
               </p>
             )}
@@ -496,7 +496,7 @@ export function FindingDetailsDrawer({
               cc.focus,
             )}
             style={{
-              background: "linear-gradient(135deg, #5146E5 0%, #3525B8 55%, #1F06AC 100%)",
+              background: palette.gradient.cta,
               boxShadow:
                 "0 10px 22px -10px rgba(31, 6, 172, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
             }}

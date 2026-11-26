@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { CommandCenterFailure } from "@/lib/commandCenterError";
+import { cc } from "./tokens";
 import {
   WELCOME_SUPPORTING_COPY,
   formatWelcomeGreeting,
@@ -48,36 +49,37 @@ export interface CommandCenterWelcomeSectionProps {
 }
 
 const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4438E8] focus-visible:ring-offset-2";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2";
 
 const CONNECTION_PILL_STYLES: Record<
   WelcomeConnectionTone,
   { pill: string; dot: string; appState: string; pulse?: boolean }
 > = {
   positive: {
-    pill: "border-[#ABEFC6] bg-[#ECFDF3] text-[#067647]",
-    dot: "bg-[#12B76A]",
+    // Text color flows through cc.positive so the tested literal is preserved.
+    pill: `border-success-line bg-success-soft ${cc.positive}`,
+    dot: "bg-success-bright",
     appState: "current",
   },
   progress: {
-    pill: "border-[#D4D3FA] bg-[#EEF0FF] text-[#4438E8]",
-    dot: "bg-[#4438E8]",
+    pill: "border-brand-line bg-brand-mist text-brand",
+    dot: "bg-brand",
     appState: "updating",
     pulse: true,
   },
   warning: {
-    pill: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]",
-    dot: "bg-[#D97706]",
+    pill: "border-warning-line bg-warning-soft text-warning",
+    dot: "bg-warning-strong",
     appState: "partial",
   },
   negative: {
-    pill: "border-[#FECACA] bg-[#FEF2F2] text-[#B42318]",
-    dot: "bg-[#DC2626]",
+    pill: "border-danger-line bg-danger-soft text-danger",
+    dot: "bg-danger-strong",
     appState: "unavailable",
   },
   neutral: {
-    pill: "border-[#E7E9EF] bg-[#F4F5F8] text-[#525866]",
-    dot: "bg-[#98A2B3]",
+    pill: "border-line bg-workspace text-ink-steel",
+    dot: "bg-ink-faint",
     appState: "empty",
   },
 };
@@ -191,7 +193,7 @@ function StoreSwitcherDropdown({
           type="button"
           aria-label={`Switch store, current store: ${activeLabel}`}
           className={cn(
-            "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-transparent text-[#707582] transition-colors hover:border-[#E7E9EF] hover:bg-[#F4F5F8] hover:text-[#17191F]",
+            "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-transparent text-ink-muted transition-colors hover:border-line hover:bg-workspace hover:text-ink",
             FOCUS_RING,
           )}
         >
@@ -201,9 +203,9 @@ function StoreSwitcherDropdown({
       <DropdownMenuContent
         align="end"
         sideOffset={6}
-        className="w-72 rounded-xl border border-[#E7E9EF] bg-white p-1.5 text-[#17191F] shadow-[0_12px_28px_rgba(17,19,24,0.1)]"
+        className="w-72 rounded-xl border border-line bg-white p-1.5 text-ink shadow-[0_12px_28px_rgba(17,19,24,0.1)]"
       >
-        <DropdownMenuLabel className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#707582]">
+        <DropdownMenuLabel className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
           Connected stores
         </DropdownMenuLabel>
         {stores.map((store) => {
@@ -224,13 +226,13 @@ function StoreSwitcherDropdown({
                 if (!isSelected) onSelectStore(store.id);
               }}
               className={cn(
-                "flex cursor-pointer items-center justify-between gap-2.5 rounded-lg px-2.5 py-2 text-xs focus:bg-[#F4F5F8] focus:text-[#17191F]",
-                isSelected && "bg-[#F4F3FE]",
+                "flex cursor-pointer items-center justify-between gap-2.5 rounded-lg px-2.5 py-2 text-xs focus:bg-workspace focus:text-ink",
+                isSelected && "bg-veil",
               )}
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="truncate font-medium text-[#17191F]">{name}</span>
+                  <span className="truncate font-medium text-ink">{name}</span>
                   {status && (
                     <span
                       aria-hidden="true"
@@ -242,19 +244,19 @@ function StoreSwitcherDropdown({
                   )}
                 </div>
                 {secondary && (
-                  <p className="mt-0.5 truncate text-[11px] text-[#707582]">{secondary}</p>
+                  <p className="mt-0.5 truncate text-[11px] text-ink-muted">{secondary}</p>
                 )}
               </div>
               {isSelected && (
-                <Check className="h-3.5 w-3.5 shrink-0 text-[#4438E8]" aria-hidden="true" />
+                <Check className="h-3.5 w-3.5 shrink-0 text-brand" aria-hidden="true" />
               )}
             </DropdownMenuItem>
           );
         })}
-        <DropdownMenuSeparator className="my-1.5 bg-[#E7E9EF]" />
+        <DropdownMenuSeparator className="my-1.5 bg-line" />
         <DropdownMenuItem
           onSelect={() => navigate("/dashboard/integrations")}
-          className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-[#4438E8] focus:bg-[#F4F3FE] focus:text-[#4438E8]"
+          className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-brand focus:bg-veil focus:text-brand"
         >
           <Settings2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>Manage stores in Integrations</span>
@@ -350,11 +352,11 @@ export function CommandCenterWelcomeSection({
         <div className="min-w-0 shrink-0">
           <h1
             id="command-center-welcome-heading"
-            className="text-[1.75rem] font-semibold leading-[1.18] tracking-[-0.03em] text-[#17191F] sm:text-[2rem]"
+            className="text-[1.75rem] font-semibold leading-[1.18] tracking-[-0.03em] text-ink sm:text-[2rem]"
           >
             {greeting.text}.
           </h1>
-          <p className="mt-1.5 text-sm leading-6 text-[#707582]">
+          <p className="mt-1.5 text-sm leading-6 text-ink-muted">
             {WELCOME_SUPPORTING_COPY}
           </p>
         </div>
@@ -363,23 +365,23 @@ export function CommandCenterWelcomeSection({
         <div
           role="region"
           aria-label="Connected store"
-          className="flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-[#E7E9EF] bg-white px-3.5 py-2.5 xl:flex-nowrap"
+          className="flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-white px-3.5 py-2.5 xl:flex-nowrap"
         >
           {/* Store identity */}
           <div className="flex min-w-0 max-w-full items-center gap-2">
             <span
               aria-hidden="true"
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#F4F5F8]"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-workspace"
             >
               {storeIdentity.platform === "shopify" ? (
                 <ShopifyBagIcon
                   className={cn(
                     "h-3.5 w-3.5",
-                    connection.isConfirmedConnected ? "text-[#5E8E3E]" : "text-[#707582]",
+                    connection.isConfirmedConnected ? "text-connected" : "text-ink-muted",
                   )}
                 />
               ) : (
-                <Store className="h-3.5 w-3.5 text-[#707582]" />
+                <Store className="h-3.5 w-3.5 text-ink-muted" />
               )}
             </span>
 
@@ -387,7 +389,7 @@ export function CommandCenterWelcomeSection({
               <>
                 <div
                   aria-hidden="true"
-                  className="h-3.5 w-32 max-w-full animate-pulse rounded bg-[#E7E9EF] motion-reduce:animate-none"
+                  className="h-3.5 w-32 max-w-full animate-pulse rounded bg-line motion-reduce:animate-none"
                 />
                 <span className="sr-only">Loading connected store details</span>
               </>
@@ -396,7 +398,7 @@ export function CommandCenterWelcomeSection({
                 title={storeDisplayTitle}
                 className={cn(
                   "max-w-[200px] truncate text-xs font-semibold sm:max-w-[220px] xl:max-w-[190px]",
-                  storeIdentity.hasStore ? "text-[#17191F]" : "text-[#707582]",
+                  storeIdentity.hasStore ? "text-ink" : "text-ink-muted",
                 )}
               >
                 {storeDisplayUrl}
@@ -419,21 +421,21 @@ export function CommandCenterWelcomeSection({
 
           <span
             aria-hidden="true"
-            className="hidden h-4 w-px shrink-0 bg-[#E7E9EF] sm:inline-block"
+            className="hidden h-4 w-px shrink-0 bg-line sm:inline-block"
           />
 
           {/* Last successful synchronization timestamp */}
           <span
             title={lastSynced.title ?? undefined}
-            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-[#707582] tabular-nums"
+            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-ink-muted tabular-nums"
           >
-            <Clock3 className="h-3.5 w-3.5 shrink-0 text-[#98A2B3]" aria-hidden="true" />
+            <Clock3 className="h-3.5 w-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
             <span>{lastSynced.label}</span>
           </span>
 
           <span
             aria-hidden="true"
-            className="hidden h-4 w-px shrink-0 bg-[#E7E9EF] sm:inline-block"
+            className="hidden h-4 w-px shrink-0 bg-line sm:inline-block"
           />
 
           {/* Real refresh action + honest completion feedback */}
@@ -441,14 +443,14 @@ export function CommandCenterWelcomeSection({
             {refreshFeedback === "succeeded" && (
               <span
                 role="status"
-                className="inline-flex items-center gap-1 text-xs font-medium text-[#067647]"
+                className="inline-flex items-center gap-1 text-xs font-medium text-success"
               >
                 <Check className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Refreshed</span>
               </span>
             )}
             {refreshFeedback === "failed" && (
-              <span role="status" className="text-xs font-medium text-[#B42318]">
+              <span role="status" className="text-xs font-medium text-danger">
                 Refresh failed
               </span>
             )}
@@ -460,7 +462,7 @@ export function CommandCenterWelcomeSection({
               aria-busy={refreshing}
               aria-label={refreshing ? "Refreshing…" : "Refresh briefing"}
               className={cn(
-                "inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-[#E7E9EF] bg-[#F8F9FB] px-2.5 py-1 text-xs font-medium text-[#17191F] transition-colors hover:border-[#D4D3FA] hover:bg-[#F4F3FE] hover:text-[#4438E8] disabled:cursor-not-allowed disabled:opacity-55",
+                "inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-subtle px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:border-brand-line hover:bg-veil hover:text-brand disabled:cursor-not-allowed disabled:opacity-55",
                 FOCUS_RING,
               )}
             >

@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type { SignalEvaluationCoverage, SignalEvaluationItem } from "./types";
+import { palette } from "./tokens";
 
 const EASE_OUT_EXPO: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -19,9 +20,9 @@ function signalVisual(item: SignalEvaluationItem) {
   switch (item.state) {
     case "verified":
       return {
-        dotColor: "#1F06AC",
+        dotColor: palette.brand.deeper,
         badgeLabel: "Verified",
-        badgeClass: "bg-[#EEEBFF] text-[#1F06AC]",
+        badgeClass: "bg-brand-mist text-brand-deeper",
         summary:
           item.finding_count > 1
             ? `${item.finding_count} active findings`
@@ -29,31 +30,31 @@ function signalVisual(item: SignalEvaluationItem) {
       };
     case "not_detected":
       return {
-        dotColor: "#12B76A",
+        dotColor: palette.success.bright,
         badgeLabel: "Clear",
-        badgeClass: "bg-[#ECFDF3] text-[#067647]",
+        badgeClass: "bg-success-soft text-success",
         summary: "No anomaly detected",
       };
     case "stale":
       return {
-        dotColor: "#DC6803",
+        dotColor: palette.signal.stale,
         badgeLabel: "Stale",
-        badgeClass: "bg-[#FFFAEB] text-[#93470E]",
+        badgeClass: "bg-warning-soft text-warning",
         summary: item.reason || "Data needs fresh sync",
       };
     case "evaluation_failed":
       return {
-        dotColor: "#D92D20",
+        dotColor: palette.signal.failed,
         badgeLabel: "Failed",
-        badgeClass: "bg-[#FEF2F2] text-[#B42318]",
+        badgeClass: "bg-danger-soft text-danger",
         summary: item.reason || "Check could not complete",
       };
     case "not_evaluated":
     default:
       return {
-        dotColor: "#98A2B3",
+        dotColor: palette.ink.faint,
         badgeLabel: "Pending",
-        badgeClass: "bg-[#F2F4F7] text-[#475467]",
+        badgeClass: "bg-wash text-slate-600",
         summary: item.reason || "Awaiting source coverage",
       };
   }
@@ -70,23 +71,23 @@ export function RecentSignalsPanel({ evaluation }: RecentSignalsPanelProps) {
   return (
     <section
       aria-label="Signal evaluation coverage"
-      className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[#E8ECF3] bg-white"
+      className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-line-soft bg-white"
       style={{
         boxShadow:
           "0 1px 2px rgba(12, 10, 29, 0.03), 0 12px 26px -22px rgba(12, 10, 29, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.96)",
       }}
     >
       {/* Header matching Landing Command Center visual */}
-      <header className="flex items-center justify-between gap-2 border-b border-[#EEF0F4] px-5 py-3.5">
-        <h3 className="text-[13.5px] font-semibold tracking-[-0.01em] text-[#172033]">
+      <header className="flex items-center justify-between gap-2 border-b border-line-soft px-5 py-3.5">
+        <h3 className="text-[13.5px] font-semibold tracking-[-0.01em] text-ink">
           Recent signals
         </h3>
-        <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-[#067647]">
+        <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-success">
           <span className="relative flex h-2 w-2 shrink-0 items-center justify-center">
             {!reducedMotion && (
               <motion.span
                 aria-hidden="true"
-                className="absolute inline-flex h-full w-full rounded-full bg-[#12B76A]"
+                className="absolute inline-flex h-full w-full rounded-full bg-success-bright"
                 animate={{ scale: [1, 2.2], opacity: [0.5, 0] }}
                 transition={{
                   duration: 2.4,
@@ -98,7 +99,7 @@ export function RecentSignalsPanel({ evaluation }: RecentSignalsPanelProps) {
             )}
             <span
               aria-hidden="true"
-              className="relative inline-flex h-2 w-2 rounded-full bg-[#12B76A]"
+              className="relative inline-flex h-2 w-2 rounded-full bg-success-bright"
             />
           </span>
           <span>Watching</span>
@@ -106,7 +107,7 @@ export function RecentSignalsPanel({ evaluation }: RecentSignalsPanelProps) {
       </header>
 
       {/* Clean signal rows (responsive grid for the full-width below layout) */}
-      <ul className="grid gap-px bg-[#F0F2F5] sm:grid-cols-2 xl:grid-cols-3">
+      <ul className="grid gap-px bg-wash sm:grid-cols-2 xl:grid-cols-3">
         {evaluation.signals.map((signal, idx) => {
           const visual = signalVisual(signal);
           return (
@@ -119,7 +120,7 @@ export function RecentSignalsPanel({ evaluation }: RecentSignalsPanelProps) {
                 delay: reducedMotion ? 0 : 0.08 + idx * 0.045,
                 ease: EASE_OUT_EXPO,
               }}
-              className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-start gap-3 bg-white px-5 py-3.5 transition-colors hover:bg-[#FAFBFD]"
+              className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-start gap-3 bg-white px-5 py-3.5 transition-colors hover:bg-subtle"
             >
               <span
                 aria-hidden="true"
@@ -127,10 +128,10 @@ export function RecentSignalsPanel({ evaluation }: RecentSignalsPanelProps) {
                 style={{ backgroundColor: visual.dotColor }}
               />
               <div className="min-w-0">
-                <p className="text-[13px] font-semibold leading-[1.35] text-[#172033]">
+                <p className="text-[13px] font-semibold leading-[1.35] text-ink">
                   {signal.label}
                 </p>
-                <p className="mt-0.5 text-[11.5px] leading-4 text-[#667085]">
+                <p className="mt-0.5 text-[11.5px] leading-4 text-ink-tertiary">
                   {visual.summary}
                   {evaluatedAgo ? ` · ${evaluatedAgo}` : ""}
                 </p>
@@ -149,7 +150,7 @@ export function RecentSignalsPanel({ evaluation }: RecentSignalsPanelProps) {
       </ul>
 
       {/* Quiet coverage footer */}
-      <div className="mt-auto flex items-center justify-between gap-2 border-t border-[#EEF0F4] bg-[#FCFCFD] px-5 py-2.5 text-[11px] tabular-nums text-[#667085]">
+      <div className="mt-auto flex items-center justify-between gap-2 border-t border-line-soft bg-subtle px-5 py-2.5 text-[11px] tabular-nums text-ink-tertiary">
         <span>
           {evaluation.summary.evaluated_count} of {evaluation.summary.total_signals} signals
           evaluated
@@ -158,7 +159,7 @@ export function RecentSignalsPanel({ evaluation }: RecentSignalsPanelProps) {
           evaluation.summary.failed_count +
           evaluation.summary.stale_count >
           0 && (
-          <span className="font-medium text-[#475467]">
+          <span className="font-medium text-slate-600">
             {evaluation.summary.not_evaluated_count +
               evaluation.summary.failed_count +
               evaluation.summary.stale_count}{" "}

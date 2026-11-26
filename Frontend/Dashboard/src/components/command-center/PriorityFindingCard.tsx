@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { Sheet, SheetTrigger } from "@/components/ui/sheet";
 import { FindingDetailsDrawer } from "./FindingDetailsDrawer";
 import { StateBadge } from "./StateBadge";
-import { cc } from "./tokens";
+import { cc, palette } from "./tokens";
 import {
   categoryLabelFor,
   confidenceLabelFor,
@@ -119,7 +119,7 @@ function ImpactMeter({ level, severity }: { level: number; severity: SeverityMet
             style={
               bar <= level
                 ? { background: `linear-gradient(90deg, ${severity.base}, ${severity.deep})` }
-                : { backgroundColor: "#E2E4EC" }
+                : { backgroundColor: palette.line.DEFAULT }
             }
           />
         ))}
@@ -222,7 +222,7 @@ export function PriorityFindingCard({
                 <span
                   className={cn(
                     "inline-flex items-center gap-1 font-semibold",
-                    verified ? "text-teal-800" : "text-[#9C2B25]",
+                    verified ? "text-teal-800" : "text-danger-limited",
                   )}
                 >
                   {verified ? (
@@ -273,7 +273,7 @@ export function PriorityFindingCard({
                     </span>
                   </span>
                   {supportsTieBreak && (
-                    <span className="inline-flex items-center gap-1 font-medium text-[#1F06AC]">
+                    <span className="inline-flex items-center gap-1 font-medium text-brand-deeper">
                       <span aria-hidden="true" className="h-1 w-1 rounded-full bg-current" />
                       Tiebreak applied
                     </span>
@@ -308,7 +308,7 @@ export function PriorityFindingCard({
                     )}
                     style={{
                       background:
-                        "linear-gradient(135deg, #5146E5 0%, #3525B8 55%, #1F06AC 100%)",
+                        palette.gradient.cta,
                       boxShadow:
                         "0 6px 18px -4px rgba(31, 6, 172, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
                     }}

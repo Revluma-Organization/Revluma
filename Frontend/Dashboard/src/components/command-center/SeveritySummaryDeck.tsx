@@ -1,7 +1,7 @@
 import { type MouseEvent, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { cc } from "./tokens";
+import { cc, palette } from "./tokens";
 
 export type SeverityFilterTier = "all" | "critical_high" | "medium" | "low";
 
@@ -309,11 +309,11 @@ function SeverityTierCard({
                   aria-hidden="true"
                   className="relative inline-flex h-2 w-2 rounded-full"
                   style={{
-                    backgroundColor: hasItems ? tier.dotColor : "#C9C8D4",
+                    backgroundColor: hasItems ? tier.dotColor : palette.deck.dotEmpty,
                   }}
                 />
               </span>
-              <span className="text-[12.5px] font-semibold tracking-[-0.01em] text-[#0C0A1D]">
+              <span className="text-[12.5px] font-semibold tracking-[-0.01em] text-ink">
                 {tier.label}
               </span>
             </div>
@@ -322,10 +322,10 @@ function SeverityTierCard({
           {/* Raised landing-page disc housing bespoke animated telemetry glyph */}
           <span
             aria-hidden="true"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#EAE8F2] transition-transform duration-300 group-hover:scale-[1.04]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-brand-line transition-transform duration-300 group-hover:scale-[1.04]"
             style={{
               background:
-                "radial-gradient(circle at 30% 24%, #FFFFFF 0%, #FFFFFF 48%, #F5F4F9 84%, #ECEBF3 100%)",
+                palette.gradient.orb,
               boxShadow:
                 "0 4px 10px -4px rgba(12, 10, 29, 0.14), inset 0 1px 0 rgba(255, 255, 255, 1)",
             }}
@@ -352,7 +352,7 @@ function SeverityTierCard({
             }}
             className={cn(
               "text-[2rem] font-semibold leading-none tracking-[-0.04em] tabular-nums",
-              hasItems ? "text-[#0C0A1D]" : "text-[#9A98A8]",
+              hasItems ? "text-ink" : "text-ink-faint",
             )}
           >
             {tier.count}
@@ -360,20 +360,20 @@ function SeverityTierCard({
 
           <div className="flex items-center gap-1.5 pb-0.5">
             {isSelected ? (
-              <span className="inline-flex items-center rounded-full bg-[#EEEBFF] px-2 py-0.5 text-[10.5px] font-semibold tracking-[0.01em] text-[#2B13CF]">
+              <span className="inline-flex items-center rounded-full bg-brand-mist px-2 py-0.5 text-[10.5px] font-semibold tracking-[0.01em] text-brand-band">
                 Filtered
               </span>
             ) : canFilter && hasItems ? (
               <span
                 className={cn(
-                  "text-[11px] font-medium text-[#6E6C7A] transition-all duration-200",
-                  hovered ? "translate-x-0 text-[#2B13CF] opacity-100" : "opacity-75",
+                  "text-[11px] font-medium text-ink-muted transition-all duration-200",
+                  hovered ? "translate-x-0 text-brand-band opacity-100" : "opacity-75",
                 )}
               >
                 {totalCount > 0 ? `${tier.count} of ${totalCount}` : ""}
               </span>
             ) : (
-              <span className="font-mono text-[10.5px] tabular-nums text-[#B4B2C0]">
+              <span className="font-mono text-[10.5px] tabular-nums text-deck-ghost">
                 {tier.indexLabel}
               </span>
             )}
@@ -382,11 +382,11 @@ function SeverityTierCard({
 
         {/* Bottom: calm editorial caption + animated proportional hairline track */}
         <div className="space-y-2.5">
-          <p className="text-[11.5px] leading-4 text-[#6E6C7A]">{tier.note}</p>
+          <p className="text-[11.5px] leading-4 text-ink-muted">{tier.note}</p>
 
           <div
             aria-hidden="true"
-            className="h-[2px] w-full overflow-hidden rounded-full bg-[#EFEEF5]"
+            className="h-[2px] w-full overflow-hidden rounded-full bg-wash"
           >
             <motion.div
               className="h-full origin-left rounded-full"
@@ -409,7 +409,7 @@ function SeverityTierCard({
     "group relative min-w-0 overflow-hidden rounded-2xl border px-4 py-4 text-left transition-[border-color,box-shadow,background-color] duration-200",
     isSelected
       ? tier.activeSurfaceClass
-      : "border-[#E6E5EE] bg-white hover:border-[#CFCBF4]",
+      : "border-line-soft bg-white hover:border-brand-line",
     canFilter && cc.focus,
   );
 
@@ -476,14 +476,14 @@ export function SeveritySummaryDeck({
       label: "Critical & High",
       note: "Requires immediate attention",
       count: counts.criticalHigh,
-      dotColor: "#E5484D",
+      dotColor: palette.severity.critical.base,
       pulseColor: "rgba(229, 72, 77, 0.45)",
-      meterColor: "#E5484D",
+      meterColor: palette.severity.critical.base,
       spotlightRgba: "rgba(229, 72, 77, 0.065)",
-      activeBorderClass: "border-[#E5484D]",
-      activeSurfaceClass: "border-transparent bg-[#FFF9F9]",
-      glyphColor: "#D9383E",
-      mutedGlyphColor: "#A5A3B2",
+      activeBorderClass: "border-severity-critical",
+      activeSurfaceClass: "border-transparent bg-danger-soft",
+      glyphColor: palette.deck.criticalGlyph,
+      mutedGlyphColor: palette.deck.glyphMuted,
     },
     {
       id: "medium",
@@ -491,14 +491,14 @@ export function SeveritySummaryDeck({
       label: "Medium",
       note: "Should be reviewed soon",
       count: counts.medium,
-      dotColor: "#D99116",
+      dotColor: palette.warning.strong,
       pulseColor: "rgba(217, 145, 22, 0.4)",
-      meterColor: "#E5A126",
+      meterColor: palette.severity.medium.base,
       spotlightRgba: "rgba(229, 161, 38, 0.07)",
-      activeBorderClass: "border-[#D99116]",
-      activeSurfaceClass: "border-transparent bg-[#FFFDF7]",
-      glyphColor: "#B47409",
-      mutedGlyphColor: "#A5A3B2",
+      activeBorderClass: "border-warning-strong",
+      activeSurfaceClass: "border-transparent bg-warning-soft",
+      glyphColor: palette.deck.mediumGlyph,
+      mutedGlyphColor: palette.deck.glyphMuted,
     },
     {
       id: "low",
@@ -506,14 +506,14 @@ export function SeveritySummaryDeck({
       label: "Low & Watch",
       note: "Early signal to monitor",
       count: counts.low,
-      dotColor: "#2B13CF",
+      dotColor: palette.brand.band,
       pulseColor: "rgba(43, 19, 207, 0.35)",
-      meterColor: "#4438E8",
+      meterColor: palette.brand.DEFAULT,
       spotlightRgba: "rgba(68, 56, 232, 0.075)",
-      activeBorderClass: "border-[#2B13CF]",
-      activeSurfaceClass: "border-transparent bg-[#F8F7FF]",
-      glyphColor: "#2B13CF",
-      mutedGlyphColor: "#A5A3B2",
+      activeBorderClass: "border-brand-band",
+      activeSurfaceClass: "border-transparent bg-veil",
+      glyphColor: palette.brand.band,
+      mutedGlyphColor: palette.deck.glyphMuted,
     },
   ];
 

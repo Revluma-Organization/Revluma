@@ -35,31 +35,31 @@ export interface OperationalBriefingSectionProps {
 }
 
 const TONE_DOT: Record<OperationalBriefingTone, string> = {
-  positive: "bg-[#12B76A]",
-  progress: "bg-[#4438E8]",
-  attention: "bg-[#D97706]",
-  negative: "bg-[#DC2626]",
-  neutral: "bg-[#98A2B3]",
+  positive: "bg-success-bright",
+  progress: "bg-brand",
+  attention: "bg-warning-strong",
+  negative: "bg-danger-strong",
+  neutral: "bg-ink-faint",
 };
 
 const TONE_TEXT: Record<OperationalBriefingTone, string> = {
-  positive: "text-[#067647]",
-  progress: "text-[#4438E8]",
-  attention: "text-[#92400E]",
-  negative: "text-[#B42318]",
-  neutral: "text-[#707582]",
+  positive: "text-success",
+  progress: "text-brand",
+  attention: "text-warning",
+  negative: "text-danger",
+  neutral: "text-ink-muted",
 };
 
 const LIFECYCLE_BADGE: Record<ResolvedDevelopmentEntry["lifecycle"], string> = {
-  new: "border-[#D4D3FA] bg-[#EEF0FF] text-[#4438E8]",
-  ongoing: "border-[#E7E9EF] bg-[#F4F5F8] text-[#525866]",
-  resolved: "border-[#ABEFC6] bg-[#ECFDF3] text-[#067647]",
+  new: "border-brand-line bg-brand-mist text-brand",
+  ongoing: "border-line bg-workspace text-ink-steel",
+  resolved: "border-success-line bg-success-soft text-success",
 };
 
 const LIFECYCLE_DOT: Record<ResolvedDevelopmentEntry["lifecycle"], string> = {
-  new: "bg-[#4438E8]",
-  ongoing: "bg-[#98A2B3]",
-  resolved: "bg-[#12B76A]",
+  new: "bg-brand",
+  ongoing: "bg-ink-faint",
+  resolved: "bg-success-bright",
 };
 
 const REFRESH_FEEDBACK_MS = 4_000;
@@ -241,10 +241,10 @@ export function OperationalBriefingSection({
         <div className="px-5 py-6 sm:px-7 sm:py-7">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#4438E8]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand">
                 Operational briefing
               </p>
-              <p className="mt-1 text-xs text-[#707582]">
+              <p className="mt-1 text-xs text-ink-muted">
                 Business overview · {context.reportingPeriodLabel}
               </p>
             </div>
@@ -264,7 +264,7 @@ export function OperationalBriefingSection({
                   />
                   <span>{assessment.label}</span>
                 </span>
-                <span aria-hidden="true" className="text-[#D0D5DD]">
+                <span aria-hidden="true" className="text-ink-ghost">
                   ·
                 </span>
                 <StateBadge
@@ -273,14 +273,14 @@ export function OperationalBriefingSection({
                 />
               </div>
 
-              <span aria-hidden="true" className="hidden text-[#D0D5DD] sm:inline">
+              <span aria-hidden="true" className="hidden text-ink-ghost sm:inline">
                 |
               </span>
 
               {/* Authoritative briefing generation time (distinct from sync time) */}
               <span
                 title={timestamp.exactTitle ?? undefined}
-                className="text-[#707582] tabular-nums"
+                className="text-ink-muted tabular-nums"
               >
                 {timestamp.label}
               </span>
@@ -290,14 +290,14 @@ export function OperationalBriefingSection({
                   {refreshFeedback === "succeeded" && (
                     <span
                       role="status"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-[#067647]"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-success"
                     >
                       <Check className="h-3 w-3" aria-hidden="true" />
                       <span>Updated</span>
                     </span>
                   )}
                   {refreshFeedback === "failed" && (
-                    <span role="status" className="text-xs font-medium text-[#B42318]">
+                    <span role="status" className="text-xs font-medium text-danger">
                       Update failed
                     </span>
                   )}
@@ -310,7 +310,7 @@ export function OperationalBriefingSection({
                       refreshing ? "Updating operational briefing…" : "Update operational briefing"
                     }
                     className={cn(
-                      "inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-[#707582] transition-colors hover:bg-[#F4F5F8] hover:text-[#17191F] disabled:cursor-not-allowed disabled:opacity-55",
+                      "inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-workspace hover:text-ink disabled:cursor-not-allowed disabled:opacity-55",
                       cc.focus,
                     )}
                   >
@@ -332,15 +332,15 @@ export function OperationalBriefingSection({
           <div className="mt-5 max-w-3xl">
             <h2
               id="operational-briefing-heading"
-              className="text-[1.3rem] font-semibold leading-[1.28] tracking-[-0.025em] text-[#17191F] sm:text-[1.45rem]"
+              className="text-[1.3rem] font-semibold leading-[1.28] tracking-[-0.025em] text-ink sm:text-[1.45rem]"
             >
               {assessment.headline}
             </h2>
-            <p className="mt-2.5 text-sm leading-6 text-[#343844]">
+            <p className="mt-2.5 text-sm leading-6 text-ink-soft">
               {assessment.summary}
             </p>
             {assessment.noFindingsNote && (
-              <p className="mt-2 text-xs leading-5 text-[#707582]">
+              <p className="mt-2 text-xs leading-5 text-ink-muted">
                 {assessment.noFindingsNote}
               </p>
             )}
@@ -352,7 +352,7 @@ export function OperationalBriefingSection({
                   aria-expanded={expandedOverview}
                   onClick={() => setExpandedOverview((open) => !open)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 text-xs font-semibold text-[#4438E8] transition-colors hover:text-[#372CD1]",
+                    "inline-flex items-center gap-1.5 text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
                     cc.focus,
                   )}
                 >
@@ -368,16 +368,16 @@ export function OperationalBriefingSection({
                   </span>
                 </button>
                 {expandedOverview && (
-                  <div className={cn("mt-3 space-y-2 p-3.5 text-xs leading-5 text-[#343844]", cc.surfaceSubtle)}>
+                  <div className={cn("mt-3 space-y-2 p-3.5 text-xs leading-5 text-ink-soft", cc.surfaceSubtle)}>
                     {data.briefing.observation && (
                       <p>
-                        <span className="font-semibold text-[#17191F]">Observed evidence: </span>
+                        <span className="font-semibold text-ink">Observed evidence: </span>
                         {data.briefing.observation}
                       </p>
                     )}
                     {data.briefing.implication && (
                       <p>
-                        <span className="font-semibold text-[#17191F]">Operational context: </span>
+                        <span className="font-semibold text-ink">Operational context: </span>
                         {data.briefing.implication}
                       </p>
                     )}
@@ -393,7 +393,7 @@ export function OperationalBriefingSection({
                 <a
                   href={assessment.primaryAction.href}
                   className={cn(
-                    "inline-flex min-h-9 items-center gap-1.5 rounded-md text-xs font-semibold text-[#4438E8] transition-colors hover:text-[#372CD1]",
+                    "inline-flex min-h-9 items-center gap-1.5 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
                     cc.focus,
                   )}
                 >
@@ -405,7 +405,7 @@ export function OperationalBriefingSection({
                   type="button"
                   onClick={() => openRoute(assessment.primaryAction!.href)}
                   className={cn(
-                    "inline-flex min-h-9 items-center gap-1.5 rounded-md text-xs font-semibold text-[#4438E8] transition-colors hover:text-[#372CD1]",
+                    "inline-flex min-h-9 items-center gap-1.5 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
                     cc.focus,
                   )}
                 >
@@ -426,23 +426,23 @@ export function OperationalBriefingSection({
             <div>
               <h3
                 id="briefing-developments-heading"
-                className="text-sm font-semibold text-[#17191F]"
+                className="text-sm font-semibold text-ink"
               >
                 Recent developments
               </h3>
-              <p className="mt-0.5 text-xs text-[#707582]">
+              <p className="mt-0.5 text-xs text-ink-muted">
                 Meaningful changes and developments across your business.
               </p>
             </div>
             {context.comparisonPeriodLabel && (
-              <span className="text-[11px] text-[#707582]">
+              <span className="text-[11px] text-ink-muted">
                 Compared with {context.comparisonPeriodLabel.toLowerCase()}
               </span>
             )}
           </div>
 
           {developments.items.length > 0 ? (
-            <ol className="mt-4 space-y-4 border-l border-[#E7E9EF] pl-5">
+            <ol className="mt-4 space-y-4 border-l border-line pl-5">
               {developments.items.map((entry) => (
                 <li key={entry.id} className="relative">
                   <span
@@ -454,7 +454,7 @@ export function OperationalBriefingSection({
                   />
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium text-[#17191F]">{entry.title}</p>
+                      <p className="text-sm font-medium text-ink">{entry.title}</p>
                       <span
                         className={cn(
                           "inline-flex items-center rounded-full border px-2 py-px text-[11px] font-medium",
@@ -466,12 +466,12 @@ export function OperationalBriefingSection({
                     </div>
                     <span
                       title={entry.exactTimeTitle ?? undefined}
-                      className="shrink-0 text-xs text-[#707582] tabular-nums"
+                      className="shrink-0 text-xs text-ink-muted tabular-nums"
                     >
                       {entry.timeLabel}
                     </span>
                   </div>
-                  <p className="mt-1 max-w-3xl text-xs leading-5 text-[#343844]">
+                  <p className="mt-1 max-w-3xl text-xs leading-5 text-ink-soft">
                     {entry.explanation}
                   </p>
                   {entry.route && entry.actionLabel && (
@@ -479,7 +479,7 @@ export function OperationalBriefingSection({
                       type="button"
                       onClick={() => openRoute(entry.route!)}
                       className={cn(
-                        "mt-1.5 inline-flex min-h-8 items-center gap-1 rounded-md text-xs font-medium text-[#4438E8] transition-colors hover:text-[#372CD1]",
+                        "mt-1.5 inline-flex min-h-8 items-center gap-1 rounded-md text-xs font-medium text-brand transition-colors hover:text-brand-strong",
                         cc.focus,
                       )}
                     >
@@ -491,12 +491,12 @@ export function OperationalBriefingSection({
               ))}
             </ol>
           ) : (
-            <div className="mt-3.5 rounded-xl border border-[#E7E9EF] bg-[#FAFBFD] px-4 py-3.5">
-              <p className="text-sm font-medium text-[#17191F]">
+            <div className="mt-3.5 rounded-xl border border-line bg-subtle px-4 py-3.5">
+              <p className="text-sm font-medium text-ink">
                 {developments.emptyHeadline}
               </p>
               {developments.emptyExplanation && (
-                <p className="mt-1 text-xs leading-5 text-[#707582]">
+                <p className="mt-1 text-xs leading-5 text-ink-muted">
                   {developments.emptyExplanation}
                 </p>
               )}
@@ -513,25 +513,25 @@ export function OperationalBriefingSection({
             <div>
               <h3
                 id="briefing-featured-heading"
-                className="text-sm font-semibold text-[#17191F]"
+                className="text-sm font-semibold text-ink"
               >
                 Areas worth investigating
               </h3>
-              <p className="mt-0.5 text-xs text-[#707582]">
+              <p className="mt-0.5 text-xs text-ink-muted">
                 A closer look · Signals and hypotheses separated from established causes.
               </p>
             </div>
           </div>
 
           {featured.status === "qualified" && featured.item ? (
-            <article className="mt-3.5 rounded-xl border border-[#D4D3FA] border-l-[3px] border-l-[#4438E8] bg-[#F8F8FE] p-5">
+            <article className="mt-3.5 rounded-xl border border-brand-line border-l-[3px] border-l-brand bg-veil p-5">
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
                     featured.item.verification_status === "verified"
-                      ? "border-[#ABEFC6] bg-[#ECFDF3] text-[#067647]"
-                      : "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]",
+                      ? "border-success-line bg-success-soft text-success"
+                      : "border-warning-line bg-warning-soft text-warning",
                   )}
                 >
                   <span
@@ -539,37 +539,37 @@ export function OperationalBriefingSection({
                     className={cn(
                       "h-1.5 w-1.5 rounded-full",
                       featured.item.verification_status === "verified"
-                        ? "bg-[#12B76A]"
-                        : "bg-[#D97706]",
+                        ? "bg-success-bright"
+                        : "bg-warning-strong",
                     )}
                   />
                   {featured.item.verification_status === "verified"
                     ? "Verified finding"
                     : "Hypothesis"}
                 </span>
-                <span className="text-[11px] font-medium text-[#707582]">
+                <span className="text-[11px] font-medium text-ink-muted">
                   {featured.item.is_new ? "New discovery" : "Ongoing discovery"}
                 </span>
               </div>
 
-              <h4 className="mt-3 text-base font-semibold leading-snug tracking-[-0.015em] text-[#17191F]">
+              <h4 className="mt-3 text-base font-semibold leading-snug tracking-[-0.015em] text-ink">
                 {featured.item.title}
               </h4>
 
-              <p className="mt-1.5 max-w-3xl text-sm leading-6 text-[#343844]">
+              <p className="mt-1.5 max-w-3xl text-sm leading-6 text-ink-soft">
                 {featured.item.explanation}
               </p>
 
               {featured.item.why_it_matters && (
-                <p className="mt-2 max-w-3xl text-xs leading-5 text-[#707582]">
-                  <span className="font-semibold text-[#17191F]">Why it matters: </span>
+                <p className="mt-2 max-w-3xl text-xs leading-5 text-ink-muted">
+                  <span className="font-semibold text-ink">Why it matters: </span>
                   {featured.item.why_it_matters}
                 </p>
               )}
 
-              <div className="mt-4 flex flex-col gap-3 border-t border-[#E4E3FA] pt-3.5 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-[#707582]">
-                  <span className="font-semibold text-[#17191F]">Supporting evidence: </span>
+              <div className="mt-4 flex flex-col gap-3 border-t border-brand-mist pt-3.5 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-ink-muted">
+                  <span className="font-semibold text-ink">Supporting evidence: </span>
                   {featured.item.evidence_summary}
                 </p>
 
@@ -577,7 +577,7 @@ export function OperationalBriefingSection({
                   type="button"
                   onClick={() => openRoute(featured.item!.action_route)}
                   className={cn(
-                    "inline-flex min-h-9 shrink-0 items-center gap-1.5 self-start rounded-md text-xs font-semibold text-[#4438E8] transition-colors hover:text-[#372CD1] sm:self-auto",
+                    "inline-flex min-h-9 shrink-0 items-center gap-1.5 self-start rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong sm:self-auto",
                     cc.focus,
                   )}
                 >
@@ -589,36 +589,36 @@ export function OperationalBriefingSection({
           ) : featured.empty ? (
             <div
               data-featured-empty-state={featured.empty.state}
-              className="mt-3.5 rounded-xl border border-[#E7E9EF] bg-[#FAFBFD] p-4 sm:p-5"
+              className="mt-3.5 rounded-xl border border-line bg-subtle p-4 sm:p-5"
             >
               <div className="flex items-start gap-3">
                 <span
                   aria-hidden="true"
-                  className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-[#707582] ring-1 ring-[#E7E9EF]"
+                  className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-ink-muted ring-1 ring-line"
                 >
                   {featured.empty.state === "no_new_findings" ? (
-                    <CheckCircle2 className="h-3.5 w-3.5 text-[#525866]" />
+                    <CheckCircle2 className="h-3.5 w-3.5 text-ink-steel" />
                   ) : featured.empty.state === "investigation_running" ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-[#4438E8] motion-reduce:animate-none" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-brand motion-reduce:animate-none" />
                   ) : featured.empty.state === "generation_failed" ? (
-                    <AlertCircle className="h-3.5 w-3.5 text-[#B42318]" />
+                    <AlertCircle className="h-3.5 w-3.5 text-danger" />
                   ) : (
-                    <Info className="h-3.5 w-3.5 text-[#525866]" />
+                    <Info className="h-3.5 w-3.5 text-ink-steel" />
                   )}
                 </span>
 
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-[#707582]">
+                  <p className="text-xs font-medium text-ink-muted">
                     {featured.empty.statusLabel}
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-[#17191F]">
+                  <p className="mt-1 text-sm font-semibold text-ink">
                     {featured.empty.headline}
                   </p>
-                  <p className="mt-1 max-w-2xl text-xs leading-5 text-[#343844]">
+                  <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-soft">
                     {featured.empty.explanation}
                   </p>
                   {featured.empty.clarification && (
-                    <p className="mt-1.5 max-w-2xl text-xs leading-5 text-[#707582]">
+                    <p className="mt-1.5 max-w-2xl text-xs leading-5 text-ink-muted">
                       {featured.empty.clarification}
                     </p>
                   )}
@@ -629,7 +629,7 @@ export function OperationalBriefingSection({
                       onClick={handleRefresh}
                       disabled={refreshing}
                       className={cn(
-                        "mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[#D9DCE5] bg-white px-3 text-xs font-semibold text-[#17191F] transition-colors hover:bg-[#F4F5F8] disabled:opacity-55",
+                        "mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-line-strong bg-white px-3 text-xs font-semibold text-ink transition-colors hover:bg-workspace disabled:opacity-55",
                         cc.focus,
                       )}
                     >
@@ -649,7 +649,7 @@ export function OperationalBriefingSection({
                       type="button"
                       onClick={() => openRoute(featured.empty!.actionHref!)}
                       className={cn(
-                        "mt-2.5 inline-flex min-h-8 items-center gap-1.5 rounded-md text-xs font-semibold text-[#4438E8] transition-colors hover:text-[#372CD1]",
+                        "mt-2.5 inline-flex min-h-8 items-center gap-1.5 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
                         cc.focus,
                       )}
                     >
@@ -674,12 +674,12 @@ export function OperationalBriefingSection({
         >
           <div className={cn("flex items-start justify-between gap-3 border-b px-5 py-4", cc.divider)}>
             <div className="flex min-w-0 items-center gap-2">
-              <Database className="h-4 w-4 shrink-0 text-[#4438E8]" aria-hidden="true" />
+              <Database className="h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
               <div className="min-w-0">
-                <h3 id="evidence-heading" className="text-sm font-semibold text-[#17191F]">
+                <h3 id="evidence-heading" className="text-sm font-semibold text-ink">
                   Evidence &amp; data coverage
                 </h3>
-                <p className="mt-0.5 text-[11px] text-[#707582]">{context.summaryPreview}</p>
+                <p className="mt-0.5 text-[11px] text-ink-muted">{context.summaryPreview}</p>
               </div>
             </div>
             <StateBadge state={evidencePanelAppState} label={evidencePanelLabel} />
@@ -688,16 +688,16 @@ export function OperationalBriefingSection({
           <div className="space-y-4 px-5 py-4 text-xs">
             {/* Available data categories & per-source freshness */}
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#707582]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                 Evidence categories examined
               </p>
               {visibleCategories.length > 0 ? (
                 <>
-                  <ul className="mt-2.5 divide-y divide-[#E7E9EF]">
+                  <ul className="mt-2.5 divide-y divide-line">
                     {visibleCategories.map((cat) => (
                       <li key={cat.id} className="py-2.5 first:pt-0 last:pb-0">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-medium text-[#17191F]">{cat.name}</span>
+                          <span className="font-medium text-ink">{cat.name}</span>
                           <span
                             className={cn(
                               "inline-flex items-center gap-1.5 font-medium",
@@ -711,12 +711,12 @@ export function OperationalBriefingSection({
                             {cat.statusLabel}
                           </span>
                         </div>
-                        <p className="mt-0.5 text-[11px] text-[#707582] tabular-nums">
+                        <p className="mt-0.5 text-[11px] text-ink-muted tabular-nums">
                           {cat.freshnessDetail}
                           {cat.coverageDetail ? ` · ${cat.coverageDetail}` : ""}
                         </p>
                         {cat.merchantNote && (
-                          <p className="mt-1 text-[11px] leading-4 text-[#343844]">
+                          <p className="mt-1 text-[11px] leading-4 text-ink-soft">
                             {cat.merchantNote}
                           </p>
                         )}
@@ -729,7 +729,7 @@ export function OperationalBriefingSection({
                       onClick={() => setShowAllEvidenceCategories((prev) => !prev)}
                       aria-expanded={showAllEvidenceCategories}
                       className={cn(
-                        "mt-3 inline-flex items-center gap-1 rounded-md text-xs font-semibold text-[#4438E8] transition-colors hover:text-[#372CD1]",
+                        "mt-3 inline-flex items-center gap-1 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
                         cc.focus,
                       )}
                     >
@@ -749,7 +749,7 @@ export function OperationalBriefingSection({
                   )}
                 </>
               ) : (
-                <p className="mt-2 text-[#707582]">
+                <p className="mt-2 text-ink-muted">
                   No verified store evidence sources are recorded for this briefing yet.
                 </p>
               )}
@@ -758,13 +758,13 @@ export function OperationalBriefingSection({
             {/* Limitations & Missing Evidence */}
             {context.merchantLimitations.length > 0 && (
               <div className={cn("border-t pt-3.5", cc.divider)}>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#707582]">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                   Limitations and missing evidence
                 </p>
-                <ul className="mt-2 space-y-1.5 leading-5 text-[#343844]">
+                <ul className="mt-2 space-y-1.5 leading-5 text-ink-soft">
                   {context.merchantLimitations.map((note) => (
                     <li key={note} className="flex gap-2">
-                      <span aria-hidden="true" className="text-[#98A2B3]">
+                      <span aria-hidden="true" className="text-ink-faint">
                         •
                       </span>
                       <span>{note}</span>
@@ -779,7 +779,7 @@ export function OperationalBriefingSection({
               <details className="group">
                 <summary
                   className={cn(
-                    "inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md py-0.5 text-xs font-semibold text-[#4438E8] transition-colors hover:text-[#372CD1] [&::-webkit-details-marker]:hidden",
+                    "inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md py-0.5 text-xs font-semibold text-brand transition-colors hover:text-brand-strong [&::-webkit-details-marker]:hidden",
                     cc.focus,
                   )}
                 >
@@ -791,44 +791,44 @@ export function OperationalBriefingSection({
                 </summary>
 
                 <div className="mt-3 space-y-3.5 text-xs">
-                  <dl className="space-y-1.5 text-[#343844]">
+                  <dl className="space-y-1.5 text-ink-soft">
                     <div className="flex flex-wrap justify-between gap-2">
-                      <dt className="text-[#707582]">Reporting period</dt>
-                      <dd className="font-medium text-[#17191F]">
+                      <dt className="text-ink-muted">Reporting period</dt>
+                      <dd className="font-medium text-ink">
                         {context.reportingPeriodLabel}
                       </dd>
                     </div>
                     {context.comparisonPeriodLabel && (
                       <div className="flex flex-wrap justify-between gap-2">
-                        <dt className="text-[#707582]">Comparison period</dt>
-                        <dd className="font-medium text-[#17191F]">
+                        <dt className="text-ink-muted">Comparison period</dt>
+                        <dd className="font-medium text-ink">
                           {context.comparisonPeriodLabel}
                         </dd>
                       </div>
                     )}
                     <div className="flex flex-wrap justify-between gap-2">
-                      <dt className="text-[#707582]">Store timezone</dt>
-                      <dd className="font-medium text-[#17191F]">{context.timezone}</dd>
+                      <dt className="text-ink-muted">Store timezone</dt>
+                      <dd className="font-medium text-ink">{context.timezone}</dd>
                     </div>
                     {timestamp.exactTitle && (
                       <div className="flex flex-wrap justify-between gap-2">
-                        <dt className="text-[#707582]">Briefing generated</dt>
-                        <dd className="font-medium text-[#17191F] tabular-nums">
+                        <dt className="text-ink-muted">Briefing generated</dt>
+                        <dd className="font-medium text-ink tabular-nums">
                           {timestamp.exactTitle.replace(/^Briefing generated\s+/i, "")}
                         </dd>
                       </div>
                     )}
                     {timestamp.previousLabel && (
                       <div className="flex flex-wrap justify-between gap-2">
-                        <dt className="text-[#707582]">Previous briefing</dt>
-                        <dd className="font-medium text-[#17191F] tabular-nums">
+                        <dt className="text-ink-muted">Previous briefing</dt>
+                        <dd className="font-medium text-ink tabular-nums">
                           {timestamp.previousLabel}
                         </dd>
                       </div>
                     )}
                   </dl>
 
-                  <p className="text-[11px] leading-5 text-[#707582]">
+                  <p className="text-[11px] leading-5 text-ink-muted">
                     {context.unknownSemantics}
                   </p>
 
@@ -836,16 +836,16 @@ export function OperationalBriefingSection({
                     <details className="pt-1">
                       <summary
                         className={cn(
-                          "cursor-pointer text-[11px] font-medium text-[#707582] hover:text-[#17191F]",
+                          "cursor-pointer text-[11px] font-medium text-ink-muted hover:text-ink",
                           cc.focus,
                         )}
                       >
                         Technical references
                       </summary>
-                      <dl className="mt-2 space-y-1 font-mono text-[11px] text-[#707582]">
+                      <dl className="mt-2 space-y-1 font-mono text-[11px] text-ink-muted">
                         {context.technicalReferences.map((ref) => (
                           <div key={ref.label} className="flex flex-wrap gap-x-2">
-                            <dt className="text-[#343844]">{ref.label}:</dt>
+                            <dt className="text-ink-soft">{ref.label}:</dt>
                             <dd className="break-all">{ref.value}</dd>
                           </div>
                         ))}
@@ -865,15 +865,15 @@ export function OperationalBriefingSection({
         >
           <div className={cn("flex items-start justify-between gap-3 border-b px-5 py-4", cc.divider)}>
             <div className="flex min-w-0 items-center gap-2">
-              <PlugZap className="h-4 w-4 shrink-0 text-[#707582]" aria-hidden="true" />
+              <PlugZap className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />
               <div className="min-w-0">
                 <h3
                   id="operational-data-health-heading"
-                  className="text-sm font-semibold text-[#17191F]"
+                  className="text-sm font-semibold text-ink"
                 >
                   Operational data health
                 </h3>
-                <p className="mt-0.5 text-[11px] text-[#707582]">
+                <p className="mt-0.5 text-[11px] text-ink-muted">
                   Synchronization and integration readiness
                 </p>
               </div>
@@ -882,7 +882,7 @@ export function OperationalBriefingSection({
           </div>
 
           <div className="space-y-3 px-5 py-4 text-xs">
-            <p className="leading-5 text-[#343844]">
+            <p className="leading-5 text-ink-soft">
               {data.integration?.status_explanation || integrationStatus.description}
             </p>
 
@@ -891,8 +891,8 @@ export function OperationalBriefingSection({
                 role={webhookNoteIsWarning ? "status" : undefined}
                 className={
                   webhookNoteIsWarning
-                    ? "rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-xs leading-5 text-[#92400E]"
-                    : "text-[11px] leading-5 text-[#707582]"
+                    ? "rounded-lg border border-warning-line bg-warning-soft px-3 py-2 text-xs leading-5 text-warning"
+                    : "text-[11px] leading-5 text-ink-muted"
                 }
               >
                 {rawWebhookNote}
@@ -902,7 +902,7 @@ export function OperationalBriefingSection({
             {data.business_state.stale && (
               <p
                 role="status"
-                className="rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-xs leading-5 text-[#92400E]"
+                className="rounded-lg border border-warning-line bg-warning-soft px-3 py-2 text-xs leading-5 text-warning"
               >
                 Stale snapshot. Historical evidence remains available; it is not current
                 performance.
@@ -910,8 +910,8 @@ export function OperationalBriefingSection({
             )}
 
             {data.integration?.authorization.verified && (
-              <p className="inline-flex items-center gap-1.5 text-[11px] text-[#707582]">
-                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#067647]" aria-hidden="true" />
+              <p className="inline-flex items-center gap-1.5 text-[11px] text-ink-muted">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden="true" />
                 <span>Authorization verified by successful synchronization.</span>
               </p>
             )}
@@ -922,7 +922,7 @@ export function OperationalBriefingSection({
                   type="button"
                   onClick={() => openRoute("/dashboard/integrations")}
                   className={cn(
-                    "inline-flex min-h-8 items-center gap-1.5 rounded-md text-xs font-semibold text-[#4438E8] transition-colors hover:text-[#372CD1]",
+                    "inline-flex min-h-8 items-center gap-1.5 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
                     cc.focus,
                   )}
                 >

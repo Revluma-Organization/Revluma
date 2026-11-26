@@ -66,7 +66,7 @@ function SectionHeader({ id, title, description, aside }: { id: string; title: s
   return <div className={cn("flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4 sm:px-6", cc.divider)}>
     <div className="min-w-0">
       <h2 id={id} className={cc.sectionTitle}>{title}</h2>
-      <p className="mt-0.5 text-[13px] leading-5 text-[#707582]">{description}</p>
+      <p className="mt-0.5 text-[13px] leading-5 text-ink-muted">{description}</p>
     </div>
     {aside}
   </div>;
@@ -120,18 +120,18 @@ function CanonicalHealthIndicators({ data }: { data: CommandCenterData }) {
       title="Supporting intelligence"
       description={`Verified operational indicators · ${reporting.periodLabel} · ${reporting.timezone.label}`}
     />
-    <p className={cn("border-b bg-[#FAFBFD] px-5 py-2.5 sm:px-6", cc.divider, cc.metadata)}>
+    <p className={cn("border-b bg-subtle px-5 py-2.5 sm:px-6", cc.divider, cc.metadata)}>
       {health.business_status_explanation} Business severity and data quality are independent.
     </p>
     <dl className={cn("grid divide-y sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5", cc.divider)}>{health.indicators.map(indicator => {
       const Icon = canonicalIcons[indicator.category];
       return <div key={indicator.id} data-health-domain={indicator.category === "product_availability" ? "product-availability" : indicator.category} className={cn("min-w-0 border-b p-5 last:border-b-0 sm:border-r xl:border-b-0 xl:last:border-r-0", cc.divider)}>
-        <dt className="flex items-center gap-2 text-xs font-medium text-[#707582]"><Icon className="h-4 w-4 shrink-0 text-[#707582]" aria-hidden="true" />{indicator.title}</dt>
-        <dd className="mt-3 break-words text-lg font-semibold leading-6 tracking-[-0.02em] text-[#17191F] tabular-nums">{canonicalValue(indicator)}</dd>
+        <dt className="flex items-center gap-2 text-xs font-medium text-ink-muted"><Icon className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />{indicator.title}</dt>
+        <dd className="mt-3 break-words text-lg font-semibold leading-6 tracking-[-0.02em] text-ink tabular-nums">{canonicalValue(indicator)}</dd>
         <dd className="mt-2 flex flex-wrap items-center gap-2"><Availability value={indicator.status} /><span className={cc.metadata}>{DATA_QUALITY_LABEL[indicator.data_quality]}</span></dd>
         {indicator.change_pct !== null && <dd className={cn("mt-2 tabular-nums", cc.metadata)}>{indicator.change_pct > 0 ? "+" : ""}{indicator.change_pct}% vs previous period</dd>}
         <dd className={cn("mt-2", cc.metadata)}>{indicator.explanation}</dd>
-        <dd className="mt-3"><details><summary className={cc.disclosure}>Metric &amp; coverage</summary><div className={cn("mt-2 space-y-2", cc.metadata)}><p>{indicator.metric_definition || "Metric definition unavailable."}</p><p>{indicator.coverage.reason}</p>{indicator.limitations.map(item => <p key={item}>• {item}</p>)}{indicator.next_step && <p><span className="font-semibold text-[#17191F]">Next step: </span>{indicator.next_step}</p>}<p className="tabular-nums">Last verified {dateTime(indicator.last_verified_at)}</p></div></details></dd>
+        <dd className="mt-3"><details><summary className={cc.disclosure}>Metric &amp; coverage</summary><div className={cn("mt-2 space-y-2", cc.metadata)}><p>{indicator.metric_definition || "Metric definition unavailable."}</p><p>{indicator.coverage.reason}</p>{indicator.limitations.map(item => <p key={item}>• {item}</p>)}{indicator.next_step && <p><span className="font-semibold text-ink">Next step: </span>{indicator.next_step}</p>}<p className="tabular-nums">Last verified {dateTime(indicator.last_verified_at)}</p></div></details></dd>
       </div>;
     })}</dl>
   </section>;
@@ -160,8 +160,8 @@ export function HealthIndicators({ data }: { data: CommandCenterData }) {
     <dl className={cn("grid divide-y sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5", cc.divider)}>{items.map(item => {
       const Icon = item.icon;
       return <div key={item.id} data-health-domain={item.id} className={cn("min-w-0 border-b p-5 last:border-b-0 sm:border-r xl:border-b-0 xl:last:border-r-0", cc.divider)}>
-        <dt className="flex items-center gap-2 text-xs font-medium text-[#707582]"><Icon className="h-4 w-4 shrink-0 text-[#707582]" aria-hidden="true" />{item.label}</dt>
-        <dd className="mt-3 break-words text-lg font-semibold leading-6 tracking-[-0.02em] text-[#17191F] tabular-nums">{item.value}</dd>
+        <dt className="flex items-center gap-2 text-xs font-medium text-ink-muted"><Icon className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />{item.label}</dt>
+        <dd className="mt-3 break-words text-lg font-semibold leading-6 tracking-[-0.02em] text-ink tabular-nums">{item.value}</dd>
         {(item.id === "revenue" && revenue || item.id === "checkouts" && checkout) && <dd className="sr-only">{item.id === "revenue" ? revenue?.definition : checkout?.definition}</dd>}
         <dd className="mt-2"><Availability value={item.availability} /></dd>
         <dd className={cn("mt-2 min-h-10", cc.metadata)}>{item.detail}</dd>
@@ -215,8 +215,8 @@ function CanonicalOperationalActivity({ data }: { data: CommandCenterData }) {
     {items.length ? <ul className={cn("divide-y", cc.divider)}>{items.map(item => {
       const investigate = item.type === "finding" && item.finding_id;
       const integrations = item.link === "/integrations";
-      return <li key={item.event_id} className="flex gap-3 px-5 py-4 sm:px-6"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.severity === "critical" ? "bg-[#B42318]" : item.severity === "warning" || item.severity === "attention" ? "bg-[#D97706]" : item.type === "finding" ? "bg-[#4438E8]" : "bg-[#98A2B3]")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold text-[#17191F]">{item.title}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.type.replaceAll("_", " ")} · {item.severity}</span></div>{item.detail && <p className={cn("mt-1 break-words", cc.metadata)}>{item.detail}</p>}<p className={cn("mt-1 tabular-nums", cc.metadata)}>Occurred {dateTime(item.occurred_at)}{new Date(item.received_at).getTime() - new Date(item.occurred_at).getTime() > 300_000 ? ` · recorded ${relative(item.received_at)}` : ""}</p>{investigate && <button type="button" onClick={() => openRoute(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}{integrations && <button type="button" onClick={() => openRoute("/dashboard/integrations")} className={cn("mt-2 min-h-9", cc.disclosure)}>Review integration <ArrowRight className="inline h-3 w-3" /></button>}</div></li>;
-    })}</ul> : <div className="px-5 py-4 sm:px-6"><p className="text-xs font-semibold text-[#17191F]">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No activity could be confirmed for this {contract.window_days}-day window. An empty feed may mean no matching records or unavailable source evidence; it does not prove that nothing happened.</p></div>}
+      return <li key={item.event_id} className="flex gap-3 px-5 py-4 sm:px-6"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.severity === "critical" ? "bg-danger" : item.severity === "warning" || item.severity === "attention" ? "bg-warning-strong" : item.type === "finding" ? "bg-brand" : "bg-ink-faint")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold text-ink">{item.title}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.type.replaceAll("_", " ")} · {item.severity}</span></div>{item.detail && <p className={cn("mt-1 break-words", cc.metadata)}>{item.detail}</p>}<p className={cn("mt-1 tabular-nums", cc.metadata)}>Occurred {dateTime(item.occurred_at)}{new Date(item.received_at).getTime() - new Date(item.occurred_at).getTime() > 300_000 ? ` · recorded ${relative(item.received_at)}` : ""}</p>{investigate && <button type="button" onClick={() => openRoute(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}{integrations && <button type="button" onClick={() => openRoute("/dashboard/integrations")} className={cn("mt-2 min-h-9", cc.disclosure)}>Review integration <ArrowRight className="inline h-3 w-3" /></button>}</div></li>;
+    })}</ul> : <div className="px-5 py-4 sm:px-6"><p className="text-xs font-semibold text-ink">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No activity could be confirmed for this {contract.window_days}-day window. An empty feed may mean no matching records or unavailable source evidence; it does not prove that nothing happened.</p></div>}
     {failed && <p role="alert" className={cn("px-5 pb-3 sm:px-6", cc.warning)}>More activity could not be loaded. The events already shown are unchanged.</p>}
     {hasMore && cursor && <div className="px-5 pb-5 pt-2 sm:px-6"><button type="button" onClick={() => void loadMore()} disabled={pending} className={cc.secondary}>{pending ? "Loading…" : `Load more (${Math.max(0, total - items.length)} remaining)`}</button></div>}
   </section>;
@@ -227,13 +227,13 @@ export function OperationalActivity({ data }: { data: CommandCenterData }) {
   if (data.operational_activity) return <CanonicalOperationalActivity data={data} />;
   return <section aria-labelledby="operational-activity-heading" className={cc.surface}>
     <SectionHeader id="operational-activity-heading" title="Operational activity" description="Verified findings and system events, in chronological order" />
-    {data.activity.length ? <ul className={cn("divide-y", cc.divider)}>{data.activity.map(item => <li key={item.id} className="flex gap-3 px-5 py-4 sm:px-6"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.kind === "business" ? "bg-[#4438E8]" : "bg-[#98A2B3]")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold text-[#17191F]">{item.label}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.kind}</span></div><p className={cn("mt-1 tabular-nums", cc.metadata)}>{dateTime(item.occurred_at)} · {item.note}</p>{item.kind === "business" && item.finding_id && <button type="button" onClick={() => openRoute(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}</div></li>)}</ul> : <div className="px-5 py-4 sm:px-6"><p className="text-xs font-semibold text-[#17191F]">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No verified operational activity is recorded for this view. No placeholder events are inserted.</p></div>}
+    {data.activity.length ? <ul className={cn("divide-y", cc.divider)}>{data.activity.map(item => <li key={item.id} className="flex gap-3 px-5 py-4 sm:px-6"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.kind === "business" ? "bg-brand" : "bg-ink-faint")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold text-ink">{item.label}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.kind}</span></div><p className={cn("mt-1 tabular-nums", cc.metadata)}>{dateTime(item.occurred_at)} · {item.note}</p>{item.kind === "business" && item.finding_id && <button type="button" onClick={() => openRoute(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}</div></li>)}</ul> : <div className="px-5 py-4 sm:px-6"><p className="text-xs font-semibold text-ink">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No verified operational activity is recorded for this view. No placeholder events are inserted.</p></div>}
   </section>;
 }
 
 function EvidenceRow({ resource }: { resource: EvidenceResource }) {
   return <div className={cn("grid gap-2 border-b py-3 last:border-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-4", cc.divider)}>
-    <div className="min-w-0"><p className="text-xs font-semibold capitalize text-[#17191F]">{resource.label}</p><p className={cn("mt-1", cc.metadata)}>{resource.reason || `${resource.freshness} evidence · coverage ${resource.coverage.replaceAll("_", " ")}`}</p></div>
+    <div className="min-w-0"><p className="text-xs font-semibold capitalize text-ink">{resource.label}</p><p className={cn("mt-1", cc.metadata)}>{resource.reason || `${resource.freshness} evidence · coverage ${resource.coverage.replaceAll("_", " ")}`}</p></div>
     <div className="text-left sm:text-right"><Availability value={resource.availability} /><p className={cn("mt-1 tabular-nums", cc.metadata)} title={dateTime(resource.last_success_at)}>Last success {relative(resource.last_success_at)}</p></div>
   </div>;
 }
@@ -243,7 +243,7 @@ export function EvidenceFreshness({ data }: { data: CommandCenterData }) {
   return <section aria-labelledby="evidence-heading" className={cc.surface}>
     <SectionHeader id="evidence-heading" title="Data readiness & limitations" description="Source-specific freshness and coverage; no overall health score is inferred" aside={<span className={cc.metadata}>{limited.length} limited</span>} />
     <div className="p-5 sm:px-6">
-      {limited.length > 0 && <ul className={cn("mb-4 space-y-2", cc.metadata)}>{limited.slice(0, 3).map(resource => <li key={`${resource.store_id}-${resource.resource}-limit`}><span className="font-semibold text-[#17191F]">{resource.label}: </span>{resource.reason || availabilityLabel[resource.availability]}</li>)}</ul>}
+      {limited.length > 0 && <ul className={cn("mb-4 space-y-2", cc.metadata)}>{limited.slice(0, 3).map(resource => <li key={`${resource.store_id}-${resource.resource}-limit`}><span className="font-semibold text-ink">{resource.label}: </span>{resource.reason || availabilityLabel[resource.availability]}</li>)}</ul>}
       <details>
         <summary className={cc.disclosure}>Review resource freshness and coverage</summary>
         <div className="mt-4">{data.evidence.resources.map(resource => <EvidenceRow key={`${resource.store_id}-${resource.resource}`} resource={resource} />)}</div>
