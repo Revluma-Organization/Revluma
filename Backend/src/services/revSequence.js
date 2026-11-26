@@ -22,7 +22,10 @@ const LOCK_NAMESPACE = 'rev_conversation_sequence';
 const MAX_ALLOCATION_ATTEMPTS = 3;
 
 async function acquireConversationWriteLock(tx, conversationId) {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${LOCK_NAMESPACE}), hashtext(${String(conversationId)}))`;
+  // The ::text cast + alias are load-bearing: Prisma cannot deserialize a
+  // bare void column, so every advisory lock in this repo (see
+  // commerceWebhookService) selects it as text. Never simplify this.
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${LOCK_NAMESPACE}), hashtext(${String(conversationId)}))::text AS lock_acquired`;
 }
 
 function isUniqueViolation(error) {

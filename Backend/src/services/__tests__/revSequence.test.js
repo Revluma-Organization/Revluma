@@ -18,6 +18,8 @@ test('the write lock is transaction-scoped, namespaced and conversation-keyed', 
   await acquireConversationWriteLock(tx, '44444444-4444-4444-8444-444444444444');
   assert.equal(calls.length, 1);
   assert.match(calls[0].sql, /pg_advisory_xact_lock/);
+  assert.match(calls[0].sql, /::text AS lock_acquired/,
+    'the void lock result must be selected as text: Prisma cannot deserialize bare void');
   assert.equal(calls[0].values.includes(LOCK_NAMESPACE), true);
   assert.equal(calls[0].values.includes('44444444-4444-4444-8444-444444444444'), true);
 });
