@@ -46,7 +46,6 @@ describe("Founding Merchants Program", () => {
   it("is an honest invitation: no stated number of places or unverifiable promises", () => {
     const all = JSON.stringify(FOUNDING);
     expect(all).not.toMatch(/\d+\s*(places|spots|seats|merchants)|only \d|limited to|lifetime|free forever|guarantee|discount|automat|recover/i);
-    expect(all).toMatch(/read-only/i);
   });
 
   it("replaces the always-on globe section on the homepage", () => {

@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type CSSProperties } from "react";
-import { ArrowRight, ArrowUpRight, Check, Lock } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check } from "lucide-react";
 import { FAQ, FOUNDING } from "@/content";
 import { useLandingConfig } from "@/config";
 import { useReveal } from "@/useReveal";
@@ -34,10 +34,6 @@ function Answer({ item }: { item: Item }) {
           {item.data.map((d) => (
             <li key={d}>{d}</li>
           ))}
-          <li className="faq-data__ro">
-            <Lock size={12} strokeWidth={2.4} aria-hidden="true" />
-            Read-only
-          </li>
         </ul>
       ) : null}
       {"grades" in item ? (
@@ -156,7 +152,7 @@ export function FaqSection({ id }: { id?: string }) {
             </a>
             <p className="faq-ask__note">
               <Check size={13} strokeWidth={2.6} aria-hidden="true" />
-              Shopify stores · read-only access
+              For Shopify stores
             </p>
           </div>
         </div>
