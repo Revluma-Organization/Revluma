@@ -17,7 +17,7 @@ describe("Merchant feedback", () => {
     const cards = within(within(el).getByRole("list", { name: "Merchant feedback" })).getAllByRole("listitem");
     expect(cards).toHaveLength(3);
     REVIEWS.items.forEach((r, i) => {
-      expect(cards[i]).toHaveTextContent(r.quote);
+      expect(within(cards[i]).getByRole("blockquote").textContent).toBe(`“${r.quote}”`);
       expect(cards[i]).toHaveTextContent(r.name);
       expect(cards[i]).toHaveTextContent(r.role);
       expect(within(cards[i]).getByLabelText(`Rated ${r.rating} out of 5`)).toBeInTheDocument();
@@ -36,5 +36,14 @@ describe("Merchant feedback", () => {
     expect(host).toBeGreaterThan(homepage.indexOf('<div id="founding-merchants"'));
     expect(host).toBeLessThan(homepage.indexOf('<div id="faq"'));
     for (const r of REVIEWS.items) expect(homepage.slice(host)).toContain(r.quote);
+  });
+
+  it("types each quote out without changing the card size or hiding it from screen readers", () => {
+    const el = section();
+    for (const quote of within(el).getAllByRole("blockquote")) {
+      // Typed + untyped parts together always hold the full quote.
+      expect(quote.querySelector(".rv-untyped")).not.toBeNull();
+      expect(quote.querySelector("[aria-hidden='true']:not(.rv-caret)")).toBeNull();
+    }
   });
 });
