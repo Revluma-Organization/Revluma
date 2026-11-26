@@ -39,7 +39,7 @@ Kept: `GET /referral/:code/check`, admin `GET /stats`.
 The migration is additive and idempotent and runs through Render's
 `prestart` (`prisma migrate deploy`) on the next backend deploy.
 
-### Before-state census (recorded 2026-11-18 through the Supabase connector)
+### Before-state census (recorded 2026-11-26 through the Supabase connector)
 
 | Measure | Value |
 |---|---|
@@ -70,6 +70,25 @@ The migration is additive and idempotent and runs through Render's
   `20261126000000_apple_sign_in_usd_billing`, no unfinished or rolled-back
   migrations. With 0 rows there was no data to copy, so no logical backup table
   was created.
+
+### Post-deploy record (2026-11-26 22:46 UTC, database clock)
+
+- Vercel production `dpl_QJfJCpYpDQWJ5mtPddx6qQj3rMTw` (merge `48957cc`)
+  READY and promoted; Render backend deployed by the owner afterwards.
+- `_prisma_migrations`: `20261127000000_founding_merchant_applications`
+  started 22:42:02, finished 22:42:02 (1 step), not rolled back; no unfinished
+  or rolled-back migrations.
+- `waitlist_users`: 56 columns (was 41), 0 rows (unchanged).
+- Constraints added: `waitlist_users_capabilities_check`,
+  `waitlist_users_current_step_check`, `waitlist_users_status_check`,
+  `waitlist_users_submitted_at_check`.
+- Unique indexes added: `waitlist_users_referral_code_key`,
+  `waitlist_users_resume_token_hash_key`, `waitlist_users_start_key_hash_key`.
+- `status`: default `'in_progress'`, NOT NULL.
+- Production `/waitlist` renders step 1 through the Vercel proxy (the session
+  check reaches the backend). The write path (start, save, resume) still needs
+  a manual browser check: the agent sandbox cannot send POST requests to
+  production.
 
 ### Order
 

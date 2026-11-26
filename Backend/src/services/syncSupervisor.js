@@ -39,6 +39,18 @@ const AUTH_BLOCKED_STATES = Object.freeze([
   'disconnected', 'authorization_required', 'authorization_expired', 'authorization_revoked',
 ]);
 
+// A store whose token works but lacks a required scope is recorded as
+// `needs_attention` + PERMISSIONS_MISSING. Shopify answers every sync with 403
+// until the merchant reconnects and grants the scope (that reconnect moves the
+// store back to `connected`), so it waits like the states above. Other
+// `needs_attention` reasons (webhook registration, a failed sync) can clear on
+// their own and keep retrying.
+const PERMISSIONS_BLOCKED = Object.freeze({ integration_state: 'needs_attention', integration_reason_code: 'PERMISSIONS_MISSING' });
+
+function waitingOnMerchantFilter() {
+  return { OR: [{ integration_state: { in: [...AUTH_BLOCKED_STATES] } }, { ...PERMISSIONS_BLOCKED }] };
+}
+
 const FAILURE = Object.freeze({
   AUTH: 'auth',
   RATE_LIMITED: 'rate_limited',
@@ -215,6 +227,7 @@ function dueStoreFilter(now, intervalMs) {
       storeSyncEligibility(now, intervalMs),
       { access_token: { not: null } },
       { integration_state: { notIn: [...AUTH_BLOCKED_STATES] } },
+      { NOT: { ...PERMISSIONS_BLOCKED } },
       { OR: [{ sync_next_attempt_at: null }, { sync_next_attempt_at: { lte: new Date(now) } }] },
     ],
   };
@@ -260,7 +273,7 @@ async function runStoreSyncPass({ db = defaultDb(), syncFn, now = Date.now(), in
       where: { AND: [storeSyncEligibility(now, intervalMs), { sync_next_attempt_at: { gt: new Date(now) } }] },
     });
     counters.waiting_authorization = await db.stores.count({
-      where: { AND: [storeSyncEligibility(now, intervalMs), { integration_state: { in: [...AUTH_BLOCKED_STATES] } }] },
+      where: { AND: [storeSyncEligibility(now, intervalMs), waitingOnMerchantFilter()] },
     });
   } catch {
     counters.waiting_backoff = null;
@@ -274,6 +287,7 @@ module.exports = {
   BACKOFF_CAP_MS,
   DEAD_LETTER_THRESHOLD,
   AUTH_BLOCKED_STATES,
+  PERMISSIONS_BLOCKED,
   FAILURE,
   classifyStoreFailure,
   backoffMs,

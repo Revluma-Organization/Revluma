@@ -291,6 +291,76 @@ test('due-store selection excludes stores waiting on backoff or on the merchant'
   assert.match(filter, /"access_token":\{"not":null\}/);
 });
 
+// Evaluates the subset of Prisma `where` syntax the selection filters use, so
+// the tests below check which stores are actually selected rather than the
+// shape of the filter.
+function matchesWhere(row, where) {
+  return Object.entries(where).every(([key, condition]) => {
+    if (key === 'AND') return condition.every(part => matchesWhere(row, part));
+    if (key === 'OR') return condition.some(part => matchesWhere(row, part));
+    if (key === 'NOT') return !matchesWhere(row, condition);
+    const value = row[key] ?? null;
+    if (condition === null || typeof condition !== 'object' || condition instanceof Date) {
+      return condition instanceof Date ? value instanceof Date && value.getTime() === condition.getTime() : value === condition;
+    }
+    return Object.entries(condition).every(([op, operand]) => {
+      const cmp = v => (v instanceof Date ? v.getTime() : v);
+      switch (op) {
+        case 'not': return operand === null ? value !== null : value !== operand;
+        case 'in': return operand.includes(value);
+        case 'notIn': return !operand.includes(value);
+        case 'lte': return value !== null && cmp(value) <= cmp(operand);
+        case 'gt': return value !== null && cmp(value) > cmp(operand);
+        default: throw new Error(`matchesWhere: unsupported operator ${op}`);
+      }
+    });
+  });
+}
+
+test('due-store selection: a store missing permissions waits for the merchant; other needs_attention reasons keep retrying', async () => {
+  const now = Date.parse('2026-11-26T23:00:00Z');
+  const base = {
+    platform: 'shopify', status: 'active', access_token: 'enc:token', last_synced_at: null,
+    sync_next_attempt_at: null, integration_state: 'connected', integration_reason_code: 'CONNECTED',
+  };
+  const stores = [
+    { ...base, id: 'healthy' },
+    { ...base, id: 'unknown-state', integration_state: 'unknown', integration_reason_code: 'UNKNOWN' },
+    { ...base, id: 'missing-scope', integration_state: 'needs_attention', integration_reason_code: 'PERMISSIONS_MISSING', status: 'error' },
+    { ...base, id: 'webhook-failed', integration_state: 'needs_attention', integration_reason_code: 'WEBHOOK_REGISTRATION_FAILED' },
+    { ...base, id: 'sync-failed', integration_state: 'needs_attention', integration_reason_code: 'SYNC_FAILED' },
+    { ...base, id: 'token-dead', integration_state: 'authorization_required', integration_reason_code: 'AUTHORIZATION_REQUIRED' },
+    { ...base, id: 'in-backoff', sync_next_attempt_at: new Date(now + 60_000) },
+    { ...base, id: 'recent', last_synced_at: new Date(now - 60_000) },
+  ];
+  const where = supervisor.dueStoreFilter(now, 900000);
+  const selected = stores.filter(store => matchesWhere(store, where)).map(store => store.id);
+  assert.deepEqual(selected, ['healthy', 'unknown-state', 'webhook-failed', 'sync-failed']);
+
+  // Reconnecting with the scope granted (authorization_verified) makes the
+  // store due again on the next pass; no manual step is needed.
+  const { evaluateTransition } = require('../services/integrationLifecycle');
+  const blocked = stores.find(store => store.id === 'missing-scope');
+  const transition = evaluateTransition(blocked, { type: 'authorization_verified', observedAt: new Date(now) });
+  assert.equal(transition.accepted, true);
+  const reconnected = { ...blocked, status: 'active', integration_state: transition.state, integration_reason_code: transition.reasonCode };
+  assert.equal(matchesWhere(reconnected, where), true);
+
+  // The pass reports the blocked store as waiting on the merchant.
+  const counted = [];
+  const db = {
+    stores: {
+      findMany: async ({ where: w }) => stores.filter(store => matchesWhere(store, w)),
+      count: async ({ where: w }) => { const n = stores.filter(store => matchesWhere(store, w)).length; counted.push(n); return n; },
+    },
+  };
+  const synced = [];
+  const counters = await supervisor.runStoreSyncPass({ db, now, intervalMs: 900000, syncFn: async store => { synced.push(store.id); return { success: true }; } });
+  assert.deepEqual(synced, ['healthy', 'unknown-state', 'webhook-failed', 'sync-failed']);
+  assert.equal(counters.waiting_authorization, 2, 'expired token + missing permissions');
+  assert.equal(counters.waiting_backoff, 1);
+});
+
 // ---------------------------------------------------------------------------
 // Permission registry
 // ---------------------------------------------------------------------------
