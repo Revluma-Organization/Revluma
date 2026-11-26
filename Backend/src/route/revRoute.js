@@ -7,7 +7,7 @@
  *
  * POST /api/v1/rev/chat              — send message, get Rev response
  * GET  /api/v1/rev/conversations     — list conversation history (paginated)
- * GET  /api/v1/rev/conversation/:id  — load full conversation thread
+ * GET  /api/v1/rev/conversation/:id  — load thread page (newest first; ?before=<seq> pages older)
  * POST /api/v1/rev/message-feedback  — thumbs up/down on a persisted Rev answer
  * POST /api/v1/memory                — write a merchant memory
  * GET  /api/v1/rev/health            — Python service health check

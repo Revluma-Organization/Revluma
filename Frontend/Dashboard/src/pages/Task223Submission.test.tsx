@@ -144,7 +144,7 @@ describe('Task 223 acceptance-safe submission', () => {
     await act(async () => streams[0].result.reject(new RevStreamError('INTELLIGENCE_TIMEOUT', 'Timed out')));
     expect(screen.getByRole('textbox', { name: 'Message Rev' })).toHaveValue('');
     expect(screen.getAllByText('Accepted but failed')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Ask again' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
   });
 
   it('shows an accepted provider failure as a service failure, never a connection problem', async () => {

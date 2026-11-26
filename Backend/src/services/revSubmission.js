@@ -79,7 +79,7 @@ function ensureSameSubmission(accepted, message, requestedConversationId) {
  * derived by the server from the request id, so a retry before the first meta
  * frame cannot create a second empty conversation.
  */
-async function acceptSubmission({ prisma, organizationId, userId, message, requestId, requestedConversationId = null }) {
+async function acceptSubmission({ prisma, organizationId, userId, message, requestId, requestedConversationId = null, imageAssisted = false }) {
   const existing = await findAcceptedSubmission(prisma, organizationId, requestId);
   if (existing) {
     ensureSameSubmission(existing, message, requestedConversationId);
@@ -115,7 +115,9 @@ async function acceptSubmission({ prisma, organizationId, userId, message, reque
         role, content, sequence_number, correlation_id, has_error
       )
       SELECT ${uuidv4()}::uuid, ${acceptedConversationId}::uuid, ${organizationId}::uuid, ${userId}::uuid,
-             'user', ${JSON.stringify({ text: message })}::jsonb,
+             // Phase 5D: an image-assisted question is marked so a later retry
+             // refuses to re-run it imageless (the bytes are never persisted).
+             'user', ${JSON.stringify(imageAssisted ? { text: message, image_assisted: true } : { text: message })}::jsonb,
              COALESCE(MAX(sequence_number), 0) + 1, ${requestId}::uuid, false
       FROM conversation_messages
       WHERE conversation_id = ${acceptedConversationId}::uuid
