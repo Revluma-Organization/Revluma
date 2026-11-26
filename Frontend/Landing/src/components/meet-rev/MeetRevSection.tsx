@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  ArrowUpRight,
+  ArrowDown,
   Check,
   ChevronDown,
   CircleSlash,
   Copy,
+  CornerDownRight,
+  EyeOff,
+  HelpCircle,
   LayoutGrid,
   Loader2,
   Mic,
+  Minus,
   Phone,
   Plug,
   Plus,
@@ -15,8 +19,10 @@ import {
   Send,
   ShieldCheck,
   Square,
+  Target,
   ThumbsDown,
   ThumbsUp,
+  TrendingDown,
   Volume2,
 } from "lucide-react";
 import { MEET_REV } from "@/content";
@@ -30,16 +36,17 @@ import revlumaIcon from "@/assets/revluma-icon.png";
  * RevIntell + RevAnswerView), with sample data that is clearly labelled.
  *
  * Same surfaces as the app: the dark workspace sidebar, the breadcrumb bar,
- * indigo user bubbles, Rev answers as plain text with the evidence pill,
- * "Facts" / "Hypotheses (not verified)" / "Unknowns and limits" sections,
- * citation markers, "Sources:", the "How I checked" disclosure,
- * "Recommended next steps", follow-up chips, the action row, the orb loader
- * with the investigation card, and the composer with its stop button.
+ * indigo user bubbles, the evidence pill, "Facts" / "Hypotheses (not
+ * verified)" / "Unknowns and limits", citation markers, "Sources:", the
+ * "How I checked" disclosure, "Recommended next steps", the follow-up chip,
+ * the action row, the investigation card and the composer.
  *
- * The visitor drives it one exchange at a time by tapping Rev's follow-up
- * chip, exactly as in the app. Only the current exchange is in focus; the
- * one before stays above it, faded, like a scrolled conversation. Reduced
- * motion shows each answer immediately.
+ * Answers read like a full analyst reply (see design-system/revluma/pages/
+ * landing-meet-rev.md): a one-line answer first, then headed sections with
+ * a KPI strip, a daily chart, an order split, an evidence ladder and a
+ * numbered plan. Each block unfolds once, top to bottom, like streamed
+ * text. The chat pane scrolls like a real conversation and keeps every
+ * exchange; "Start over" clears it. Reduced motion shows each answer whole.
  */
 
 type TurnId = keyof typeof MEET_REV.turns;
@@ -111,10 +118,13 @@ function Topbar() {
   );
 }
 
-function Composer({ busy }: { busy: boolean }) {
+function Composer({ busy, suggestion }: { busy: boolean; suggestion?: ReactNode }) {
   return (
-    <div className="mr-dock" aria-hidden="true">
-      <div className="mr-input">
+    <div className="mr-dock">
+      {/* Rev's suggested follow-up sits on the composer, always in view, so the
+          visitor never has to hunt for the way forward. */}
+      <div className="mr-suggest">{suggestion}</div>
+      <div className="mr-input" aria-hidden="true">
         <p>{MEET_REV.inputPlaceholder}</p>
         <div className="mr-input__bar">
           <Plus size={18} />
@@ -133,7 +143,9 @@ function Composer({ busy }: { busy: boolean }) {
           </span>
         </div>
       </div>
-      <p className="mr-footer">{MEET_REV.footer}</p>
+      <p className="mr-footer" aria-hidden="true">
+        {MEET_REV.footer}
+      </p>
     </div>
   );
 }
@@ -159,12 +171,27 @@ function Marker({ n }: { n: number }) {
   );
 }
 
-function Section({ label, children }: { label: string; children: ReactNode }) {
+function Section({ label, tone, children }: { label: string; tone?: "fact" | "guess" | "limit"; children: ReactNode }) {
   return (
-    <section className="mr-sec">
+    <section className={`mr-sec${tone ? ` mr-sec--${tone}` : ""}`}>
       <h3>{label}</h3>
       <ul>{children}</ul>
     </section>
+  );
+}
+
+/** A small heading inside an answer, like the bold section titles in a long chat reply. */
+function Heading({ children }: { children: ReactNode }) {
+  return <h3 className="mr-h">{children}</h3>;
+}
+
+function RevHeader() {
+  return (
+    <div className="mr-revhead" aria-hidden="true">
+      <Orb size={22} />
+      <b>Rev</b>
+      <span className="mr-ai">AI</span>
+    </div>
   );
 }
 
@@ -174,8 +201,11 @@ function Sources() {
       <span>Sources:</span>
       {MEET_REV.sources.map((s) => (
         <span key={s.n} className="mr-source">
-          <b>{s.n}.</b>
-          {s.label}
+          <b>{s.n}</b>
+          <span>
+            <strong>{s.label}</strong>
+            <em>{s.detail}</em>
+          </span>
         </span>
       ))}
     </div>
@@ -186,21 +216,21 @@ function ActionRow() {
   return (
     <div className="mr-actions" aria-hidden="true">
       <span>
-        <Copy size={11} />
+        <Copy size={12} />
         Copy
       </span>
       <span>
-        <Volume2 size={11} />
+        <Volume2 size={12} />
         Read aloud
       </span>
       <span>
-        <ThumbsUp size={11} />
+        <ThumbsUp size={12} />
       </span>
       <span>
-        <ThumbsDown size={11} />
+        <ThumbsDown size={12} />
       </span>
       <span>
-        <RotateCcw size={11} />
+        <RotateCcw size={12} />
         Ask again
       </span>
     </div>
@@ -221,11 +251,10 @@ function Investigation({ done }: { done: number }) {
     <div className="mr-inv">
       <div className="mr-inv__head">
         <Loader2 size={14} className="mr-spin" />
-        <strong>Investigating your store evidence</strong>
+        <strong className="mr-shimmer">Investigating your store evidence</strong>
         <span>
           {complete}/{total} checks{unavailable ? ` · ${unavailable} unavailable` : ""}
         </span>
-        <ChevronDown size={14} className="mr-inv__chev" />
       </div>
       <ul>
         {shown.map((c) => (
@@ -242,9 +271,20 @@ function Investigation({ done }: { done: number }) {
 
 function Pending({ id, done }: { id: TurnId; done: number }) {
   return (
-    <div className="mr-rev" role="status" aria-label="Rev is preparing a response">
-      <Orb size={46} glow />
-      {id === "ask" ? <Investigation done={done} /> : <p className="mr-working">{MEET_REV.turns[id].working}</p>}
+    <div className="mr-rev mr-rev--pending" role="status" aria-label="Rev is preparing a response">
+      <RevHeader />
+      {id === "ask" ? (
+        <Investigation done={done} />
+      ) : (
+        <p className="mr-working">
+          <span className="mr-shimmer">{MEET_REV.turns[id].working}</span>
+          <span className="mr-dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        </p>
+      )}
     </div>
   );
 }
@@ -253,19 +293,138 @@ function FollowUp({ label, onClick, hint }: { label: string; onClick?: () => voi
   return (
     <div className="mr-follow">
       <button type="button" className="mr-chip" onClick={onClick} disabled={!onClick} tabIndex={onClick ? undefined : -1}>
-        {label}
         {label === MEET_REV.turns.recommend.followUp ? (
-          <RotateCcw size={12} aria-hidden="true" />
+          <RotateCcw size={13} aria-hidden="true" />
         ) : (
-          <ArrowUpRight size={13} strokeWidth={1.8} aria-hidden="true" />
+          <CornerDownRight size={14} strokeWidth={1.8} aria-hidden="true" />
         )}
+        {label}
       </button>
       {hint ? <span className="mr-hint">{MEET_REV.hint}</span> : null}
     </div>
   );
 }
 
-function Answer({ id, onFollowUp }: { id: TurnId; onFollowUp?: () => void }) {
+/* ---- Rich answer blocks ---------------------------------------------------- */
+
+function Kpis() {
+  return (
+    <ul className="mr-kpis" aria-label="What changed last week">
+      {MEET_REV.turns.ask.kpis.map((k) => (
+        <li key={k.label} className={`is-${k.tone}`}>
+          <span className="mr-kpi__label">{k.label}</span>
+          <span className="mr-kpi__value">
+            {k.tone === "down" ? <TrendingDown size={14} aria-hidden="true" /> : <Minus size={14} aria-hidden="true" />}
+            {k.value}
+          </span>
+          <span className="mr-kpi__note">{k.note}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const CHART_MAX = 60;
+
+function DailyChart() {
+  const c = MEET_REV.turns.ask.chart;
+  const summary = c.days.map((d) => `${d.day} ${d.value}%`).join(", ");
+  return (
+    <figure className="mr-chart" aria-label={`${c.title}: ${summary}. The week before averaged ${c.baseline}%.`}>
+      <figcaption>
+        <span>
+          <b>{c.title}</b>
+          <em>{c.caption}</em>
+        </span>
+        <span className="mr-chart__flag">{c.callout}</span>
+      </figcaption>
+      <div className="mr-chart__plot" aria-hidden="true" style={vars({ "--base": c.baseline / CHART_MAX })}>
+        <i className="mr-chart__base">
+          <span>{c.baseline}%</span>
+        </i>
+        {c.days.map((d, i) => (
+          <div key={d.day} className={`mr-bar${d.value < c.baseline - 5 ? " is-low" : ""}`} style={vars({ "--h": d.value / CHART_MAX, "--i": i })}>
+            <span className="mr-bar__val">{d.value}</span>
+            <span className="mr-bar__fill" />
+            <span className="mr-bar__day">{d.day}</span>
+          </div>
+        ))}
+      </div>
+    </figure>
+  );
+}
+
+function OrderSplit() {
+  const s = MEET_REV.turns.verify.split;
+  const total = s.parts.reduce((n, p) => n + p.value, 0);
+  return (
+    <div className="mr-split">
+      <p className="mr-split__title">
+        {s.title}
+        <Marker n={1} />
+      </p>
+      <div className="mr-split__bar" aria-hidden="true">
+        {s.parts.map((p, i) => (
+          <span key={p.label} className={i === 0 ? "is-main" : undefined} style={vars({ flexGrow: p.value })} />
+        ))}
+      </div>
+      <ul className="mr-split__legend">
+        {s.parts.map((p, i) => (
+          <li key={p.label} className={i === 0 ? "is-main" : undefined}>
+            <i aria-hidden="true" />
+            {p.label}
+            <b>
+              {p.value} of {total}
+            </b>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function RuledOut() {
+  return (
+    <div className="mr-ruled">
+      <p className="mr-ruled__title">Ruled out</p>
+      <ul>
+        {MEET_REV.turns.verify.ruledOut.map((r) => (
+          <li key={r.label}>
+            <Check size={12} strokeWidth={3} aria-hidden="true" />
+            <span>
+              <b>{r.label}</b>
+              {r.text}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Ladder() {
+  return (
+    <ul className="mr-ladder" aria-label="How sure Rev is">
+      {MEET_REV.turns.interpret.ladder.map((l, i) => (
+        <li key={l.level} className={`is-${i}`}>
+          <span className="mr-ladder__level">
+            {i === 0 ? (
+              <ShieldCheck size={13} aria-hidden="true" />
+            ) : i === 1 ? (
+              <HelpCircle size={13} aria-hidden="true" />
+            ) : (
+              <EyeOff size={13} aria-hidden="true" />
+            )}
+            {l.level}
+          </span>
+          <span className="mr-ladder__text">{l.text}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Answer({ id, latest = false }: { id: TurnId; latest?: boolean }) {
   const t = MEET_REV.turns;
   let body: ReactNode;
   switch (id) {
@@ -276,11 +435,11 @@ function Answer({ id, onFollowUp }: { id: TurnId; onFollowUp?: () => void }) {
             <span className="mr-state">Partial evidence</span>
             <span>3 of 4 sources checked</span>
           </p>
-          <p className="mr-text">{t.ask.summary}</p>
           <details className="mr-how">
             <summary>
               <ShieldCheck size={13} aria-hidden="true" />
               How I checked
+              <span className="mr-how__meta">Orders, checkouts, products</span>
               <ChevronDown size={13} className="mr-how__chev" aria-hidden="true" />
             </summary>
             <div>
@@ -295,15 +454,24 @@ function Answer({ id, onFollowUp }: { id: TurnId; onFollowUp?: () => void }) {
               </ul>
             </div>
           </details>
+          <p className="mr-text mr-lead">{t.ask.summary}</p>
+          <Heading>What changed</Heading>
+          <Kpis />
+          <Heading>When it started</Heading>
+          <DailyChart />
+          <aside className="mr-callout">
+            <b>Bottom line</b>
+            <p>{t.ask.takeaway}</p>
+          </aside>
         </>
       );
       break;
     case "verify":
       body = (
         <>
-          <p className="mr-text">{t.verify.lead}</p>
+          <p className="mr-text mr-lead">{t.verify.lead}</p>
           <div className="mr-text">
-            <Section label="Facts">
+            <Section label="Facts" tone="fact">
               {t.verify.facts.map((f) => (
                 <li key={f.text}>
                   {f.text}
@@ -312,6 +480,8 @@ function Answer({ id, onFollowUp }: { id: TurnId; onFollowUp?: () => void }) {
               ))}
             </Section>
           </div>
+          <OrderSplit />
+          <RuledOut />
           <p className="mr-period">{t.verify.period}</p>
           <Sources />
         </>
@@ -320,14 +490,20 @@ function Answer({ id, onFollowUp }: { id: TurnId; onFollowUp?: () => void }) {
     case "interpret":
       body = (
         <>
-          <p className="mr-text">{t.interpret.lead}</p>
-          <div className="mr-text">
-            <Section label="Hypotheses (not verified)">
-              {t.interpret.hypotheses.map((h) => (
-                <li key={h}>{h}</li>
+          <p className="mr-text mr-lead">{t.interpret.lead}</p>
+          <Ladder />
+          <div className="mr-text mr-cols">
+            <Section label="Hypotheses (not verified)" tone="guess">
+              {t.interpret.hypotheses.map((h, i) => (
+                <li key={h}>
+                  {h}
+                  <span className="mr-test">
+                    <b>How to check:</b> {t.interpret.tests[i]}
+                  </span>
+                </li>
               ))}
             </Section>
-            <Section label="Unknowns and limits">
+            <Section label="Unknowns and limits" tone="limit">
               {t.interpret.unknowns.map((u) => (
                 <li key={u}>{u}</li>
               ))}
@@ -339,36 +515,44 @@ function Answer({ id, onFollowUp }: { id: TurnId; onFollowUp?: () => void }) {
     case "recommend":
       body = (
         <>
-          <p className="mr-text">{t.recommend.lead}</p>
+          <p className="mr-text mr-lead">{t.recommend.lead}</p>
           <div className="mr-recs">
             <p className="mr-recs__label">Recommended next steps</p>
-            <p className="mr-recs__note">{t.recommend.note}</p>
-            {t.recommend.recommendations.map((r) => (
-              <div key={r.label} className="mr-rec">
-                <Check size={13} aria-hidden="true" />
-                <div>
-                  <p className="mr-rec__label">{r.label}</p>
-                  <p className="mr-rec__why">
-                    {r.why}
-                    {"measure" in r ? ` Measure: ${r.measure}` : ""}
-                  </p>
-                </div>
-              </div>
-            ))}
+            <ol>
+              {t.recommend.recommendations.map((r, i) => (
+                <li key={r.label} className={`mr-rec${i === 0 ? " is-first" : ""}`}>
+                  <span className="mr-rec__n" aria-hidden="true">
+                    {i + 1}
+                  </span>
+                  <div>
+                    <span className="mr-rec__when">{r.when}</span>
+                    <p className="mr-rec__label">{r.label}</p>
+                    <p className="mr-rec__why">{r.why}</p>
+                    {"measure" in r ? (
+                      <p className="mr-rec__measure">
+                        <Target size={12} aria-hidden="true" />
+                        Success looks like: {r.measure}
+                      </p>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <p className="mr-recs__note">
+              <ShieldCheck size={12} aria-hidden="true" />
+              {t.recommend.note}
+            </p>
           </div>
+          <p className="mr-text">{t.recommend.closing}</p>
         </>
       );
       break;
   }
   return (
     <article className="mr-rev mr-rev--answer">
+      <RevHeader />
       {body}
-      {onFollowUp ? (
-        <>
-          <FollowUp label={t[id].followUp} onClick={onFollowUp} hint={id === "ask"} />
-          <ActionRow />
-        </>
-      ) : null}
+      {latest ? <ActionRow /> : null}
     </article>
   );
 }
@@ -377,11 +561,14 @@ function Answer({ id, onFollowUp }: { id: TurnId; onFollowUp?: () => void }) {
 
 function Conversation() {
   const appRef = useRef<HTMLElement>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
+  const turnRef = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
   const [turn, setTurn] = useState(0);
   const [pending, setPending] = useState(true);
   const [started, setStarted] = useState(false);
   const [checksDone, setChecksDone] = useState(0);
+  const [below, setBelow] = useState(false);
 
   const clearTimers = () => {
     timers.current.forEach((t) => window.clearTimeout(t));
@@ -430,11 +617,35 @@ function Conversation() {
 
   useEffect(() => clearTimers, []);
 
+  const measure = useCallback(() => {
+    const chat = chatRef.current;
+    if (chat) setBelow(chat.scrollHeight - chat.scrollTop - chat.clientHeight > 48);
+  }, []);
+
+  // Like a real chat: each new question scrolls up to the top of the window
+  // and Rev's answer unfolds beneath it. Only the chat pane scrolls, never the page.
+  useEffect(() => {
+    const chat = chatRef.current;
+    const current = turnRef.current;
+    if (!chat || !current) return;
+    const top = turn === 0 ? 0 : Math.max(0, current.offsetTop - 12);
+    const target = Math.min(top, chat.scrollHeight - chat.clientHeight);
+    if (typeof chat.scrollTo === "function") chat.scrollTo({ top: target, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    else chat.scrollTop = target;
+    const id = window.setTimeout(measure, 450);
+    return () => window.clearTimeout(id);
+  }, [turn, pending, measure]);
+
+  const toBottom = () => {
+    const chat = chatRef.current;
+    if (chat && typeof chat.scrollTo === "function") chat.scrollTo({ top: chat.scrollHeight, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+  };
+
   const current = ORDER[turn];
   const next = turn < ORDER.length - 1 ? turn + 1 : 0;
 
   let reply: ReactNode = null;
-  if (!pending) reply = <Answer id={current} onFollowUp={() => run(next)} />;
+  if (!pending) reply = <Answer id={current} latest />;
   else if (started) reply = <Pending id={current} done={checksDone} />;
 
   return (
@@ -442,21 +653,35 @@ function Conversation() {
       <Sidebar />
       <div className="mr-main">
         <Topbar />
-        <div className="mr-chat" role="log" aria-live="polite" aria-label="Conversation with Rev">
-          <div className="mr-thread">
-            {turn > 0 ? (
-              <div className="mr-past" aria-hidden="true">
-                <UserBubble>{MEET_REV.turns[ORDER[turn - 1]].user}</UserBubble>
-                <Answer id={ORDER[turn - 1]} />
+        <div className="mr-chatwrap">
+          <div ref={chatRef} className="mr-chat" role="log" aria-live="polite" aria-label="Conversation with Rev" onScroll={measure}>
+            <div className="mr-thread">
+              {ORDER.slice(0, turn).map((id) => (
+                <div key={id} className="mr-exchange mr-exchange--past">
+                  <UserBubble>{MEET_REV.turns[id].user}</UserBubble>
+                  <Answer id={id} />
+                </div>
+              ))}
+              <div ref={turnRef} key={current} className="mr-exchange mr-turn" data-step={current}>
+                <UserBubble>{MEET_REV.turns[current].user}</UserBubble>
+                {reply}
               </div>
-            ) : null}
-            <div key={current} className="mr-turn" data-step={current}>
-              <UserBubble>{MEET_REV.turns[current].user}</UserBubble>
-              {reply}
             </div>
           </div>
+          <button
+            type="button"
+            className={`mr-down${below ? " is-on" : ""}`}
+            onClick={toBottom}
+            tabIndex={below ? undefined : -1}
+            aria-label="Scroll to the latest message"
+          >
+            <ArrowDown size={15} aria-hidden="true" />
+          </button>
         </div>
-        <Composer busy={pending && started} />
+        <Composer
+          busy={pending && started}
+          suggestion={!pending ? <FollowUp label={MEET_REV.turns[current].followUp} onClick={() => run(next)} hint={current === "ask"} /> : null}
+        />
       </div>
     </figure>
   );
@@ -493,7 +718,7 @@ export function MeetRevSection({ id }: { id?: string }) {
           </p>
         </div>
 
-        <div ref={stage} className="mr-stage sx-tilt">
+        <div ref={stage} className="mr-stage">
           <Conversation />
         </div>
       </div>
