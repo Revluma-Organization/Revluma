@@ -7,6 +7,7 @@ import { FoundingSection } from "./components/founding/FoundingSection";
 import { ReviewsSection } from "./components/reviews/ReviewsSection";
 import { FaqSection } from "./components/faq/FaqSection";
 import { PricingSection } from "./components/pricing/PricingSection";
+import { FinalCtaSection } from "./components/final-cta/FinalCtaSection";
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
         <ReviewsSection id="reviews" />
         <FaqSection id="faq" />
         <PricingSection id="pricing" />
+        <FinalCtaSection id="get-started" />
       </main>
     </>
   );

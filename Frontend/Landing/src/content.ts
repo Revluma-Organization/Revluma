@@ -435,3 +435,18 @@ export const REVIEWS = {
     },
   ],
 } as const;
+
+// Final CTA: closes the page by echoing the hero's promise. No user counts,
+// recovery claims or cancellation promises. The primary action is the same
+// free trial as Pricing (real sign-up page; the backend's 7-day trial starts
+// without payment details); the secondary opens the Founding Merchants
+// waitlist like the other "apply" CTAs.
+export const FINAL_CTA = {
+  eyebrow: "Get started",
+  headline: { lead: "Stop guessing.", accent: "Start understanding your store." },
+  description:
+    "Connect your Shopify store with read-only access and let Rev show you where revenue may be slipping, why, and what deserves your attention first.",
+  primary: "Start free trial",
+  secondary: "Apply as a Founding Merchant",
+  notes: ["7-day free trial", "No credit card required", "Read-only Shopify access"],
+} as const;
