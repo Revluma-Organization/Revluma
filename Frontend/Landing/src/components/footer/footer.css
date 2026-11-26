@@ -1,0 +1,305 @@
+/* Footer (FooterSection.tsx, FooterScene.tsx). White where the links sit,
+ * fading into the scene's lavender sky, then the illustrated scene with Rev's
+ * watching eye. */
+
+.ft {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: #ffffff;
+  color: #0c0a1d;
+}
+.ft-top {
+  position: relative;
+  z-index: 2;
+}
+
+.ft-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #0c0a1d;
+  text-decoration: none;
+}
+.ft-brand img {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+}
+.ft-tag {
+  max-width: 22rem;
+  margin: 0.9rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #4a4858;
+}
+.ft-social {
+  display: flex;
+  gap: 1rem;
+  margin: 1.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ft-social a {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: -0.5rem;
+  border-radius: 999px;
+  color: #0c0a1d;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease;
+}
+.ft-social a:hover {
+  color: #1f06ac;
+  background: #eeebff;
+}
+
+.ft-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2.25rem 2rem;
+}
+@media (min-width: 640px) {
+  .ft-cols {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.ft-h {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #0c0a1d;
+}
+.ft-cols ul {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ft-link {
+  font-size: 0.9rem;
+  color: #5d5b6b;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+.ft-link:hover {
+  color: #1f06ac;
+}
+.ft-link:focus-visible,
+.ft-brand:focus-visible,
+.ft-social a:focus-visible {
+  outline: 2px solid #1f06ac;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.ft-copy {
+  margin: 2.5rem 0 0;
+  font-size: 0.82rem;
+  color: #5d5b6b;
+}
+
+/* The scene. Its top fades in over a white-to-sky gradient, so the links sit on
+ * white and the sky starts beneath them, as in the reference. */
+.ft-scene {
+  position: relative;
+  z-index: 1;
+  margin-top: -4vw;
+  background: linear-gradient(180deg, rgba(226, 225, 251, 0) 0%, #e2e1fb 26%);
+}
+.ft-scene__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 26%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 26%);
+}
+/* Phones: the scene is short, so a fade over its top 26% reads as an edge.
+ * Fade in above it instead, over a fixed height. */
+@media (max-width: 639px) {
+  .ft-scene {
+    margin-top: 7.5rem;
+    background: #e2e1fb;
+  }
+  .ft-scene::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: 7rem;
+    /* Eased stops: a linear fade that stops dead reads as a line. */
+    background: linear-gradient(
+      180deg,
+      rgba(226, 225, 251, 0) 0%,
+      rgba(226, 225, 251, 0.2) 30%,
+      rgba(226, 225, 251, 0.55) 55%,
+      rgba(226, 225, 251, 0.82) 75%,
+      rgba(226, 225, 251, 0.96) 90%,
+      #e2e1fb 100%
+    );
+  }
+  .ft-scene__img {
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 3.5rem);
+    mask-image: linear-gradient(180deg, transparent 0, #000 3.5rem);
+  }
+}
+
+/* Lines of sight from the eye to what it is looking at. */
+.ft-sight {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.ft-sight line {
+  stroke: #2b13cf;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 5;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.ft-sight line.is-on {
+  opacity: 0.55;
+  animation: ft-march 1.2s linear infinite;
+}
+@keyframes ft-march {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+/* A ring on the object and a label naming the data it stands for. */
+.ft-mark {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.ft-ring {
+  position: absolute;
+  left: -17px;
+  top: -17px;
+  width: 34px;
+  height: 34px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+.ft-chip {
+  position: absolute;
+  left: 0;
+  bottom: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.7rem 0.35rem 0.55rem;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow:
+    0 10px 24px -10px rgba(31, 6, 172, 0.45),
+    0 0 0 1px rgba(31, 6, 172, 0.1);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #0c0a1d;
+  opacity: 0;
+  transform: translateX(-50%) scale(0.92);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+.ft-chip i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #32d583;
+  box-shadow: 0 0 0 3px rgba(50, 213, 131, 0.2);
+}
+.ft-mark.is-on .ft-ring {
+  opacity: 1;
+  transform: scale(1);
+  animation: ft-ping 1.6s ease-out infinite;
+}
+.ft-mark.is-on .ft-chip {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+@keyframes ft-ping {
+  0% {
+    box-shadow: 0 0 0 0 rgba(43, 19, 207, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 18px rgba(43, 19, 207, 0);
+  }
+}
+
+/* Rev's eye: the orb as the iris, in a glassy almond with a soft halo. */
+.ft-eye {
+  position: absolute;
+  aspect-ratio: 150 / 84;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.ft-eye::before {
+  content: "";
+  position: absolute;
+  inset: -70% -45%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(116, 96, 255, 0.35), rgba(116, 96, 255, 0));
+}
+.ft-eye svg {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 8px 14px rgba(31, 6, 172, 0.3));
+}
+.ft-eye__lid {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+.ft-eye.is-blink .ft-eye__lid {
+  animation: ft-blink 0.22s ease-in-out;
+}
+@keyframes ft-blink {
+  50% {
+    transform: scaleY(0.06);
+  }
+}
+.ft-eye__iris {
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Phones: keep the eye, drop the lines and labels so the scene stays clean. */
+@media (max-width: 639px) {
+  .ft-sight,
+  .ft-mark {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ft-eye__iris,
+  .ft-ring,
+  .ft-chip,
+  .ft-sight line {
+    transition: none;
+  }
+  .ft-sight line.is-on,
+  .ft-mark.is-on .ft-ring {
+    animation: none;
+  }
+}

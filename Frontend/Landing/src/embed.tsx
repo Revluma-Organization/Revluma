@@ -2,7 +2,7 @@
  * Embed build of the rebuilt landing sections for the current homepage
  * (Frontend/index.html): the nav + hero, the features section ("What
  * Revluma does"), how it works (three steps), Meet Rev, the Founding Merchants
- * Program, merchant feedback, the FAQ, pricing and the final CTA.
+ * Program, merchant feedback, the FAQ, pricing, the final CTA and the footer.
  *
  * The homepage still runs on the Tailwind CDN with a dark global theme, so each
  * section renders inside its own shadow root on its host element: page styles
@@ -28,6 +28,7 @@ import { ReviewsSection } from "./components/reviews/ReviewsSection";
 import { FaqSection } from "./components/faq/FaqSection";
 import { PricingSection } from "./components/pricing/PricingSection";
 import { FinalCtaSection } from "./components/final-cta/FinalCtaSection";
+import { FooterSection } from "./components/footer/FooterSection";
 
 // Only sections that exist on the current homepage. "Platform" leads to the
 // features section (what Revluma does).
@@ -63,6 +64,7 @@ export const SECTIONS: Record<string, () => ReactNode> = {
   faq: () => <FaqSection />,
   pricing: () => <PricingSection />,
   "get-started": () => <FinalCtaSection />,
+  "site-footer": () => <FooterSection />,
 };
 
 function mountSection(hostId: string, render: () => ReactNode) {
