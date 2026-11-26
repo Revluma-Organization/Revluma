@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Store } from "lucide-react";
 import { MONTHLY_ORDERS, STORE_AGE, normaliseShopifyUrl } from "../schema";
 import { REFERRAL_FORMAT } from "../referral";
 import type { ApplicationState } from "../useApplication";
@@ -28,6 +29,7 @@ export function StepStore({ state }: { state: ApplicationState }) {
       step={1}
       total={4}
       title="About your store"
+      icon={Store}
       description="Tell us who you are and which Shopify store you run. We only use this to review your application and contact you."
       errors={errors}
       labels={STEP1_LABELS}
@@ -107,7 +109,7 @@ export function StepStore({ state }: { state: ApplicationState }) {
           type="tel"
           inputMode="tel"
           autoComplete="tel"
-          placeholder="+234 801 234 5678"
+          placeholder="+1 (555) 123-4567"
           value={a.phone}
           error={errors.phone}
           onValue={(v) => update("phone", v)}
@@ -149,6 +151,7 @@ export function StepStore({ state }: { state: ApplicationState }) {
         value={a.store_age}
         error={errors.store_age}
         onValue={(v) => update("store_age", v)}
+        variant="scale"
       />
       <ChoiceGroup
         name="monthly_orders"
@@ -157,6 +160,7 @@ export function StepStore({ state }: { state: ApplicationState }) {
         value={a.monthly_orders}
         error={errors.monthly_orders}
         onValue={(v) => update("monthly_orders", v)}
+        variant="scale"
       />
       {/* Bot trap: hidden from people and assistive tech; anything typed here means a bot. */}
       <div className="wl-hp" aria-hidden="true">

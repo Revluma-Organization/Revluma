@@ -51,8 +51,12 @@ export function ProgressRail({ screen, furthest, done, onJump, disabled }: Props
   );
 }
 
-/** Compact progress for small screens (and a visual bar for everyone). */
-export function ProgressBar({ screen, done }: { screen: Screen; done: boolean }) {
+/**
+ * Four segments, one per step. Finished steps are full; the current one fills
+ * live as its required questions are answered, so progress moves with every
+ * choice rather than only on Continue.
+ */
+export function ProgressBar({ screen, done, fill }: { screen: Screen; done: boolean; fill: number }) {
   const value = done ? 4 : screen;
   const title = done ? "Submitted" : ITEMS[screen - 1].title;
   return (
@@ -70,7 +74,15 @@ export function ProgressBar({ screen, done }: { screen: Screen; done: boolean })
         aria-valuenow={value}
         aria-valuetext={done ? "Submitted" : `Step ${screen} of 4, ${title}`}
       >
-        <span className="wl-progress__fill" style={{ transform: `scaleX(${value / 4})` }} />
+        {ITEMS.map((item) => {
+          const amount = done || item.screen < screen ? 1 : item.screen === screen ? Math.max(0.06, fill) : 0;
+          const state = done || item.screen < screen ? "full" : item.screen === screen ? "live" : "empty";
+          return (
+            <span key={item.screen} className={`wl-progress__seg is-${state}`}>
+              <span className="wl-progress__fill" style={{ transform: `scaleX(${amount})` }} />
+            </span>
+          );
+        })}
       </div>
     </div>
   );

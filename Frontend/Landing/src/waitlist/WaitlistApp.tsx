@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { ArrowLeft, Info, LockKeyhole, RotateCw, TriangleAlert } from "lucide-react";
 import revlumaLogo from "@/assets/revluma-icon.png";
-import { normaliseShopifyUrl } from "./schema";
+import { MONTHLY_ORDERS, labelOf, normaliseShopifyUrl } from "./schema";
+import { overallFill, stepFill } from "./progress";
 import { scrollBehavior } from "./motion";
 import { useApplication, type ApplicationState } from "./useApplication";
 import { Pass } from "./components/Pass";
@@ -105,25 +106,35 @@ export function WaitlistApp() {
   }, [panelKey]);
 
   const store = normaliseShopifyUrl(state.answers.store_url)?.replace("https://", "") ?? null;
+  const orders = state.answers.monthly_orders ? labelOf(MONTHLY_ORDERS, state.answers.monthly_orders) : null;
+  const overall = overallFill(state.answers);
+  // The review screen has nothing left to answer: its segment sits half full until submit.
+  const fill = state.screen <= 3 ? stepFill(state.answers, state.screen as 1 | 2 | 3) : 0.5;
   const passStatus = done ? (state.app?.status === "accepted" ? "Accepted" : "Submitted") : state.app ? "In progress" : "Not started";
-  const passStep = done ? "Complete" : `${state.screen} of 4`;
 
   return (
     <div className="wl">
-      <header className="wl-nav">
-        <a className="wl-nav__brand" href="/" aria-label="Revluma home">
-          <img src={revlumaLogo} alt="" width={28} height={28} />
-          Revluma
-        </a>
-        <a className="wl-nav__back" href="/">
-          <ArrowLeft size={15} strokeWidth={2.2} aria-hidden="true" />
-          Back to site
-        </a>
+      <header className="wl-nav-wrap">
+        <nav className="wl-nav" aria-label="Revluma">
+          <a className="wl-nav__brand" href="/" aria-label="Revluma home">
+            <span className="wl-nav__mark">
+              <img src={revlumaLogo} alt="" width={24} height={24} />
+            </span>
+            <span>Revluma</span>
+          </a>
+          <a className="wl-nav__back" href="/">
+            <ArrowLeft size={15} strokeWidth={2.2} aria-hidden="true" />
+            Back to site
+          </a>
+        </nav>
       </header>
 
       <main className="wl-main" id="main">
         <aside className="wl-aside">
-          <p className="wl-eyebrow">Founding Merchants Program</p>
+          <p className="wl-eyebrow">
+            <span aria-hidden="true" />
+            Founding Merchants Program
+          </p>
           <h1 className="wl-h1">
             Apply to become a <span>Founding Merchant</span>
           </h1>
@@ -131,7 +142,15 @@ export function WaitlistApp() {
             A few questions about your store and what's hard to understand today. It takes about four minutes, and every step is saved as you go.
           </p>
           <div className="wl-aside__pass">
-            <Pass store={store} status={passStatus} step={passStep} />
+            <Pass
+              store={store}
+              orders={orders}
+              status={passStatus}
+              answered={done ? overall.total : overall.done}
+              total={overall.total}
+              done={done}
+              queue={state.app?.queue_position ?? null}
+            />
           </div>
           {state.view === "form" || done ? (
             <div className="wl-aside__rail">
@@ -162,9 +181,9 @@ export function WaitlistApp() {
         </aside>
 
         <section className="wl-panel" aria-label={done ? "Application received" : `Application, ${STEP_NAMES[state.screen - 1]}`}>
-          {state.view === "form" || done ? <ProgressBar screen={state.screen} done={done} /> : null}
           <Notice state={state} />
           <div ref={card} className="wl-card">
+            {state.view === "form" || done ? <ProgressBar screen={state.screen} done={done} fill={fill} /> : null}
             <div key={panelKey} className={`wl-enter wl-enter--${state.direction > 0 ? "fwd" : "back"}`}>
               <Panel state={state} />
             </div>

@@ -1,5 +1,5 @@
-import { useEffect, useRef, type ReactNode } from "react";
-import { ArrowLeft, Loader2, PencilLine, RotateCw, Send } from "lucide-react";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { ArrowLeft, ClipboardCheck, Loader2, PencilLine, RotateCw, Send } from "lucide-react";
 import { CAPABILITIES, CHALLENGES, FOUNDING_INTEREST, MONTHLY_ORDERS, PRICES, PROBLEM_DISCOVERY, STORE_AGE, labelOf, type StepNumber } from "../schema";
 import type { ApplicationState } from "../useApplication";
 import { SaveStatus } from "./StepFrame";
@@ -27,7 +27,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="wl-review__section" aria-labelledby={`wl-review-${step}`}>
+    <section className="wl-review__section" style={{ "--i": step } as CSSProperties} aria-labelledby={`wl-review-${step}`}>
       <div className="wl-review__head">
         <h3 id={`wl-review-${step}`}>{title}</h3>
         <button type="button" className="wl-btn wl-btn--edit" onClick={() => onEdit(step)} disabled={disabled} aria-label={`Edit ${title.toLowerCase()}`}>
@@ -67,7 +67,12 @@ export function ReviewStep({ state }: { state: ApplicationState }) {
   return (
     <div className="wl-step" aria-busy={saving || undefined}>
       <header className="wl-step__head">
-        <p className="wl-step__count wl-step__count--step">Step 4 of 4</p>
+        <div className="wl-step__badge-row">
+          <span className="wl-step__badge" aria-hidden="true">
+            <ClipboardCheck size={20} strokeWidth={2} />
+          </span>
+          <p className="wl-step__count wl-step__count--step">Step 4 of 4</p>
+        </div>
         <h2 ref={heading} tabIndex={-1} className="wl-step__title">
           Review your application
         </h2>
@@ -126,7 +131,10 @@ export function ReviewStep({ state }: { state: ApplicationState }) {
             ) : (
               <>
                 Submit application
-                <Send size={15} strokeWidth={2.4} aria-hidden="true" />
+                <span className="wl-chip" aria-hidden="true">
+                  <Send size={13} strokeWidth={2.4} />
+                  <Send size={13} strokeWidth={2.4} />
+                </span>
               </>
             )}
           </button>
