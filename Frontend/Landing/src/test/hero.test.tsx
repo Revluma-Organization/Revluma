@@ -95,7 +95,6 @@ describe("Landing hero", () => {
     expect(tiles).toEqual([...HERO.sources.items]);
     // Shopify only: the hub must not suggest any other integration.
     expect(tiles.filter((name) => /shopify/i.test(name ?? ""))).toEqual(["Shopify"]);
-    expect(HERO.sources.label).toMatch(/read-only/i);
   });
 
   it("shows the leaking funnel instead of the reference's plant", () => {

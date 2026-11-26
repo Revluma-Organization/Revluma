@@ -30,7 +30,7 @@ export const HERO = {
   // store sync actually reads (Backend/src/services/shopifySync.js), and no
   // other integrations: Revluma is Shopify only.
   sources: {
-    label: "Revluma reads your Shopify orders, products, customers, refunds and abandoned checkouts. Read-only: your store stays unchanged.",
+    label: "Revluma reads your Shopify orders, products, customers, refunds and abandoned checkouts.",
     items: ["Shopify", "Orders", "Products", "Customers", "Refunds", "Abandoned checkouts"],
   },
 } as const;
@@ -193,14 +193,13 @@ export const FOUNDING = {
   steps: [
     { title: "Apply", body: "Tell us about your store and what's hard to understand today." },
     { title: "Talk with us", body: "We'll reach out to learn about the operational challenges you face." },
-    { title: "Get early access", body: "Connect your Shopify store with read-only access and start using Revluma." },
+    { title: "Get early access", body: "Connect your Shopify store and start using Revluma." },
   ],
   pass: {
     label: "Founding Merchant",
     program: "Early access invitation",
     fields: [
       { label: "Store", value: "your-store.myshopify.com" },
-      { label: "Access", value: "Read-only" },
       { label: "Status", value: "Applications open" },
     ],
   },
@@ -276,7 +275,7 @@ export const FAQ = {
       id: "changes",
       q: "Does Revluma make changes to my store?",
       a: [
-        "No. Revluma has read-only access. It analyzes your data and recommends next steps, but it doesn't edit products, prices, discounts or orders, and it doesn't contact your customers. Every change is your decision, made in Shopify.",
+        "No. Revluma analyzes your data and recommends next steps, but it doesn't edit products, prices, discounts or orders, and it doesn't contact your customers. Every change is your decision, made in Shopify.",
       ],
     },
     {
@@ -317,7 +316,7 @@ export const FAQ = {
       id: "founding",
       q: "How can I become a founding merchant?",
       a: [
-        "Apply through the Founding Merchants Program and tell us about your store and what's hard to understand today. We'll get in touch to learn about your challenges. Then you connect your store with read-only access and start using Revluma.",
+        "Apply through the Founding Merchants Program and tell us about your store and what's hard to understand today. We'll get in touch to learn about your challenges. Then you connect your store and start using Revluma.",
       ],
       cta: true,
     },
@@ -333,7 +332,7 @@ export const FAQ = {
 export const PRICING = {
   eyebrow: "Pricing",
   headline: { lead: "Simple, transparent", accent: "pricing." },
-  description: "Every plan is read-only, built for Shopify and grounded in your store's evidence.",
+  description: "Every plan is built for Shopify and grounded in your store's evidence.",
   billing: {
     monthly: "Monthly",
     yearly: "Yearly",
@@ -442,11 +441,9 @@ export const REVIEWS = {
 // without payment details); the secondary opens the Founding Merchants
 // waitlist like the other "apply" CTAs.
 export const FINAL_CTA = {
-  eyebrow: "Get started",
   headline: { lead: "Stop guessing.", accent: "Start understanding your store." },
-  description:
-    "Connect your Shopify store with read-only access and let Rev show you where revenue may be slipping, why, and what deserves your attention first.",
+  description: "Connect your Shopify store and let Rev show you where revenue may be slipping, why, and what deserves your attention first.",
   primary: "Start free trial",
   secondary: "Apply as a Founding Merchant",
-  notes: ["7-day free trial", "No credit card required", "Read-only Shopify access"],
+  notes: ["7-day free trial", "No credit card required"],
 } as const;

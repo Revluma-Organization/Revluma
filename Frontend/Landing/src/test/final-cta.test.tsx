@@ -24,6 +24,13 @@ describe("Final CTA", () => {
     for (const n of FINAL_CTA.notes) expect(within(el).getByText(n)).toBeInTheDocument();
   });
 
+  it("is a plain band: no orb, eyebrow or glow", () => {
+    render(<App />);
+    const el = screen.getByRole("region", { name: new RegExp(FINAL_CTA.headline.lead) });
+    expect(el.querySelector("picture, img, .fm-eyebrow, .fc-glow, .fc-grid")).toBeNull();
+    expect(within(el).queryByText(/get started/i)).toBeNull();
+  });
+
   it("makes no user-count, recovery or cancellation claims", () => {
     const text = JSON.stringify(FINAL_CTA);
     expect(text).not.toMatch(/\d[\d,]*\+?\s*(brands|merchants|stores)|recover|cancel anytime|guarantee/i);

@@ -49,10 +49,9 @@ describe("FAQ", () => {
     expect(first).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("describes the current product: Shopify only, read-only, facts separated from assumptions", () => {
+  it("describes the current product: Shopify only, no store edits, facts separated from assumptions", () => {
     const text = FAQ.items.map((i) => [...i.a, ...("data" in i ? i.data : []), ...("grades" in i ? i.grades.map((g) => g.body) : [])].join(" ")).join(" ");
     expect(text).toMatch(/Shopify stores only/);
-    expect(text).toMatch(/read-only access/);
     expect(text).toMatch(/doesn't edit products, prices, discounts or orders/);
     expect(text).toMatch(/never treated as zero/);
     // No roadmap promises or unverifiable claims.
