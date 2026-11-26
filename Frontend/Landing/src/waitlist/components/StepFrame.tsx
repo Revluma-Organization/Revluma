@@ -1,5 +1,5 @@
 import { useEffect, useRef, type FormEvent, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, Check, CloudOff, Loader2, RotateCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CloudOff, Loader2, RotateCw, type LucideIcon } from "lucide-react";
 import type { SaveState } from "../useApplication";
 import { ErrorSummary } from "./fields";
 
@@ -13,6 +13,7 @@ type Props = {
   step: number;
   total: number;
   title: string;
+  icon: LucideIcon;
   description: ReactNode;
   errors: Record<string, string | undefined>;
   labels: Record<string, string>;
@@ -25,6 +26,16 @@ type Props = {
   continueLabel: string;
   children: ReactNode;
 };
+
+/** The round arrow chip from the auth and landing CTAs; the arrow slides through on hover. */
+export function ArrowChip() {
+  return (
+    <span className="wl-chip" aria-hidden="true">
+      <ArrowRight size={14} strokeWidth={2.4} />
+      <ArrowRight size={14} strokeWidth={2.4} />
+    </span>
+  );
+}
 
 export function SaveStatus({ save }: { save: SaveState }) {
   let content: ReactNode = null;
@@ -61,6 +72,7 @@ export function StepFrame({
   step,
   total,
   title,
+  icon: Icon,
   description,
   errors,
   labels,
@@ -96,9 +108,14 @@ export function StepFrame({
   return (
     <form className="wl-step" noValidate onSubmit={submit} aria-labelledby={`wl-step-${step}-title`} aria-busy={saving || undefined}>
       <header className="wl-step__head">
-        <p className="wl-step__count wl-step__count--step">
-          Step {step} of {total}
-        </p>
+        <div className="wl-step__badge-row">
+          <span className="wl-step__badge" aria-hidden="true">
+            <Icon size={20} strokeWidth={2} />
+          </span>
+          <p className="wl-step__count wl-step__count--step">
+            Step {step} of {total}
+          </p>
+        </div>
         <h2 id={`wl-step-${step}-title`} ref={heading} tabIndex={-1} className="wl-step__title">
           {title}
         </h2>
@@ -131,7 +148,7 @@ export function StepFrame({
             ) : (
               <>
                 {continueLabel}
-                <ArrowRight size={16} strokeWidth={2.4} aria-hidden="true" />
+                <ArrowChip />
               </>
             )}
           </button>

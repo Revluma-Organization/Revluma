@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://revluma.com/</loc></url>
-  <url><loc>https://revluma.com/waitlist</loc></url>
-  <url><loc>https://revluma.com/pages/privacyPolicy</loc></url>
-  <url><loc>https://revluma.com/pages/termsOfService</loc></url>
+  <url><loc>https://revluma.vercel.app/</loc></url>
+  <url><loc>https://revluma.vercel.app/waitlist</loc></url>
+  <url><loc>https://revluma.vercel.app/pages/privacyPolicy</loc></url>
+  <url><loc>https://revluma.vercel.app/pages/termsOfService</loc></url>
 </urlset>

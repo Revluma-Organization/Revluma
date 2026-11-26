@@ -8,18 +8,18 @@
 export type Option<K extends string = string> = { readonly value: K; readonly label: string; readonly hint?: string };
 
 export const STORE_AGE = [
-  { value: "lt_3m", label: "Less than 3 months" },
-  { value: "3_6m", label: "3 to 6 months" },
-  { value: "6_12m", label: "6 to 12 months" },
-  { value: "1_3y", label: "1 to 3 years" },
+  { value: "lt_3m", label: "Under 3 months" },
+  { value: "3_6m", label: "3 - 6 months" },
+  { value: "6_12m", label: "6 - 12 months" },
+  { value: "1_3y", label: "1 - 3 years" },
   { value: "3y_plus", label: "3+ years" },
 ] as const satisfies readonly Option[];
 
 export const MONTHLY_ORDERS = [
-  { value: "0_20", label: "0 to 20" },
-  { value: "21_100", label: "21 to 100" },
-  { value: "101_500", label: "101 to 500" },
-  { value: "501_2000", label: "501 to 2,000" },
+  { value: "0_20", label: "0 - 20" },
+  { value: "21_100", label: "21 - 100" },
+  { value: "101_500", label: "101 - 500" },
+  { value: "501_2000", label: "501 - 2,000" },
   { value: "2000_plus", label: "2,000+" },
 ] as const satisfies readonly Option[];
 
@@ -112,9 +112,9 @@ export const STEP_FIELDS: Record<StepNumber, readonly (keyof Answers)[]> = {
 };
 
 export const STEPS = [
-  { number: 1, title: "About your store", short: "Your store" },
-  { number: 2, title: "Your challenges", short: "Challenges" },
-  { number: 3, title: "Pricing and priorities", short: "Priorities" },
+  { number: 1, title: "About your store" },
+  { number: 2, title: "Your challenges" },
+  { number: 3, title: "Pricing and priorities" },
 ] as const;
 
 const UNSAFE = /[<>\u0000-\u001f\u007f]/;
@@ -177,7 +177,7 @@ export function validateStep(step: StepNumber, a: Answers): Errors {
     const store = clean(a.store_name);
     if (!store || store.length > 120 || UNSAFE.test(store)) errors.store_name = "Enter your brand or store name.";
     if (!normaliseShopifyUrl(a.store_url)) errors.store_url = "Enter your Shopify store address, like yourstore.myshopify.com.";
-    if (normalisePhone(a.phone) === undefined) errors.phone = "Enter a phone or WhatsApp number with 7 to 15 digits, or leave it empty.";
+    if (normalisePhone(a.phone) === undefined) errors.phone = "Enter a phone or WhatsApp number with 7 - 15 digits, or leave it empty.";
     if (!has(STORE_AGE, a.store_age)) errors.store_age = "Choose how long your store has been running.";
     if (!has(MONTHLY_ORDERS, a.monthly_orders)) errors.monthly_orders = "Choose your typical monthly orders.";
   } else if (step === 2) {

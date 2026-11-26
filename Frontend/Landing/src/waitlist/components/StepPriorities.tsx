@@ -1,4 +1,6 @@
+import { Gem } from "lucide-react";
 import { CAPABILITIES, FOUNDING_INTEREST, MAX_CAPABILITIES, PRICES } from "../schema";
+import { OPTION_ICONS } from "../icons";
 import type { ApplicationState } from "../useApplication";
 import { ChoiceGroup, MultiChoice } from "./fields";
 import { StepFrame } from "./StepFrame";
@@ -17,6 +19,7 @@ export function StepPriorities({ state }: { state: ApplicationState }) {
       step={3}
       total={4}
       title="Pricing and priorities"
+      icon={Gem}
       description="Help us build the right thing at the right price. Your answers stay private to the Revluma team."
       errors={errors}
       labels={STEP3_LABELS}
@@ -47,6 +50,7 @@ export function StepPriorities({ state }: { state: ApplicationState }) {
         max={MAX_CAPABILITIES}
         error={errors.capabilities}
         onValue={(v) => update("capabilities", v)}
+        icons={OPTION_ICONS}
       />
       <ChoiceGroup
         name="founding_interest"
@@ -57,6 +61,7 @@ export function StepPriorities({ state }: { state: ApplicationState }) {
         error={errors.founding_interest}
         onValue={(v) => update("founding_interest", v)}
         variant="cards"
+        icons={OPTION_ICONS}
       />
     </StepFrame>
   );

@@ -3,10 +3,11 @@ import { resolve } from "node:path";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WaitlistApp } from "@/waitlist/WaitlistApp";
-import { CAPABILITIES, EMPTY_ANSWERS, PRICES, normaliseEmail, normalisePhone, normaliseShopifyUrl, validateStep, type Answers } from "@/waitlist/schema";
+import { CAPABILITIES, EMPTY_ANSWERS, MONTHLY_ORDERS, PRICES, STORE_AGE, normaliseEmail, normalisePhone, normaliseShopifyUrl, validateStep, type Answers } from "@/waitlist/schema";
 import { captureReferral, referralFromSearch, waitlistHref } from "@/waitlist/referral";
 import { keepUnsaved } from "@/waitlist/recovery";
 import type { Application } from "@/waitlist/api";
+import { overallFill, stepFill } from "@/waitlist/progress";
 
 const page = readFileSync(resolve(__dirname, "../../../waitlist.html"), "utf8");
 
@@ -66,8 +67,8 @@ async function fillStep1(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText("Work email"), "Amina@KanoThreads.com");
   await user.type(screen.getByLabelText("Brand or store name"), "Kano Threads");
   await user.type(screen.getByLabelText("Shopify store URL"), "kanothreads");
-  await user.click(screen.getByRole("radio", { name: "1 to 3 years" }));
-  await user.click(screen.getByRole("radio", { name: "101 to 500" }));
+  await user.click(screen.getByRole("radio", { name: "1 - 3 years" }));
+  await user.click(screen.getByRole("radio", { name: "101 - 500" }));
 }
 
 beforeEach(() => {
@@ -108,6 +109,32 @@ describe("waitlist schema", () => {
     expect(validateStep(3, { ...base, capabilities: CAPABILITIES.slice(0, 4).map((c) => c.value) }).capabilities).toMatch(/up to 3/);
     expect(Object.keys(validateStep(3, EMPTY_ANSWERS)).sort()).toEqual(["capabilities", "founding_interest", "price_willingness"]);
     expect(PRICES.map((p) => p.label)).toEqual(["Free", "$19", "$29", "$49", "$79", "$99", "$149", "$199", "$299", "$500+"]);
+  });
+});
+
+describe("waitlist presentation rules", () => {
+  it("writes number ranges as A - B, never A to B", () => {
+    expect(MONTHLY_ORDERS.map((o) => o.label)).toEqual(["0 - 20", "21 - 100", "101 - 500", "501 - 2,000", "2,000+"]);
+    expect(STORE_AGE.map((o) => o.label)).toEqual(["Under 3 months", "3 - 6 months", "6 - 12 months", "1 - 3 years", "3+ years"]);
+    expect(validateStep(1, { ...EMPTY_ANSWERS, phone: "12" }).phone).toContain("7 - 15 digits");
+    for (const label of [...MONTHLY_ORDERS, ...STORE_AGE].map((o) => o.label)) expect(label).not.toMatch(/\d to \d/);
+  });
+
+  it("fills progress live from the required answers only", () => {
+    expect(stepFill(EMPTY_ANSWERS, 1)).toBe(0);
+    expect(stepFill({ ...EMPTY_ANSWERS, full_name: "Amina", phone: "+1 555 123 4567" }, 1)).toBeCloseTo(1 / 6);
+    expect(stepFill({ ...EMPTY_ANSWERS, ...STEP1 } as Answers, 1)).toBe(1);
+    expect(overallFill({ ...EMPTY_ANSWERS, ...STEP1 } as Answers)).toEqual({ done: 6, total: 11 });
+  });
+
+  it("keeps every animation behind prefers-reduced-motion", () => {
+    const css = readFileSync(resolve(__dirname, "../waitlist/waitlist.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduced).toMatch(/animation-duration: 0\.01ms !important/);
+    expect(reduced).toMatch(/transition-duration: 0\.01ms !important/);
+    expect(reduced).toMatch(/\.wl-pass-tilt \{\s*transform: none !important/);
+    expect(reduced).toMatch(/\.wl-burst \{\s*display: none/);
+    expect(css).not.toMatch(/\u2014|\u2013/);
   });
 });
 
@@ -324,6 +351,22 @@ describe("/waitlist application", () => {
     expect(await screen.findByText(/already has an application/, { selector: ".wl-notice p" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Email me a code" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "About your store" })).toBeInTheDocument();
+  });
+
+  it("uses a US phone example and draws ranges as tiles the pass reacts to", async () => {
+    backend({ "GET resume": () => json(200, { success: true, data: { application: null } }) });
+    const user = userEvent.setup();
+    const { container } = render(<WaitlistApp />);
+    await screen.findByRole("heading", { name: "About your store" });
+    expect(screen.getByLabelText(/phone or whatsapp/i)).toHaveAttribute("placeholder", "+1 (555) 123-4567");
+    const orders = screen.getByRole("group", { name: /orders do you get/i });
+    expect(within(orders).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual(["0 - 20", "21 - 100", "101 - 500", "501 - 2,000", "2,000+"]);
+    expect(container.querySelector(".wl-pass__meter-num")).toHaveTextContent("0%");
+    await user.click(screen.getByRole("radio", { name: "501 - 2,000" }));
+    expect(screen.getByRole("radio", { name: "501 - 2,000" })).toBeChecked();
+    expect(container.querySelector(".wl-pass__meter-num")).toHaveTextContent("9%");
+    expect(container.querySelector(".wl-pass")).toHaveTextContent("501 - 2,000");
+    expect(container.querySelector(".wl-pass-stage")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("follows the house style (no em-dashes, no read-only wording)", async () => {

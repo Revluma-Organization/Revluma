@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Check, Copy, Mail } from "lucide-react";
 import type { Application } from "../api";
+import { Burst } from "./Burst";
 
 const STATUS: Record<string, { label: string; body: string }> = {
   submitted: {
@@ -37,6 +38,7 @@ export function SuccessView({ app, justSubmitted }: { app: Application; justSubm
 
   return (
     <div className={`wl-done${justSubmitted ? " is-fresh" : ""}`}>
+      {justSubmitted ? <Burst /> : null}
       <div className="wl-done__badge" aria-hidden="true">
         <svg viewBox="0 0 64 64" width="64" height="64">
           <circle className="wl-done__ring" cx="32" cy="32" r="29" />

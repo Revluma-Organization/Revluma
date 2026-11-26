@@ -1,4 +1,6 @@
+import { Compass } from "lucide-react";
 import { CHALLENGES, PROBLEM_DISCOVERY } from "../schema";
+import { OPTION_ICONS } from "../icons";
 import type { ApplicationState } from "../useApplication";
 import { ChoiceGroup, MultiChoice } from "./fields";
 import { StepFrame } from "./StepFrame";
@@ -18,6 +20,7 @@ export function StepChallenges({ state }: { state: ApplicationState }) {
       step={2}
       total={4}
       title="Your challenges"
+      icon={Compass}
       description="What makes running your store harder than it should be? There are no wrong answers."
       errors={errors}
       labels={STEP2_LABELS}
@@ -36,6 +39,7 @@ export function StepChallenges({ state }: { state: ApplicationState }) {
         value={a.challenges}
         error={errors.challenges}
         onValue={(v) => update("challenges", v)}
+        icons={OPTION_ICONS}
         extra={{
           other: (
             <div className={`wl-field${errors.challenge_other ? " is-invalid" : ""}`}>
@@ -72,6 +76,7 @@ export function StepChallenges({ state }: { state: ApplicationState }) {
         error={errors.problem_discovery}
         onValue={(v) => update("problem_discovery", v)}
         variant="cards"
+        icons={OPTION_ICONS}
       />
     </StepFrame>
   );

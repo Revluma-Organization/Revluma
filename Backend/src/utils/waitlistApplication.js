@@ -167,7 +167,7 @@ function validateStep1(body = {}) {
   const store_url = normaliseShopifyUrl(body.store_url);
   if (!store_url) errors.store_url = 'Enter your Shopify store address, like yourstore.myshopify.com.';
   const phone = normalisePhone(body.phone);
-  if (phone === undefined) errors.phone = 'Enter a phone or WhatsApp number with 7 to 15 digits, or leave it empty.';
+  if (phone === undefined) errors.phone = 'Enter a phone or WhatsApp number with 7 - 15 digits, or leave it empty.';
   const store_age = oneOf(OPTIONS.store_age, body.store_age);
   if (!store_age) errors.store_age = 'Choose how long your store has been running.';
   const monthly_orders = oneOf(OPTIONS.monthly_orders, body.monthly_orders);
