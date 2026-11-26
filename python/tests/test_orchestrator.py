@@ -8,6 +8,7 @@ from src.agents.base_agent import AgentResult
 from src.agents.revenue_agent import RevenueAgent
 from src.agents.orchestrator import (
     AGENT_OUTPUT_FIELDS,
+    OrchestrationResult,
     _build_context_json,
     _classify_orchestrator_mode,
     _is_ad_evaluation_request,
@@ -565,3 +566,27 @@ def test_standalone_python_chat_still_persists(monkeypatch):
         "conv-1", MagicMock(), "corr-1",
     )
     persist.assert_called_once()
+
+
+# ── Phase 5B parity: the /orchestrate boundary never emits epistemic grades ──
+def test_orchestrate_boundary_carries_no_epistemic_grades():
+    """api.py returns OrchestrationResult.to_dict() verbatim, so whatever keys
+    it emits ARE the HTTP boundary. Verified facts, calculated observations,
+    hypotheses and unknowns are re-validated at the Node boundary only on the
+    investigation path; the orchestrate path must never carry those keys."""
+    result = OrchestrationResult(
+        success=True, conversation_id="conv-1", message_id="msg-1",
+        response_type="analysis", situation="Situation.", insight="Insight.",
+        implication="Implication.", recommendation="Recommendation.",
+    )
+    payload = result.to_dict()
+    assert set(payload) & {"claims", "facts", "hypotheses", "unknowns"} == set()
+    # Documented intentional-safe differences: the legacy path also emits no
+    # finding echo (Node re-attaches the authorized request reference) and no
+    # evidence envelope (scheduler briefings render deterministic text).
+    assert "selected_finding" not in payload
+    assert "evidence" not in payload
+    # The keys the Node boundary requires are always present.
+    assert payload["conversation_id"] == "conv-1"
+    assert payload["message_id"] == "msg-1"
+    assert payload["response_type"] == "analysis"
