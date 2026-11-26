@@ -32,6 +32,15 @@ reused components (`HealthIndicators` stacked, `RecentSignalsPanel` list,
 `EvidenceFreshness`). Briefing + activity preserved below the grid. No card
 rebuilds, no table work, no Rev changes (3b/4/5 untouched).
 
+**Stage 3b (2026-11-26):** queue densification landed — finding cards rebuilt
+as dense rows (rank `01`, severity chip, category, verbatim headline, two-line
+explanation, key recorded metric, impact + confidence + detected timestamp,
+trailing investigation action). Exactly one primary CTA (top item); the rest
+quiet secondary. Backend order + tie-break display preserved; `?finding=`
+deep-link, `#priority-finding` anchor, drawer, and row-click navigation
+untouched. Rebuild also normalized the row to 150ms bare transitions and the
+`rounded-xl` dense-surface rule.
+
 **Brand sources:** shipped command-center contract (`tokens.ts`), severity system
 (`findingDisplay.ts`), dashboard theme (`index.css`, Tailwind v3 config).
 Generator defaults that conflicted (blue/amber palette, Fira typography,

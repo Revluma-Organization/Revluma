@@ -32,26 +32,28 @@ import {
 import type { Finding } from "./types";
 
 /**
- * PriorityFindingCard: glassmorphic 2-zone bento card for a ranked finding.
+ * PriorityFindingCard: dense priority-queue row for a ranked finding.
  *
- * Left zone: severity pill, category, verification state, the verbatim title
- * and description, impact/confidence/detection meta, and the two actions
- * (investigate + view full details). Right zone: a frosted evidence tile with
- * the primary recorded value. Everything deeper lives in the
- * FindingDetailsDrawer side drawer.
+ * Single compact surface (Master dense-surface rule: rounded-xl): rank
+ * gutter, severity chip, category, verification state, the verbatim title and
+ * two-line description, a meta line (key recorded metric, impact, confidence,
+ * detection time), and trailing actions (investigate + view full details).
+ * Everything deeper lives in the FindingDetailsDrawer side drawer.
  *
  * Contract notes (do not break):
  * - Root stays a motion.article carrying data-severity / data-priority-primary.
- * - Rank renders as "#N", verification states keep their exact labels.
+ * - Rank renders zero-padded ("01"); verification states keep exact labels.
  * - Primary title is h3, secondary titles are h4.
  * - Title and description stay verbatim in the DOM.
  * - Impact meter keeps its "Impact level N of 3" accessible label; detection
- *   time keeps its "Detected …" text.
- * - CTA labels: "Ask Rev about this" (primary), backend next_step label when
- *   meaningful, otherwise "Investigate with Rev" (secondary).
+ *   time keeps its "Detected …" text; the key metric keeps the exact recorded
+ *   value text (money tweens, everything else renders verbatim).
+ * - Exactly one primary CTA (top-ranked item only); every other row uses the
+ *   quiet secondary style. CTA labels: "Ask Rev about this" (primary),
+ *   backend next_step label when meaningful, otherwise "Investigate with Rev".
  * - Card body click navigates; button interactions never trigger navigation.
  * - No trend sparkline: the backend provides recorded values, not time
- *   series, so the tile shows the value, its label, and the real window only.
+ *   series, so the row shows the value, its label, and the real window only.
  */
 
 const EASE_OUT_EXPO: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -67,7 +69,7 @@ export interface PriorityFindingCardProps {
 }
 
 /**
- * Primary recorded impact: the first available observation value. Money values
+ * Key recorded metric: the first available observation value. Money values
  * tween on change; every other unit renders the exact recorded text.
  */
 function PrimaryImpactValue({ item }: { item: Observation }) {
@@ -188,77 +190,100 @@ export function PriorityFindingCard({
         }}
         className="group min-w-0 cursor-pointer"
       >
-        {/* Frosted glass surface with inset highlight; deepens on hover */}
-        <div
-          className="rounded-2xl border border-slate-200/70 bg-white/85 p-5 backdrop-blur-xl transition-shadow duration-200 hover:shadow-[0_18px_40px_-12px_rgba(31,6,172,0.16),0_4px_12px_-2px_rgba(15,23,42,0.06),inset_0_1px_1px_rgba(255,255,255,1)] motion-reduce:transition-none sm:p-6"
-          style={{
-            boxShadow:
-              "0 4px 24px -6px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.95)",
-          }}
-        >
-          <div className="grid gap-5 lg:grid-cols-12">
-            <div className="flex min-w-0 flex-col gap-3.5 lg:col-span-8">
-              {/* Identity row: severity pill, category, verification, rank */}
-              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[12px]">
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase leading-4 tracking-[0.06em]"
-                  style={{
-                    borderColor: severity.border,
-                    background: severity.softBg,
-                    color: severity.deep,
-                  }}
-                >
+        {/* Dense queue row: single compact surface, trailing actions on md+ */}
+        <div className="rounded-xl border border-line-soft bg-white p-4 transition-colors hover:border-line-strong motion-reduce:transition-none sm:px-5">
+          <div className="flex flex-col gap-3.5 md:flex-row md:gap-4">
+            <div className="flex min-w-0 flex-1 gap-3.5">
+              {/* Rank gutter */}
+              <span className="shrink-0 pt-0.5 font-mono text-[11px] font-semibold tabular-nums text-ink-muted">
+                {String(rank).padStart(2, "0")}
+              </span>
+
+              <div className="min-w-0 flex-1">
+                {/* Identity row: severity chip, category, verification */}
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[12px]">
                   <span
-                    aria-hidden="true"
-                    className="h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ background: severity.base }}
-                  />
-                  <span>{severity.longLabel}</span>
-                </span>
-                <span className="font-medium text-slate-500">{categoryLabel}</span>
-                <span aria-hidden="true" className="text-slate-300">
-                  ·
-                </span>
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1 font-semibold",
-                    verified ? "text-teal-800" : "text-danger-limited",
+                    className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase leading-4 tracking-[0.06em]"
+                    style={{
+                      borderColor: severity.border,
+                      background: severity.softBg,
+                      color: severity.deep,
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ background: severity.base }}
+                    />
+                    <span>{severity.longLabel}</span>
+                  </span>
+                  <span className="font-medium text-slate-500">{categoryLabel}</span>
+                  <span aria-hidden="true" className="text-slate-300">
+                    ·
+                  </span>
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 font-semibold",
+                      verified ? "text-teal-800" : "text-danger-limited",
+                    )}
+                  >
+                    {verified ? (
+                      <BadgeCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    )}
+                    <span>{stateLabel}</span>
+                  </span>
+                  {(evidenceState === "stale" || evidenceState === "partial") && (
+                    <StateBadge state={evidenceState} />
                   )}
-                >
-                  {verified ? (
-                    <BadgeCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                </div>
+
+                {/* Verbatim headline + two-line explanation */}
+                <div className="mt-2 min-w-0">
+                  {isPrimary ? (
+                    <h3 className="text-balance text-[16px] font-semibold leading-[1.35] tracking-[-0.015em] text-slate-900">
+                      {finding.title}
+                    </h3>
                   ) : (
-                    <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <h4 className="text-balance text-[15px] font-semibold leading-[1.35] tracking-[-0.015em] text-slate-900">
+                      {finding.title}
+                    </h4>
                   )}
-                  <span>{stateLabel}</span>
-                </span>
-                {(evidenceState === "stale" || evidenceState === "partial") && (
-                  <StateBadge state={evidenceState} />
-                )}
-                <span className="ml-auto shrink-0 font-mono text-[11px] font-semibold tabular-nums text-slate-500">
-                  #{rank}
-                </span>
-              </div>
+                  <p className="mt-1 line-clamp-2 max-w-prose text-[13.5px] leading-[1.6] text-slate-500">
+                    {finding.description}
+                  </p>
+                </div>
 
-              {/* Problem focal point: verbatim title + description */}
-              <div className="min-w-0">
-                {isPrimary ? (
-                  <h3 className="text-balance text-[17px] font-semibold leading-[1.35] tracking-[-0.015em] text-slate-900">
-                    {finding.title}
-                  </h3>
-                ) : (
-                  <h4 className="text-balance text-[16px] font-semibold leading-[1.35] tracking-[-0.015em] text-slate-900">
-                    {finding.title}
-                  </h4>
-                )}
-                <p className="mt-1.5 line-clamp-2 max-w-prose text-[13.5px] leading-[1.6] text-slate-500">
-                  {finding.description}
-                </p>
-              </div>
-
-              {/* Meta + actions */}
-              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 pt-1">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-slate-500">
+                {/* Meta line: key metric, impact, confidence, detection */}
+                <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-slate-500">
+                  {hasPrimaryImpact && primaryObservation ? (
+                    <span className="inline-flex min-w-0 items-baseline gap-1.5">
+                      <span
+                        title={
+                          typeof primaryObservation.value === "string"
+                            ? primaryObservation.value
+                            : undefined
+                        }
+                        className="truncate text-[13px] font-semibold tabular-nums text-slate-900"
+                      >
+                        <PrimaryImpactValue item={primaryObservation} />
+                      </span>
+                      <span className="truncate">{primaryObservation.label}</span>
+                      {windowLabel && (
+                        <span className="shrink-0 font-mono text-[11px] tabular-nums">
+                          {windowLabel}
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span aria-hidden="true" className="font-semibold text-slate-300">
+                        —
+                      </span>
+                      <span>No verified observations recorded</span>
+                    </span>
+                  )}
                   <ImpactMeter level={severity.impactBars} severity={severity} />
                   <span>
                     Confidence:{" "}
@@ -279,116 +304,63 @@ export function PriorityFindingCard({
                     </span>
                   )}
                 </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <SheetTrigger asChild>
-                    <button
-                      type="button"
-                      className={cn(
-                        "inline-flex cursor-pointer min-h-10 items-center justify-center gap-1.5 rounded-[10px] border border-slate-200 bg-white/80 px-3.5 py-2 text-[12.5px] font-semibold text-slate-800 transition-colors duration-200 hover:bg-slate-100 motion-reduce:transition-none",
-                        cc.focus,
-                      )}
-                    >
-                      <PanelRightOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
-                      <span>View full details</span>
-                      <ChevronRight
-                        className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transform-none"
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </SheetTrigger>
-
-                  <button
-                    type="button"
-                    onClick={handleCtaClick}
-                    disabled={pending}
-                    className={cn(
-                      "inline-flex cursor-pointer min-h-10 items-center justify-center gap-1.5 rounded-[10px] px-4 py-2 text-[12.5px] font-semibold text-white transition-all duration-200 hover:brightness-110 disabled:cursor-wait disabled:opacity-80 motion-reduce:transition-none",
-                      cc.focus,
-                    )}
-                    style={{
-                      background:
-                        palette.gradient.cta,
-                      boxShadow:
-                        "0 6px 18px -4px rgba(31, 6, 172, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
-                    }}
-                  >
-                    {pending ? (
-                      <Loader2
-                        className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none"
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                    )}
-                    <span>{ctaLabel}</span>
-                    <ArrowRight
-                      className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transform-none"
-                      aria-hidden="true"
-                    />
-                  </button>
-                </div>
               </div>
             </div>
 
-            {/* Frosted evidence tile: primary recorded value + real window */}
-            <div
-              className="relative flex min-w-0 flex-col justify-between gap-2 overflow-hidden rounded-xl border border-slate-200/70 bg-slate-50/70 p-4 backdrop-blur-md lg:col-span-4"
-              style={{
-                boxShadow:
-                  "inset 0 1px 1px rgba(255, 255, 255, 0.85), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
-              }}
-            >
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0"
-                style={{
-                  background:
-                    "radial-gradient(220px 120px at 85% 0%, rgba(68, 56, 232, 0.08), transparent 70%)",
-                }}
-              />
-              <div className="relative flex items-center justify-between gap-2">
-                <span className="text-[11px] font-bold uppercase leading-4 tracking-[0.06em] text-slate-500">
-                  {verified ? "Verified evidence" : "Recorded evidence"}
-                </span>
-                {windowLabel && (
-                  <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-500">
-                    {windowLabel}
-                  </span>
+            {/* Trailing actions: exactly one primary CTA per queue (top item) */}
+            <div className="flex shrink-0 gap-2 md:w-44 md:flex-col">
+              <button
+                type="button"
+                onClick={handleCtaClick}
+                disabled={pending}
+                className={cn(
+                  "inline-flex min-h-10 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-semibold transition-colors motion-reduce:transition-none md:w-full md:flex-none",
+                  isPrimary
+                    ? "text-white hover:brightness-110 disabled:cursor-wait disabled:opacity-80"
+                    : "border border-line bg-white text-ink hover:border-line-strong hover:bg-workspace disabled:cursor-wait disabled:opacity-80",
+                  cc.focus,
                 )}
-              </div>
-
-              <div className="relative flex min-w-0 items-baseline gap-2">
-                {hasPrimaryImpact && primaryObservation ? (
-                  <>
-                    <span
-                      title={
-                        typeof primaryObservation.value === "string"
-                          ? primaryObservation.value
-                          : undefined
+                style={
+                  isPrimary
+                    ? {
+                        background: palette.gradient.cta,
+                        boxShadow:
+                          "0 6px 18px -4px rgba(31, 6, 172, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
                       }
-                      className="truncate text-[28px] font-semibold leading-[34px] tracking-[-0.02em] tabular-nums text-slate-900"
-                    >
-                      <PrimaryImpactValue item={primaryObservation} />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-slate-500">
-                      {primaryObservation.label}
-                    </span>
-                  </>
+                    : undefined
+                }
+              >
+                {pending ? (
+                  <Loader2
+                    className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <>
-                    <span
-                      aria-hidden="true"
-                      className="text-[28px] font-semibold leading-[34px] text-slate-300"
-                    >
-                      —
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-slate-500">
-                      No verified observations recorded
-                    </span>
-                  </>
+                  <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 )}
-              </div>
+                <span>{ctaLabel}</span>
+                <ArrowRight
+                  className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none"
+                  aria-hidden="true"
+                />
+              </button>
+
+              <SheetTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex min-h-10 cursor-pointer items-center justify-center gap-1.5 rounded-[10px] border border-slate-200 bg-white/80 px-3.5 py-2 text-[12.5px] font-semibold text-slate-800 transition-colors hover:bg-slate-100 motion-reduce:transition-none md:w-full",
+                    cc.focus,
+                  )}
+                >
+                  <PanelRightOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>View full details</span>
+                  <ChevronRight
+                    className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none"
+                    aria-hidden="true"
+                  />
+                </button>
+              </SheetTrigger>
             </div>
           </div>
         </div>
