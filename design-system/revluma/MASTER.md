@@ -41,6 +41,27 @@ deep-link, `#priority-finding` anchor, drawer, and row-click navigation
 untouched. Rebuild also normalized the row to 150ms bare transitions and the
 `rounded-xl` dense-surface rule.
 
+**Stage 4 (2026-11-26):** Signals & Activity landed — new
+`#signals-activity` section (after briefing, before the nested activity feed):
+h2 + explanation + real `{findings} · {recorded}` counts; explorable signals
+table over the shared queue (`selectQueueFindings`) with severity toggle tabs
+(All / Critical & High / Medium / Low + counts), search (title, description,
+category, source), verification select (Verified / Evidence-limited, no
+lifecycle tabs — the model exposes none), category select (only when 2+
+exist), sort (priority / severity / detected, stable), clear-filters, 6-row
+client-side pages with honest remaining counts, empty + no-results states,
+and `role=status` result counts. Columns: Signal / Severity / Category /
+Verification / Evidence freshness / Detected / Inspect; Category→Detected
+collapse below `md` with the essentials repeated in a mobile meta line
+(display:none per breakpoint, so screen readers hear each value once).
+Rows open the existing `FindingDetailsDrawer` (no new drawer; rank = backend
+queue position, selected-row tint + focus return preserve position); Rev
+handoff unchanged. `OperationalActivity` reused untouched inside the section,
+so `?section=activity` and cursor pagination survive; `?section=signals` now
+targets the section (rail `#recent-signals` kept). Pagination is client-side:
+the only cursor endpoint (`business-activity`) paginates activity events, not
+findings, so reusing it for the table would mix data — documented, honest.
+
 **Brand sources:** shipped command-center contract (`tokens.ts`), severity system
 (`findingDisplay.ts`), dashboard theme (`index.css`, Tailwind v3 config).
 Generator defaults that conflicted (blue/amber palette, Fira typography,

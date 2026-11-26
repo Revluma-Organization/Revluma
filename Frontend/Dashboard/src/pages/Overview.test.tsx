@@ -65,7 +65,7 @@ describe("Task 216 Command Center", () => {
     }
   });
 
-  it("signals deep link scrolls to the recent-signals panel when signals are evaluated", async () => {
+  it("signals deep link scrolls to the Signals & Activity section", async () => {
     let scrolled: Element | null = null;
     window.HTMLElement.prototype.scrollIntoView = function (this: Element) { scrolled = this; };
     const evaluation = {
@@ -77,19 +77,19 @@ describe("Task 216 Command Center", () => {
     try {
       await renderPageAt("/dashboard/overview?section=signals", fixture({ findings: [finding() as CommandCenterData["findings"][number]], signal_evaluation: evaluation } as Partial<CommandCenterData>));
       expect(scrolled).not.toBeNull();
-      expect((scrolled as unknown as Element).id).toBe("recent-signals");
+      expect((scrolled as unknown as Element).id).toBe("signals-activity");
     } finally {
       delete (window.HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
   });
 
-  it("signals deep link falls back to the priorities block when no signals are evaluated", async () => {
+  it("signals deep link lands on the Signals & Activity section even with no evaluated signals", async () => {
     let scrolled: Element | null = null;
     window.HTMLElement.prototype.scrollIntoView = function (this: Element) { scrolled = this; };
     try {
       await renderPageAt("/dashboard/overview?section=signals", fixture());
       expect(scrolled).not.toBeNull();
-      expect((scrolled as unknown as Element).id).toBe("priority-finding");
+      expect((scrolled as unknown as Element).id).toBe("signals-activity");
     } finally {
       delete (window.HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
@@ -102,12 +102,14 @@ describe("Task 216 Command Center", () => {
     const priorities = screen.getByRole("heading", { name: "Today's Priorities", level: 2 });
     const supporting = screen.getByRole("heading", { name: "Supporting intelligence", level: 2 });
     const briefing = screen.getByRole("heading", { name: "Your latest synchronized business picture", level: 2 });
+    const signals = screen.getByRole("heading", { name: "Signals & Activity", level: 2 });
     const activity = screen.getByRole("heading", { name: "Operational activity", level: 2 });
     expect(welcome.compareDocumentPosition(kpis) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(kpis.compareDocumentPosition(priorities) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(priorities.compareDocumentPosition(supporting) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(supporting.compareDocumentPosition(briefing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(briefing.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(briefing.compareDocumentPosition(signals) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(signals.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("revluma-test-store-v1.myshopify.com")).toBeInTheDocument();
     expect(screen.getByText(/^Last synchronized:/)).toBeInTheDocument();
   });
@@ -219,9 +221,11 @@ describe("Task 216 Command Center", () => {
     expect(screen.getByText("Briefing generated")).toBeInTheDocument();
   });
 
-  it("page sections fit a single-column mobile hierarchy without horizontal tables", async () => {
-    await renderPage(fixture());
-    expect(document.querySelectorAll("table")).toHaveLength(0);
+  it("signals table keeps a responsive single-table layout without horizontal overflow", async () => {
+    await renderPage(fixture({ findings: [finding() as CommandCenterData["findings"][number]] }));
+    const tables = document.querySelectorAll("table");
+    expect(tables).toHaveLength(1);
+    expect(tables[0].querySelectorAll("th.hidden")).not.toHaveLength(0);
     expect(document.querySelector("[data-command-center]")?.className).toContain("overflow-x-clip");
     expect(screen.getByRole("button", { name: "Refresh briefing" })).toBeInTheDocument();
   });
@@ -334,9 +338,9 @@ describe("Task 217 priority finding evidence and next step", () => {
     fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(screen.getByText(/Restore fresh, verified source evidence/)).toBeInTheDocument();
   });
-  it("priority evidence remains keyboard accessible and responsive without raw tables", async () => {
+  it("priority evidence remains keyboard accessible with exactly one responsive table", async () => {
     await renderPage(priorityFixture());
-    expect(document.querySelectorAll("table")).toHaveLength(0);
+    expect(document.querySelectorAll("table")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "View full details" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(document.querySelector("[data-command-center]")?.className).toContain("overflow-x-clip");

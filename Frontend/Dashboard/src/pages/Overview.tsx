@@ -6,12 +6,12 @@ import {
   CommandCenterHeader,
   EvidenceFreshness,
   HealthIndicators,
-  OperationalActivity,
   OperationalBriefing,
   PriorityFindings,
 } from "@/components/command-center/CommandCenterSections";
 import { KpiStrip } from "@/components/command-center/KpiStrip";
 import { RecentSignalsPanel } from "@/components/command-center/RecentSignalsPanel";
+import { SignalsActivitySection } from "@/components/command-center/SignalsActivitySection";
 import { cc } from "@/components/command-center/tokens";
 import { cn } from "@/lib/utils";
 
@@ -102,7 +102,7 @@ export default function Overview() {
     }
     const sections: Record<string, string> = {
       priority: "priority-finding",
-      signals: "recent-signals",
+      signals: "signals-activity",
       briefing: "operational-briefing-heading",
       activity: "operational-activity-heading",
       evidence: "evidence-heading",
@@ -110,12 +110,9 @@ export default function Overview() {
     };
     const target = selectedSection && sections[selectedSection];
     if (target) {
-      // The signals panel only renders when evaluated signals exist; fall back
-      // to the priorities block that hosts it so the link never dead-ends.
-      const anchor =
-        document.getElementById(target) ??
-        (selectedSection === "signals" ? document.getElementById("priority-finding") : null);
-      anchor?.scrollIntoView({ block: "start" });
+      // The Signals & Activity section renders whenever data exists, so the
+      // signals deep link never dead-ends (no evaluated-signals fallback).
+      document.getElementById(target)?.scrollIntoView({ block: "start" });
     }
   }, [selectedFinding, selectedSection, data]);
 
@@ -220,8 +217,8 @@ export default function Overview() {
             onRefresh={() => void refetch(true)}
           />
 
-          {/* OPERATIONAL ACTIVITY */}
-          <OperationalActivity data={data} />
+          {/* SIGNALS & ACTIVITY (STAGE 4) */}
+          <SignalsActivitySection data={data} />
         </>
       ) : failure ? (
         <BriefingFailureBanner failure={failure} onRetry={() => void refetch(false)} />
