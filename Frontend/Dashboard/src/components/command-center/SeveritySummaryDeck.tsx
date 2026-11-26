@@ -352,7 +352,7 @@ function SeverityTierCard({
             }}
             className={cn(
               "text-[2rem] font-semibold leading-none tracking-[-0.04em] tabular-nums",
-              hasItems ? "text-ink" : "text-ink-faint",
+              hasItems ? "text-ink" : "text-ink-muted",
             )}
           >
             {tier.count}
@@ -373,7 +373,7 @@ function SeverityTierCard({
                 {totalCount > 0 ? `${tier.count} of ${totalCount}` : ""}
               </span>
             ) : (
-              <span className="font-mono text-[10.5px] tabular-nums text-deck-ghost">
+              <span aria-hidden="true" className="font-mono text-[10.5px] tabular-nums text-deck-ghost">
                 {tier.indexLabel}
               </span>
             )}
@@ -440,7 +440,7 @@ function SeverityTierCard({
         type="button"
         aria-pressed={isSelected}
         onClick={onSelect}
-        className={sharedClasses}
+        className={cn(sharedClasses, "cursor-pointer")}
         style={sharedStyle}
         {...motionProps}
       >

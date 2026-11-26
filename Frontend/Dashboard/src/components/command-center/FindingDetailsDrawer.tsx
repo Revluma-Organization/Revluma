@@ -195,7 +195,7 @@ export function FindingDetailsDrawer({
 
           <SheetPrimitive.Close
             className={cn(
-              "absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/60 bg-white/80 text-slate-600 backdrop-blur-md transition-colors hover:bg-white hover:text-ink",
+              "absolute right-4 top-4 inline-flex cursor-pointer h-8 w-8 items-center justify-center rounded-lg border border-white/60 bg-white/80 text-slate-600 backdrop-blur-md transition-colors hover:bg-white hover:text-ink",
               cc.focus,
             )}
           >
@@ -247,7 +247,7 @@ export function FindingDetailsDrawer({
                     <p className="mt-1 break-words text-[16px] font-semibold tabular-nums tracking-[-0.01em] text-slate-900">
                       <MetricValue item={obs} />
                     </p>
-                    <p className="mt-0.5 text-[11px] capitalize text-ink-faint">
+                    <p className="mt-0.5 text-[11px] capitalize text-ink-muted">
                       {obs.period.replaceAll("_", " ")}
                     </p>
                   </div>
@@ -492,7 +492,7 @@ export function FindingDetailsDrawer({
             type="button"
             onClick={() => onInvestigate(finding.investigation.route)}
             className={cn(
-              "inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-[13px] font-semibold text-white transition-all duration-200 hover:brightness-110",
+              "inline-flex cursor-pointer min-h-11 w-full items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-[13px] font-semibold text-white transition-all duration-200 hover:brightness-110",
               cc.focus,
             )}
             style={{

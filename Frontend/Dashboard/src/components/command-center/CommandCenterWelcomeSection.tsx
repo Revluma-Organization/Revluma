@@ -193,7 +193,7 @@ function StoreSwitcherDropdown({
           type="button"
           aria-label={`Switch store, current store: ${activeLabel}`}
           className={cn(
-            "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-transparent text-ink-muted transition-colors hover:border-line hover:bg-workspace hover:text-ink",
+            "inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent text-ink-muted transition-colors hover:border-line hover:bg-workspace hover:text-ink",
             FOCUS_RING,
           )}
         >
@@ -462,7 +462,7 @@ export function CommandCenterWelcomeSection({
               aria-busy={refreshing}
               aria-label={refreshing ? "Refreshing…" : "Refresh briefing"}
               className={cn(
-                "inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-subtle px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:border-brand-line hover:bg-veil hover:text-brand disabled:cursor-not-allowed disabled:opacity-55",
+                "inline-flex min-h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-subtle px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:border-brand-line hover:bg-veil hover:text-brand disabled:cursor-not-allowed disabled:opacity-55",
                 FOCUS_RING,
               )}
             >

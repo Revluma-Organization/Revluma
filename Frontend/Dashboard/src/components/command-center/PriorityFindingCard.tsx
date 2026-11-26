@@ -285,7 +285,7 @@ export function PriorityFindingCard({
                     <button
                       type="button"
                       className={cn(
-                        "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[10px] border border-slate-200 bg-white/80 px-3.5 py-2 text-[12.5px] font-semibold text-slate-800 transition-colors duration-200 hover:bg-slate-100 motion-reduce:transition-none",
+                        "inline-flex cursor-pointer min-h-10 items-center justify-center gap-1.5 rounded-[10px] border border-slate-200 bg-white/80 px-3.5 py-2 text-[12.5px] font-semibold text-slate-800 transition-colors duration-200 hover:bg-slate-100 motion-reduce:transition-none",
                         cc.focus,
                       )}
                     >
@@ -303,7 +303,7 @@ export function PriorityFindingCard({
                     onClick={handleCtaClick}
                     disabled={pending}
                     className={cn(
-                      "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[10px] px-4 py-2 text-[12.5px] font-semibold text-white transition-all duration-200 hover:brightness-110 disabled:cursor-wait disabled:opacity-80 motion-reduce:transition-none",
+                      "inline-flex cursor-pointer min-h-10 items-center justify-center gap-1.5 rounded-[10px] px-4 py-2 text-[12.5px] font-semibold text-white transition-all duration-200 hover:brightness-110 disabled:cursor-wait disabled:opacity-80 motion-reduce:transition-none",
                       cc.focus,
                     )}
                     style={{

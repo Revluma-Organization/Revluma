@@ -310,7 +310,7 @@ export function OperationalBriefingSection({
                       refreshing ? "Updating operational briefing…" : "Update operational briefing"
                     }
                     className={cn(
-                      "inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-workspace hover:text-ink disabled:cursor-not-allowed disabled:opacity-55",
+                      "inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-workspace hover:text-ink disabled:cursor-not-allowed disabled:opacity-55",
                       cc.focus,
                     )}
                   >
@@ -352,7 +352,7 @@ export function OperationalBriefingSection({
                   aria-expanded={expandedOverview}
                   onClick={() => setExpandedOverview((open) => !open)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
+                    "inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
                     cc.focus,
                   )}
                 >
@@ -393,7 +393,7 @@ export function OperationalBriefingSection({
                 <a
                   href={assessment.primaryAction.href}
                   className={cn(
-                    "inline-flex min-h-9 items-center gap-1.5 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
+                    "inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
                     cc.focus,
                   )}
                 >
@@ -405,7 +405,7 @@ export function OperationalBriefingSection({
                   type="button"
                   onClick={() => openRoute(assessment.primaryAction!.href)}
                   className={cn(
-                    "inline-flex min-h-9 items-center gap-1.5 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
+                    "inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
                     cc.focus,
                   )}
                 >
@@ -479,7 +479,7 @@ export function OperationalBriefingSection({
                       type="button"
                       onClick={() => openRoute(entry.route!)}
                       className={cn(
-                        "mt-1.5 inline-flex min-h-8 items-center gap-1 rounded-md text-xs font-medium text-brand transition-colors hover:text-brand-strong",
+                        "mt-1.5 inline-flex cursor-pointer min-h-8 items-center gap-1 rounded-md text-xs font-medium text-brand transition-colors hover:text-brand-strong",
                         cc.focus,
                       )}
                     >
@@ -577,7 +577,7 @@ export function OperationalBriefingSection({
                   type="button"
                   onClick={() => openRoute(featured.item!.action_route)}
                   className={cn(
-                    "inline-flex min-h-9 shrink-0 items-center gap-1.5 self-start rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong sm:self-auto",
+                    "inline-flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 self-start rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong sm:self-auto",
                     cc.focus,
                   )}
                 >
@@ -629,7 +629,7 @@ export function OperationalBriefingSection({
                       onClick={handleRefresh}
                       disabled={refreshing}
                       className={cn(
-                        "mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-line-strong bg-white px-3 text-xs font-semibold text-ink transition-colors hover:bg-workspace disabled:opacity-55",
+                        "mt-3 inline-flex cursor-pointer min-h-9 items-center gap-1.5 rounded-lg border border-line-strong bg-white px-3 text-xs font-semibold text-ink transition-colors hover:bg-workspace disabled:opacity-55",
                         cc.focus,
                       )}
                     >
@@ -649,7 +649,7 @@ export function OperationalBriefingSection({
                       type="button"
                       onClick={() => openRoute(featured.empty!.actionHref!)}
                       className={cn(
-                        "mt-2.5 inline-flex min-h-8 items-center gap-1.5 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
+                        "mt-2.5 inline-flex cursor-pointer min-h-8 items-center gap-1.5 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
                         cc.focus,
                       )}
                     >
@@ -729,7 +729,7 @@ export function OperationalBriefingSection({
                       onClick={() => setShowAllEvidenceCategories((prev) => !prev)}
                       aria-expanded={showAllEvidenceCategories}
                       className={cn(
-                        "mt-3 inline-flex items-center gap-1 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
+                        "mt-3 inline-flex cursor-pointer items-center gap-1 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
                         cc.focus,
                       )}
                     >
@@ -836,7 +836,7 @@ export function OperationalBriefingSection({
                     <details className="pt-1">
                       <summary
                         className={cn(
-                          "cursor-pointer text-[11px] font-medium text-ink-muted hover:text-ink",
+                          "cursor-pointer text-[11px] font-medium text-ink-muted transition-colors hover:text-ink",
                           cc.focus,
                         )}
                       >
@@ -922,7 +922,7 @@ export function OperationalBriefingSection({
                   type="button"
                   onClick={() => openRoute("/dashboard/integrations")}
                   className={cn(
-                    "inline-flex min-h-8 items-center gap-1.5 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
+                    "inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md text-xs font-semibold text-brand transition-colors hover:text-brand-strong",
                     cc.focus,
                   )}
                 >
