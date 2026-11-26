@@ -95,8 +95,8 @@ export function FeaturesSection({ id }: { id?: string }) {
                     </p>
                   )}
                 </Revealed>
-                <Revealed className="fx-stage sx-tilt">
-                  <div className="fx-stage__inner" data-spot>
+                <Revealed className="fx-stage">
+                  <div className="fx-stage__inner">
                     <Visual />
                   </div>
                 </Revealed>
