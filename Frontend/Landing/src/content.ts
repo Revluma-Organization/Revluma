@@ -403,3 +403,40 @@ export const PRICING = {
   ],
   faqLink: { label: "Questions? Read the FAQ", href: "#faq" },
 } as const;
+
+// Merchant feedback: real quotes supplied and approved by the founder
+// (2026-11-25), shown verbatim with the rating each merchant gave. They
+// describe what Revluma does today (connecting signals, explaining why,
+// prioritising) and make no metric, setup-time or automation claims.
+// No photos were supplied, so cards show initials.
+export const REVIEWS = {
+  eyebrow: "From our merchants",
+  headline: { lead: "What merchants say", accent: "about Revluma." },
+  description: "Feedback from Shopify merchants using Revluma early.",
+  items: [
+    {
+      id: "james",
+      name: "James Mitchell",
+      role: "Shopify Store Owner",
+      rating: 5,
+      quote:
+        "I always knew something was affecting our store's performance, but I couldn't pinpoint exactly where the problems were coming from. Revluma helped us connect the dots, understand what needed attention, and focus on the issues that actually mattered.",
+    },
+    {
+      id: "sarah",
+      name: "Sarah Collins",
+      role: "E-commerce Operations Manager",
+      rating: 5,
+      quote:
+        "What stands out about Revluma is that it goes beyond showing numbers. It helps explain what's happening across the store, why certain issues deserve attention, and what we should investigate next. That's incredibly valuable when managing a growing business.",
+    },
+    {
+      id: "daniel",
+      name: "Daniel Williams",
+      role: "Founder, DTC Brand",
+      rating: 5,
+      quote:
+        "Running an online store means constantly making decisions with limited time. Revluma gives us a clearer picture of where things are going wrong and helps us prioritize what to tackle first. It feels like having another layer of intelligence behind our operations.",
+    },
+  ],
+} as const;
