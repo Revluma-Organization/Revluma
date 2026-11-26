@@ -30,7 +30,7 @@ write, or config change performed.
 
 | # | Gate | Verdict | Evidence |
 |---|---|---|---|
-| 1 | Application deployment | **Blocked by missing access/evidence** | Operator 200s + `9a133438` + readies + `beta_ready` on record but predates the #522 redeploy; fresh SHA curls required. No Render API from here. |
+| 1 | Application deployment | **Blocked by missing access/evidence** | Operator 200s + `9a133438` + readies + `beta_ready` on record but predates the #522 redeploy; fresh script output required (accepted SHAs `9a133438`/`48957cc`, must agree). No Render API from here. |
 | 2 | Authenticated functionality | **Verified** | Operator: conversations listing 200. Prod data: healthy 22:33Z turn; 0 cross-org messages; local suites green (paging 9/9, tuple 6/6, retry contract, Part A); CI green on main post-#522. Full local `npm test`: 124/134 — 10 failures all environmental (no Prisma engine download, no Shopify network), none C2-related. |
 | 3 | Writer serialization | **Verified** | Identical advisory key + tx boundary in Node and Python at the deployed lineage (#522 verified C2-identical); CI two-session proof green on #519; Python 23505 retries once then raises; **0 new ties including post-deploy traffic**. |
 | 4 | Recovery readiness | **Blocked by missing access/evidence** | DB + pooler `ACTIVE_HEALTHY`; plan/PITR/retention/recoverable-point/backup-timestamp have no integration path (list/get_project expose no plan or backup fields). Exact dashboard values still outstanding. `pg_dump` procedure specified. |
@@ -40,18 +40,25 @@ write, or config change performed.
 
 No gate is Failed. Nothing here authorizes the window.
 
-## Outstanding evidence (exact)
+## Outstanding evidence (exact — consolidated checklist only)
 
-1. Fresh SHA curls (hosts corrected: Node
-   `https://revluma-backend-lqve.onrender.com/ready`, Python
-   `https://revluma-python-swwk.onrender.com/health`) — record both SHAs;
-   maintenance precondition is "SHA known and C2-identical", not a specific
-   value, but any value other than `9a133438`/`48957cc` stops the window.
-2. Dashboard values: plan, PITR on/off + retention, earliest recoverable
-   point, latest backup timestamp + status.
+1. Run `docs/rev-intelligence/C2-verify-production.ps1`, paste its results
+   block. Binding pre-maintenance SHA gate: at window start it must PASS —
+   both SHAs accepted (`9a133438`/`48957cc`) and agreeing. Anything else
+   stops the window. No Render deploys during the window (freeze covers the
+   writer processes AND the deploy pipeline; #522 proved prod can move
+   mid-review).
+2. Four dashboard values: plan, PITR on/off + retention, earliest
+   recoverable point, latest backup timestamp + status.
+
+#522 reconciliation: migration `20261127000000_founding_merchant_applications`
+is applied in prod and confined to `waitlist_users` — no interaction with
+C2. C2 stamp is `20261128000000` (verified). Writer-freeze requirements are
+unchanged (both Render services); only additions are the SHA gate and the
+deploy freeze above.
 
 ## Single next action (Splendor)
 
-Return the §C results template from `C2-OPERATOR-CHECKLIST.md` with **fresh**
-values for A1/A2/B1–B4. On receipt I flip gates 1 and 4 and we proceed to
-final authorization — no further audits.
+Complete the two tasks in `C2-OPERATOR-CHECKLIST.md` and return the results
+template. On receipt I flip gates 1 and 4 and we proceed to final
+authorization — no further audits.

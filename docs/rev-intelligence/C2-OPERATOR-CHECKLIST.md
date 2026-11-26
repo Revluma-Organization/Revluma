@@ -1,76 +1,54 @@
-# C2 operator evidence checklist (Splendor)
+# C2 consolidated operator checklist (Splendor)
 
-Expected SHA everywhere: starts with `9a133438`. Nothing below writes,
-freezes, migrates, or repairs — reads only. Do NOT run chat/stream/retry
-POSTs (those are writes).
+Two tasks, ~10 minutes. Everything is read-only: no writes, freezes,
+migrations, or repairs. Conversation listing/detail was already established
+by production evidence — not repeated here.
 
-## A1. Node backend SHA + health
+## Task 1 — Run the verification script (Windows, no token needed)
 
-```bash
-curl -s -o /tmp/ready.json -w "HTTP %{http_code}\n" \
-  https://revluma-backend-lqve.onrender.com/ready
-python3 -c "import json;r=json.load(open('/tmp/ready.json'));print('status:',r['status']);print('node_build:',r['node_build']);print('python_build:',r['python_build']);print('python_ready:',r['python_ready'],'database_ready:',r['database_ready'])"
+File: `docs/rev-intelligence/C2-verify-production.ps1` (this repo).
+It GETs Node `/ready` and Python `/health`, compares build SHAs against the
+accepted C2-identical commits (`9a133438` = #519, `48957cc` = #522
+waitlist-only), and prints PASS/FAIL plus a results block.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C2-verify-production.ps1
 ```
 
-- Expect: HTTP 200, `status` = `ready`, `node_build` starts `9a133438`,
-  `python_build` starts `9a133438`, both `*_ready` true.
-- Mismatch = any SHA with a different prefix, any `*_ready` false,
-  `status` ≠ ready, or non-200. Stop and report verbatim output.
+- Expect `OVERALL: PASS`. Accepted SHAs start with `9a133438` or `48957cc`;
+  both services must agree (short-vs-full prefix match is fine).
+- On `OVERALL: FAIL`, paste the results block AND the full output.
+- Pre-maintenance SHA gate (binding): at window start the script must PASS
+  with both SHAs accepted and agreeing. Any other SHA, `unknown`, or
+  disagreement stops the window. No Render deploys during the window.
 
-## A2. Python service SHA (cross-check)
+## Task 2 — Supabase recovery evidence (dashboard reads)
 
-```bash
-curl -s https://revluma-python-swwk.onrender.com/health | python3 -m json.tool | head -n 12
-```
+Project: Revluma-Database (`jblpgqmbgdlzitprudgt`), eu-west-1.
 
-- Expect: HTTP 200, field `build` starts `9a133438`.
-- If the Python service has no public URL, record "no public URL — covered by
-  A1 `python_build`" instead. Do not expose it publicly for this check.
+1. **Plan:** left sidebar → organization menu → Billing (or project Settings
+   → General → plan row). Record the exact plan name. PITR needs Pro or
+   above — Free must be flagged, it blocks the window.
+2. **PITR status + retention:** left sidebar → Database → Backups →
+   Point-in-time recovery section. Record ON/OFF and retention days.
+3. **Earliest recoverable timestamp:** same Backups page ("earliest point
+   of recovery" / restorable range). Record the timestamp + the time you
+   read it (UTC).
+4. **Latest backup:** same page → scheduled/daily backups list. Record the
+   most recent timestamp + its status (must read Completed/successful).
 
-## A3. Read-only smoke tests (needs a merchant JWT)
+Labels vary slightly by dashboard version — capture verbatim text.
+Screenshots are optional backup, not a substitute for pasted values.
 
-Log into the merchant dashboard in your browser → devtools → copy the
-`access_token` (short-lived session token; fine to use, do not post secret
-keys anywhere):
-
-```bash
-export TOKEN="<paste access_token>"
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://revluma-backend-lqve.onrender.com/api/v1/rev/conversations?limit=1" \
-  | head -c 600; echo
-# expect: HTTP 200, "success":true, a conversations list
-export CONV="<one conversation id from above>"
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://revluma-backend-lqve.onrender.com/api/v1/rev/conversation/$CONV?limit=5" \
-  | python3 -c "import json,sys;r=json.load(sys.stdin);print('success:',r['success']);print('seqs:',[(m['sequence_number'],m['role']) for m in r['data']['messages']])"
-# expect: success True, messages listed ascending (restoration read path OK)
-```
-
-## B. Supabase recovery evidence
-
-Project: Revluma-Database (`jblpgqmbgdlzitprudgt`), region eu-west-1.
-
-1. **Plan:** Dashboard → project → Settings → General (plan banner) —
-   record the exact plan name. PITR needs Pro or above; Free = flag it.
-2. **PITR status:** Database → Backups (or Settings → Database → Backups)
-   → Point-in-time recovery — record ON/OFF + retention days.
-3. **Latest recoverable timestamp:** same panel — record the earliest
-   restorable point shown and the time you read it.
-4. **Latest backup:** same page → most recent scheduled backup — record its
-   completed timestamp + status.
-
-Acceptable: verbatim values pasted into §C. Screenshots optional backup.
-Not acceptable: "looks fine" without values.
-
-## C. Results template (fill in and return)
+## Results template (fill in and return)
 
 ```text
-A1: HTTP=___ status=___ node_build=___ python_build=___ python_ready=___ database_ready=___
-A2: HTTP=___ build=___  (or: no public URL, covered by A1)
-A3: conversations_list_HTTP=___ success=___ / conversation_read_success=___ seqs=___
-B1 plan=___  B2 PITR=___ retention=___  B3 earliest_recoverable=___ (read at ___Z)
+SCRIPT: <paste the full RESULTS BLOCK printed by the .ps1>
+B1 plan=___
+B2 PITR=___ retention_days=___
+B3 earliest_recoverable=___ (read at ___Z)
 B4 latest_backup=___ status=___
 ```
 
-Return this block as-is with values filled. On ANY mismatch vs A1/A2
-expectations, stop and paste the full command output instead.
+That is the entire remaining operator evidence. On receipt, gates flip and
+we proceed to final authorization.
