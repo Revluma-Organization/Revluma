@@ -27,9 +27,11 @@ import {
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
   Zap, RefreshCw, Mic, Phone, Pencil,
   Trash2, ImageIcon, AlertCircle, RefreshCcw, Square, Search,
-  ThumbsUp, ThumbsDown, Volume2, CheckCircle2,
+  ThumbsUp, ThumbsDown, Volume2, CheckCircle2, ArrowLeft,
 } from "lucide-react";
-import { revConversationRoute } from "@/lib/workspaceNavigation";
+import { revConversationRoute, safeWorkspaceRoute } from "@/lib/workspaceNavigation";
+import { useMediaQuery } from "@/lib/useMediaQuery";
+import { formatSourceLabel, getSeverityMeta } from "@/components/command-center/findingDisplay";
 import { explainWorkspaceError, isKnownWorkspaceCode, merchantMessage } from "@/lib/workspaceCommunication";
 import { workspaceDesign } from "@/lib/workspaceDesign";
 import { RevOrb, RevOrbLoader } from "@/components/rev/RevOrb";
@@ -42,7 +44,7 @@ import {
   storeContextFromResponse, storeLabel, type StoreContext, type StoreListResponse,
 } from "@/lib/revStoreContext";
 import { capabilityLabel, startCapabilityAuthorization } from "@/lib/shopifyAuthorization";
-import RevAnswerView from "@/components/rev/RevAnswerView";
+import { RevInvestigationView } from "@/components/rev/RevInvestigationView";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import { JumpToLatest } from "@/components/rev/JumpToLatest";
 import EvidencePanel from "@/components/rev/EvidencePanel";
@@ -122,6 +124,10 @@ interface FindingDetails {
   title: string;
   description?: string;
   status?: string;
+  // Phase 5E: the server selects severity/type for every finding; the
+  // investigation header renders them when present, never a fallback.
+  severity?: string;
+  type?: string;
   current_validity?: string;
   evidence?: { verified?: boolean };
 }
@@ -153,6 +159,8 @@ interface FindingContext {
   lifecycleState?: string;
   currentValidity?: string;
   evidenceQuality?: string;
+  severity?: string;
+  findingType?: string;
   reportingPeriod?: { start: string | null; end: string | null; timezone: string } | null;
   confidence?: string;
   limitations?: string[];
@@ -454,7 +462,7 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
         {/* Phase 5D: evidence received before a failure stays visible — real
             retrieved records are never hidden by the error state. */}
         {msg.hasError && !msg.isStreaming && msg.payload && (msg.payload.evidence?.items?.length || msg.payload.evidence?.comparison_items?.length) ? (
-          <RevAnswerView
+          <RevInvestigationView
             payload={msg.payload}
             streaming={false}
             evidenceOpen={evidenceOpen}
@@ -463,7 +471,7 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
         ) : null}
 
         {!msg.hasError && !msg.cancelled && msg.payload && (
-          <RevAnswerView
+          <RevInvestigationView
             payload={msg.payload}
             streaming={msg.isStreaming}
             dark={isDark}
@@ -475,7 +483,7 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
 
         {!msg.payload && !msg.isStreaming && !msg.hasError && !msg.cancelled && msg.content && (
           typeof msg.content === "object" && "response_type" in (msg.content as object)
-            ? <RevAnswerView
+            ? <RevInvestigationView
                 payload={legacyResponseToPayload(msg.content)}
                 dark={isDark}
                 evidenceOpen={evidenceOpen}
@@ -688,10 +696,12 @@ function ConversationHistoryList({
             <p style={{ margin: 0, fontSize: "0.62rem", color: t2 }}>Read-only workspace</p>
           </div>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close conversation history"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg" style={{ color: t1 }}>
-          <X size={16} />
-        </button>
+        {onClose && (
+          <button type="button" onClick={onClose} aria-label="Close conversation history"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg" style={{ color: t1 }}>
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       <div className="px-4 pt-4 pb-3">
@@ -764,6 +774,129 @@ function ConversationHistoryList({
   );
 }
 
+// ── Investigation header ────────────────────────────────────────────────────
+// Phase 5E: one header for every Rev screen — back navigation to the Command
+// Center, the context badge, the conversation title and conversation
+// controls, plus the finding under investigation when one is attached. The
+// badge is derived from real state only: "Finding context" when a finding is
+// attached, "General" otherwise, with an "Investigating…" status while a
+// turn is in flight. No invented statuses, no invented titles, no invented
+// severity — unknown severities render as neutral raw text.
+
+const KNOWN_SEVERITIES = ["critical", "high", "medium", "low"] as const;
+
+function InvestigationHeader({
+  backHref, contextual, ongoing, title, findingId, findingContext, findingLoading,
+  findingError, onNewChat, onRetryFinding, isDark, card, border, t1, t2, menuVisible,
+}: {
+  backHref: string; contextual: boolean; ongoing: boolean; title: string;
+  findingId: string | null; findingContext: FindingContext | null;
+  findingLoading: boolean; findingError: string | null;
+  onNewChat: () => void; onRetryFinding: () => void;
+  isDark: boolean; card: string; border: string; t1: string; t2: string;
+  menuVisible: boolean;
+}) {
+  const severity = typeof findingContext?.severity === "string" && findingContext.severity.trim()
+    ? findingContext.severity : null;
+  const knownSeverity = severity && (KNOWN_SEVERITIES as readonly string[]).includes(severity)
+    ? severity as "critical" | "high" | "medium" | "low" : null;
+  const severityMeta = knownSeverity ? getSeverityMeta(knownSeverity) : null;
+  const categoryRaw = typeof findingContext?.findingType === "string" && findingContext.findingType.trim()
+    ? formatSourceLabel(findingContext.findingType) : null;
+  const categoryLabel = categoryRaw ? categoryRaw.charAt(0).toUpperCase() + categoryRaw.slice(1) : null;
+  return (
+    <header className="shrink-0 border-b px-4 py-3" style={{ background: card, borderColor: border }}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2" style={menuVisible ? { paddingRight: 48 } : undefined}>
+        <Link to={backHref} aria-label="Back to Command Center"
+          className="inline-flex min-h-11 items-center gap-1.5 text-xs font-semibold" style={{ color: t2 }}>
+          <ArrowLeft size={15} aria-hidden="true" />Command Center
+        </Link>
+        <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[0.65rem] font-bold"
+          style={contextual
+            ? { color: isDark ? "#b4a8ff" : "#1F06AC", background: isDark ? "rgba(31,6,172,0.25)" : "rgba(31,6,172,0.08)" }
+            : { color: t2, background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)" }}>
+          {contextual ? "Finding context" : "General"}
+        </span>
+        {ongoing && (
+          <span role="status" className="inline-flex items-center gap-1.5 text-xs font-semibold"
+            style={{ color: isDark ? "#b4a8ff" : "#1F06AC" }}>
+            <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full animate-pulse"
+              style={{ background: isDark ? "#b4a8ff" : "#1F06AC" }} />
+            Investigating…
+          </span>
+        )}
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: t1 }} title={title}>{title}</p>
+        <button onClick={onNewChat} aria-label="Start a new conversation"
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors hover:opacity-80"
+          style={{ borderColor: border, color: t1 }}>
+          <Plus size={14} aria-hidden="true" />New chat
+        </button>
+      </div>
+      {(findingId !== null || findingContext) && (
+        <section aria-label="Finding context"
+          className={`mt-3 max-h-[28dvh] overflow-y-auto rounded-xl border px-4 py-3${menuVisible ? " pr-14" : ""}`}
+          style={{ borderColor: border, color: t1 }}>
+          {findingLoading && <p role="status" className="text-sm" style={{ color: t2 }}>Loading finding details…</p>}
+          {findingContext && <>
+            <p className="mb-1 text-xs font-semibold" style={{ color: t2 }}>Finding to investigate</p>
+            <h2 className="text-sm font-semibold">{findingContext.title}</h2>
+            {(severityMeta || severity || categoryLabel) && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {severityMeta ? (
+                  <span aria-label={`Severity: ${severityMeta.label}`}
+                    className="inline-flex items-center rounded-full border px-2 py-0.5 text-[0.65rem] font-bold"
+                    style={{ color: severityMeta.base, background: severityMeta.softBg, borderColor: severityMeta.border }}>
+                    {severityMeta.label}
+                  </span>
+                ) : severity ? (
+                  <span aria-label={`Severity: ${severity}`}
+                    className="inline-flex items-center rounded-full border px-2 py-0.5 text-[0.65rem] font-bold"
+                    style={{ color: t2, borderColor: border }}>
+                    {severity}
+                  </span>
+                ) : null}
+                {categoryLabel && (
+                  <span aria-label={`Finding category: ${categoryLabel}`}
+                    className="inline-flex items-center rounded-full border px-2 py-0.5 text-[0.65rem] font-bold"
+                    style={{ color: t2, borderColor: border }}>
+                    {categoryLabel}
+                  </span>
+                )}
+              </div>
+            )}
+            {findingContext.description && <p className="mt-1 line-clamp-2 text-xs" style={{ color: t2 }}>{findingContext.description}</p>}
+            {(findingContext.confidence || findingContext.reportingPeriod) && <p className="mt-1 text-xs" style={{ color: t2 }}>
+              {findingContext.confidence ? `${findingContext.confidence.replaceAll("_", " ")} confidence` : "Confidence unavailable"}
+              {findingContext.reportingPeriod?.start && findingContext.reportingPeriod?.end ? ` · ${findingContext.reportingPeriod.start} to ${findingContext.reportingPeriod.end} (${findingContext.reportingPeriod.timezone})` : " · Reporting period unavailable"}
+            </p>}
+            {findingContext.limitations?.[0] && <p className="mt-1 text-xs" style={{ color: t2 }}>Limit: {findingContext.limitations[0]}</p>}
+            {(findingContext.currentValidity !== "current_evidence_verified" && findingContext.currentValidity !== "recorded_source_verified" || ["resolved", "dismissed", "invalidated", "superseded"].includes(findingContext.lifecycleState || "")) &&
+              <p role="status" className="mt-2 rounded-lg border px-2 py-1 text-xs" style={{ borderColor: border, color: t2 }}>
+                {findingContext.lifecycleState === "resolved" ? "Resolved finding — historical context, not a current priority." :
+                  findingContext.lifecycleState === "dismissed" ? "Dismissed finding — historical context, not a current priority." :
+                  "Stale or historical finding — Rev will revalidate it before offering current advice."}
+              </p>}
+            {!findingError && <p className="mt-2 text-xs" style={{ color: t2 }}>Rev will verify this finding against your workspace records when you send. You can edit the question first.</p>}
+            {!findingError && (
+              <button onClick={onNewChat}
+                aria-label="Start a separate conversation without inheriting this finding"
+                className="mt-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors hover:opacity-80"
+                style={{ borderColor: border, color: t1 }}>
+                Start a separate conversation
+              </button>
+            )}
+          </>}
+          {findingError && <div role="alert" className="text-sm">
+            <p>{findingError}</p>
+            <button onClick={onRetryFinding} className="mt-2 rounded-lg border px-3 py-2 text-xs font-semibold"
+              style={{ borderColor: border }} aria-label="Retry finding">Retry finding</button>
+          </div>}
+        </section>
+      )}
+    </header>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 const REV_AUTH_DRAFT_KEY = "rev:authorization-draft";
@@ -780,6 +913,9 @@ export default function RevIntell() {
   const [searchParams] = useSearchParams();
   const findingId = searchParams.get("finding");
   const returnHint = searchParams.get("return_to");
+  // Phase 5E: the history rail is persistent at desktop widths; below 1024px
+  // the modal drawer (unchanged) remains the single history surface.
+  const wide = useMediaQuery("(min-width: 1024px)");
 
   const [conversations,  setConversations]  = useState<Conversation[]>([]);
   const [activeId,       setActiveId]       = useState<string | null>(urlConvId || null);
@@ -894,6 +1030,8 @@ export default function RevIntell() {
       }
       setFindingContext({ id, title: finding.title, description: typeof finding.description === "string" ? finding.description : "",
         lifecycleState: typeof finding.status === "string" ? finding.status : undefined,
+        severity: typeof finding.severity === "string" ? finding.severity : undefined,
+        findingType: typeof finding.type === "string" ? finding.type : undefined,
         currentValidity: typeof finding.current_validity === "string" ? finding.current_validity : finding.evidence?.verified === true ? "recorded_source_verified" : "evidence_unverified",
         evidenceQuality: priority?.confidence?.classification,
         reportingPeriod: priority?.reporting_period || null,
@@ -938,6 +1076,10 @@ export default function RevIntell() {
   useEffect(() => {
     if (!messagesPagePending.current && pinnedRef.current) bottomRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
   }, [messages, thinking, reducedMotion]);
+
+  useEffect(() => {
+    if (wide) setMenuOpen(false);
+  }, [wide]);
 
   // ── Load store context ────────────────────────────────────────────────────
   // The registered backend route is /stores (plural). A failed request is
@@ -1164,10 +1306,16 @@ export default function RevIntell() {
           break;
         }
         setFindingContext(persistedFinding ? {
-          id: persistedFinding.finding_id, title: persistedFinding.title,
-          description: "", lifecycleState: persistedFinding.lifecycle_state,
+          id: persistedFinding.finding_id,
+          // Phase 5E: the echo is now fully typed, so absent fields are
+          // explicit. A missing title renders blank — never invented.
+          title: persistedFinding.title || persistedFinding.observation?.title || "",
+          description: persistedFinding.observation?.description || "",
+          lifecycleState: persistedFinding.lifecycle_state,
           currentValidity: persistedFinding.current_validity,
           evidenceQuality: persistedFinding.evidence_quality,
+          severity: persistedFinding.observation?.severity,
+          findingType: persistedFinding.type,
         } : null);
       }
       if (!append && convRecoverRef.current) {
@@ -1995,6 +2143,14 @@ export default function RevIntell() {
 
   const hasMessages = messages.length > 0;
   const starters = useMemo(() => buildStarters(storeContext), [storeContext]);
+  // Phase 5E header: the title is the active conversation's own title from
+  // the history list (never generated), and "ongoing" is the real in-flight
+  // state — never an invented status.
+  const activeTitle = activeId
+    ? (conversations.find(entry => entry.id === activeId)?.title?.trim() || "Untitled conversation")
+    : "New conversation";
+  const ongoing = thinking || messages.some(message => message.isStreaming);
+  const backHref = safeWorkspaceRoute(returnHint);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -2005,53 +2161,57 @@ export default function RevIntell() {
     <div className="rev-workspace relative flex overflow-hidden"
       style={{ height: "calc(100dvh - var(--topbar-h, 64px))", margin: "-20px -20px 0", background: bg }}>
 
+      {/* Phase 5E: persistent history rail at desktop widths. The same
+          conversation list as the narrow-viewport drawer (same selection,
+          search, rename, delete and paging behaviour) on the always-dark
+          sidebar surface; no close button because it is not a modal. */}
+      {wide && (
+        <aside aria-label="Conversation history" data-testid="rev-history-rail"
+          className="h-full w-72 shrink-0 border-r"
+          style={{ background: workspaceDesign.color.sidebar, borderColor: "rgba(255,255,255,0.08)" }}>
+          <ConversationHistoryList
+            conversations={conversations} activeId={activeId}
+            loading={historyLoading} error={historyError}
+            onRetry={() => void loadConversations()}
+            query={searchQuery} onQuery={changeSearch}
+            onNew={newChat} onSelect={openConversation}
+            onRename={(id, trigger) => { dialogReturnRef.current = trigger; renameConv(id); }}
+            onDelete={(id, trigger) => { dialogReturnRef.current = trigger; setDeleteConfirmId(id); }}
+            pagination={<LoadMore available={historyMore} loading={historyMoreLoading} error={historyMoreError} onLoad={() => void loadConversations(undefined, true)} label="Load more conversations" />}
+            isDark t1="#f1f5f9" t2="#94a3b8" border="rgba(255,255,255,0.08)" />
+        </aside>
+      )}
+
       <div className="flex flex-col flex-1 min-w-0 h-full">
 
-      {/* Hamburger (mobile) */}
-      <div className="absolute top-4 right-4 z-30">
-        <button onClick={() => setMenuOpen(v => !v)}
-          aria-label={menuOpen ? "Close conversation history" : "Open conversation history"} aria-expanded={menuOpen}
-          className="flex items-center justify-center w-9 h-9 rounded-xl transition-all hover:opacity-80"
-          style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: t2 }}>
-          {menuOpen ? <X size={18} /> : <Menu size={18} />}
-        </button>
-      </div>
+      {/* History toggle — narrow viewports only. At desktop widths the
+          persistent rail is the history surface and this button is absent, so
+          one history never has two competing controls. */}
+      {!wide && (
+        <div className="absolute top-4 right-4 z-30">
+          <button onClick={() => setMenuOpen(v => !v)}
+            aria-label={menuOpen ? "Close conversation history" : "Open conversation history"} aria-expanded={menuOpen}
+            className="flex items-center justify-center w-9 h-9 rounded-xl transition-all hover:opacity-80"
+            style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: t2 }}>
+            {menuOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+        </div>
+      )}
 
-
-      {(findingId !== null || findingContext) && <section aria-label="Finding context"
-        className="mx-4 mt-4 max-h-[28dvh] shrink-0 overflow-y-auto rounded-xl border px-4 py-3 pr-14 lg:pr-4" style={{ background: card, borderColor: bdr, color: t1 }}>
-        {findingLoading && <p role="status" className="text-sm" style={{ color: t2 }}>Loading finding details…</p>}
-        {findingContext && <>
-          <p className="mb-1 text-xs font-semibold" style={{ color: t2 }}>Finding to investigate</p>
-          <h2 className="text-sm font-semibold">{findingContext.title}</h2>
-          {findingContext.description && <p className="mt-1 line-clamp-2 text-xs" style={{ color: t2 }}>{findingContext.description}</p>}
-          {(findingContext.confidence || findingContext.reportingPeriod) && <p className="mt-1 text-xs" style={{ color: t2 }}>
-            {findingContext.confidence ? `${findingContext.confidence.replaceAll("_", " ")} confidence` : "Confidence unavailable"}
-            {findingContext.reportingPeriod?.start && findingContext.reportingPeriod?.end ? ` · ${findingContext.reportingPeriod.start} to ${findingContext.reportingPeriod.end} (${findingContext.reportingPeriod.timezone})` : " · Reporting period unavailable"}
-          </p>}
-          {findingContext.limitations?.[0] && <p className="mt-1 text-xs" style={{ color: t2 }}>Limit: {findingContext.limitations[0]}</p>}
-          {(findingContext.currentValidity !== "current_evidence_verified" && findingContext.currentValidity !== "recorded_source_verified" || ["resolved", "dismissed", "invalidated", "superseded"].includes(findingContext.lifecycleState || "")) &&
-            <p role="status" className="mt-2 rounded-lg border px-2 py-1 text-xs" style={{ borderColor: bdr, color: t2 }}>
-              {findingContext.lifecycleState === "resolved" ? "Resolved finding — historical context, not a current priority." :
-                findingContext.lifecycleState === "dismissed" ? "Dismissed finding — historical context, not a current priority." :
-                "Stale or historical finding — Rev will revalidate it before offering current advice."}
-            </p>}
-          {!findingError && <p className="mt-2 text-xs" style={{ color: t2 }}>Rev will verify this finding against your workspace records when you send. You can edit the question first.</p>}
-          {!findingError && (
-            <button onClick={newChat}
-              aria-label="Start a separate conversation without inheriting this finding"
-              className="mt-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors hover:opacity-80"
-              style={{ borderColor: bdr, color: t1 }}>
-              Start a separate conversation
-            </button>
-          )}
-        </>}
-        {findingError && <div role="alert" className="text-sm">
-          <p>{findingError}</p>
-          <button onClick={() => void loadFinding(findingId ?? findingContext?.id ?? "")} className="mt-2 rounded-lg border px-3 py-2 text-xs font-semibold"
-            style={{ borderColor: bdr }} aria-label="Retry finding">Retry finding</button>
-        </div>}
-      </section>}
+      <InvestigationHeader
+        backHref={backHref}
+        contextual={findingId !== null || findingContext !== null}
+        ongoing={ongoing}
+        title={activeTitle}
+        findingId={findingId}
+        findingContext={findingContext}
+        findingLoading={findingLoading}
+        findingError={findingError}
+        onNewChat={newChat}
+        onRetryFinding={() => void loadFinding(findingId ?? findingContext?.id ?? "")}
+        isDark={isDark} card={card} border={bdr} t1={t1} t2={t2}
+        menuVisible={!wide}
+      />
         {findingRetryDraft && <div role="status" aria-label="Question recovery" className="max-h-[25dvh] shrink-0 overflow-y-auto px-4 py-2 text-xs" style={{ color: t1 }}>
           <p>{findingRetryDraft.recoverInPlace
             ? "This request was rejected before it was saved. Send to retry this question."

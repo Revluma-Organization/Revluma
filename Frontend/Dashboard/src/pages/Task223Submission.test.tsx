@@ -20,7 +20,12 @@ vi.mock('@/lib/revStream', () => {
   }
   return { streamRevAnswer: vi.fn(), RevStreamError: FixtureStreamError };
 });
-vi.mock('@/components/rev/RevAnswerView', () => ({ default: ({ payload }: { payload: { text: string } }) => <p>{payload.text}</p> }));
+// Phase 5E: the workspace renders RevInvestigationView; this suite pins the
+// same minimal fixture contract (answer text only) on the new renderer.
+vi.mock('@/components/rev/RevInvestigationView', () => {
+  const Fixture = ({ payload }: { payload: { text: string } }) => <p>{payload.text}</p>;
+  return { default: Fixture, RevInvestigationView: Fixture };
+});
 
 type Result = { conversationId: string | null; completed: boolean };
 function deferred<T>() {
