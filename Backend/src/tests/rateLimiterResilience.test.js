@@ -272,7 +272,7 @@ test('the API and login limiters no longer share one Redis counter', async () =>
 test('every exported limiter has its own namespace', () => {
   const source = fs.readFileSync(path.join(__dirname, '../middlewares/rateLimiter.js'), 'utf8');
   const names = [...source.matchAll(/createLimiter\('([^']+)'/g)].map((match) => match[1]);
-  assert.equal(names.length, 9);
+  assert.equal(names.length, 12);
   assert.equal(new Set(names).size, names.length, `duplicate limiter names: ${names.join(', ')}`);
   assert.doesNotMatch(source, /resolveStore\(\)/, 'no limiter may bind a store once at module load');
 });

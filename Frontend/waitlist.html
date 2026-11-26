@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Apply to become a Founding Merchant | Revluma</title>
+  <meta name="description" content="Apply to the Revluma Founding Merchants Program: early access for Shopify merchants who want to understand what's going wrong in their store and what to fix first.">
+  <meta name="theme-color" content="#fbfaf8">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <link rel="icon" href="/assets/images/Revluma-icon.png">
+  <link rel="canonical" href="https://revluma.vercel.app/waitlist">
+  <meta property="og:title" content="Apply to become a Founding Merchant | Revluma">
+  <meta property="og:description" content="Early access to Revluma for Shopify merchants. Tell us about your store in about four minutes.">
+  <meta property="og:type" content="website">
+  <style>
+    /* Before the app's styles load: the page colour and a calm placeholder, so
+       there is no flash and no layout jump. */
+    html, body { margin: 0; background: #fbfaf8; color: #0c0a1d; }
+    #revluma-waitlist[data-pending] { min-height: 100vh; }
+    #revluma-waitlist[data-pending] .wl-boot { display: flex; align-items: center; gap: 10px; max-width: 1180px; margin: 0 auto; padding: 20px; font: 700 17px/1 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    #revluma-waitlist[data-pending] .wl-boot img { border-radius: 8px; }
+    .wl-noscript { max-width: 560px; margin: 48px auto; padding: 24px; border: 1px solid #e8e6e1; border-radius: 16px; background: #fff; font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .wl-noscript a { color: #2b13cf; }
+  </style>
+  <script type="module" src="/landing-hero/waitlist.js"></script>
+</head>
+
+<body>
+  <!--
+    The Founding Merchants application. Rendered by the React app in
+    Frontend/Landing/src/waitlist (built into /landing-hero/waitlist.js by
+    `npm run build:embed`). Answers are saved after every step through the
+    same-origin /api/waitlist/application proxy (api/waitlist/application.js).
+  -->
+  <div id="revluma-waitlist" data-pending>
+    <div class="wl-boot"><img src="/assets/images/Revluma-icon.png" alt="" width="28" height="28">Revluma</div>
+  </div>
+  <noscript>
+    <div class="wl-noscript">
+      <strong>Please turn on JavaScript to apply.</strong>
+      <p>The Founding Merchants application saves your answers as you go, which needs JavaScript. You can also email us at <a href="mailto:hello@revluma.com">hello@revluma.com</a>.</p>
+      <p><a href="/">Back to Revluma</a></p>
+    </div>
+  </noscript>
+</body>
+
+</html>

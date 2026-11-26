@@ -35,14 +35,11 @@ describe("Homepage hero embed", () => {
     expect(vercel.redirects.find((r) => r.source === "/login")?.destination).toBe("/auth/login");
   });
 
-  it("opens the homepage's waitlist modal instead of navigating", () => {
-    expect(homepage).toContain("@open-waitlist.window");
-    const listener = vi.fn();
-    window.addEventListener("open-waitlist", listener);
-    const event = { preventDefault: vi.fn() } as unknown as Parameters<NonNullable<typeof EMBED_CONFIG.onJoin>>[0];
-    EMBED_CONFIG.onJoin?.(event);
-    expect(event.preventDefault).toHaveBeenCalled();
-    expect(listener).toHaveBeenCalledTimes(1);
+  it("sends every Join Waitlist CTA to the /waitlist application page", () => {
+    expect(EMBED_CONFIG.joinHref).toBe("/waitlist");
+    expect(EMBED_CONFIG.onJoin).toBeUndefined();
+    expect(homepage).not.toContain("open-waitlist");
+    expect(existsSync(resolve(__dirname, "../../../waitlist.html"))).toBe(true);
   });
 
   it("mounts every rebuilt section into a host that exists on the homepage", async () => {

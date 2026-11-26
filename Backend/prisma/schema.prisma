@@ -188,6 +188,10 @@ model UserPreference {
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// One row per waitlist application. The Founding Merchants application on
+/// /waitlist saves it step by step (status in_progress) and submits it once
+/// every step validates. Only the SHA-256 hash of the browser's resume token
+/// is stored; the token itself lives in an HttpOnly cookie.
 model waitlist_users {
   id                         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   full_name                  String
@@ -196,14 +200,17 @@ model waitlist_users {
   twitter_handle             String?
   tiktok_handle              String?
   instagram_handle           String?
+  /// Brand / store name.
   company_name               String
   website_url                String?
+  /// Normalised Shopify store address (https://host).
   store_url                  String?
-  industry                   String
-  country                    String
+  industry                   String    @default("")
+  country                    String    @default("")
   state_region               String?
   team_size                  String?
   monthly_revenue_range      String?
+  /// Monthly orders range key (0_20, 21_100, 101_500, 501_2000, 2000_plus).
   monthly_order_volume       String?
   ecommerce_platform         String?
   email_platform             String?
@@ -211,25 +218,45 @@ model waitlist_users {
   support_platform           String?
   ad_platform                String?
   primary_goal               String?
-  biggest_challenge          String
+  biggest_challenge          String    @default("")
   current_churn_problem      Boolean?  @default(false)
   abandoned_cart_problem     Boolean?  @default(false)
   retention_problem          Boolean?  @default(false)
   revenue_visibility_problem Boolean?  @default(false)
   why_join_waitlist          String?
   interested_in_beta         Boolean?  @default(true)
+  /// Place in the review queue, assigned when the application is submitted.
   waitlist_position          Int?
   lead_score                 Int?      @default(0)
-  status                     String?   @default("pending")
+  /// in_progress | submitted | reviewed | accepted | rejected
+  status                     String    @default("in_progress")
   welcome_email_sent         Boolean?  @default(false)
   ip_address                 String?
   user_agent                 String?
   created_at                 DateTime? @default(now()) @db.Timestamptz(6)
   updated_at                 DateTime? @default(now()) @db.Timestamptz(6)
-  referral_code              String?
+  /// The applicant's own share code, issued on submission.
+  referral_code              String?   @unique
+  /// Referral attribution: the share code the applicant arrived with.
   referred_by_code           String?
   referral_count             Int?      @db.SmallInt
   is_founding_member         Boolean?  @default(false)
+  store_age                  String?
+  challenges                 String[]  @default([])
+  challenge_other            String?
+  problem_discovery          String?
+  price_willingness          String?
+  valuable_capabilities      String[]  @default([])
+  founding_interest          String?
+  /// Furthest step reached: 1-3 question steps, 4 review.
+  current_step               Int       @default(1) @db.SmallInt
+  submitted_at               DateTime? @db.Timestamptz(6)
+  resume_token_hash          String?   @unique
+  resume_token_expires_at    DateTime? @db.Timestamptz(6)
+  resume_code_hash           String?
+  resume_code_expires_at     DateTime? @db.Timestamptz(6)
+  resume_code_attempts       Int       @default(0) @db.SmallInt
+  start_key_hash             String?   @unique
 
   @@index([country], map: "idx_waitlist_country")
   @@index([work_email], map: "idx_waitlist_email")
