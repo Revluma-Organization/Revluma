@@ -36,6 +36,10 @@ const wantedScenarios = String(process.env.C2_SCENARIOS || '')
   .map((entry) => entry.trim())
   .filter(Boolean);
 let nextScenarioIndex = 0;
+// C2_PARALLEL scales the race width (default 8). CI bisects with 1 before 8.
+const raceWidth = Math.max(1, parseInt(process.env.C2_PARALLEL || '8', 10) || 8);
+const expectedSequences = (start, count) =>
+  Array.from({ length: count }, (_, index) => start + index);
 
 const results = [];
 function record(name, fn) {
@@ -123,8 +127,8 @@ async function main() {
       assert.equal(rows.length, 1, 'RC bootstrap must create the C2 backstop from the schema');
     });
 
-    await record('8 parallel accepts allocate distinct gapless sequences', async () => {
-      const outcomes = await Promise.all(Array.from({ length: 8 }, (_, index) => acceptSubmission({
+    await record('parallel accepts all complete without duplicates', async () => {
+      const outcomes = await Promise.all(Array.from({ length: raceWidth }, (_, index) => acceptSubmission({
         prisma,
         organizationId: orgId,
         userId,
@@ -133,11 +137,14 @@ async function main() {
         requestedConversationId: convId,
       })));
       assert.equal(outcomes.every((outcome) => outcome.duplicate === false), true);
-      assert.deepEqual(await sequencesOf(convId), [1, 2, 3, 4, 5, 6, 7, 8]);
     });
 
-    await record('8 parallel rev inserts allocate distinct gapless sequences', async () => {
-      await Promise.all(Array.from({ length: 8 }, (_, index) => {
+    await record('accepted sequences are contiguous from 1', async () => {
+      assert.deepEqual(await sequencesOf(convId), expectedSequences(1, raceWidth));
+    });
+
+    await record('parallel rev inserts allocate distinct gapless sequences', async () => {
+      await Promise.all(Array.from({ length: raceWidth }, (_, index) => {
         const correlationId = randomUUID();
         return insertRevMessage({
           organizationId: orgId,
@@ -150,8 +157,7 @@ async function main() {
           },
         });
       }));
-      assert.deepEqual(await sequencesOf(convId),
-        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+      assert.deepEqual(await sequencesOf(convId), expectedSequences(1, raceWidth * 2));
     });
 
     await record('a mixed accept/rev race allocates distinct gapless sequences', async () => {
@@ -170,25 +176,30 @@ async function main() {
         });
       });
       await Promise.all([...accepts, ...revs]);
-      assert.deepEqual(await sequencesOf(convId),
-        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]);
+      assert.deepEqual(await sequencesOf(convId), expectedSequences(1, raceWidth * 2 + 8));
     });
 
     await record('the tuple predicate shape works through Prisma-bound parameters', async () => {
-      const middle = await prisma.$queryRaw`
+      const top = await prisma.$queryRaw`
         SELECT id, sequence_number FROM conversation_messages
-        WHERE conversation_id = ${convId}::uuid AND sequence_number = 12
+        WHERE conversation_id = ${convId}::uuid
+        ORDER BY sequence_number DESC, id DESC
+        LIMIT 1
       `;
-      assert.equal(middle.length, 1);
+      assert.equal(top.length, 1);
+      const maxSeq = top[0].sequence_number;
       // The exact row-constructor shape getConversation uses for before_id.
       const page = await prisma.$queryRaw`
         SELECT sequence_number FROM conversation_messages
         WHERE conversation_id = ${convId}::uuid
-          AND (sequence_number, id) < (${middle[0].sequence_number}, ${middle[0].id}::uuid)
+          AND (sequence_number, id) < (${top[0].sequence_number}, ${top[0].id}::uuid)
         ORDER BY sequence_number DESC, id DESC
         LIMIT 5
       `;
-      assert.deepEqual(page.map((row) => row.sequence_number), [11, 10, 9, 8, 7]);
+      assert.deepEqual(
+        page.map((row) => row.sequence_number),
+        [maxSeq - 1, maxSeq - 2, maxSeq - 3, maxSeq - 4, maxSeq - 5],
+      );
     });
 
     await record('repair.sql is valid and a no-op on race-free data', async () => {

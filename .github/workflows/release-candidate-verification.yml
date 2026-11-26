@@ -153,7 +153,7 @@ jobs:
         working-directory: Backend
         env:
           RELEASE_CANDIDATE_ISOLATED_DB: 'true'
-          C2_SCENARIOS: '0'
+          C2_SCENARIOS: '0,1,2'
         run: |
           set +e
           node src/tests/revSequenceConcurrency.integration.js 2>&1 | tee /tmp/rev-sequence-a.log
@@ -163,11 +163,12 @@ jobs:
             echo "::error title=rev-sequence-concurrency::${summary:0:1200}"
             exit "$status"
           fi
-      - name: Rev sequence races (accept race)
+      - name: Rev sequence races (accept race, serial)
         working-directory: Backend
         env:
           RELEASE_CANDIDATE_ISOLATED_DB: 'true'
-          C2_SCENARIOS: '0,1'
+          C2_SCENARIOS: '1'
+          C2_PARALLEL: '1'
         run: |
           set +e
           node src/tests/revSequenceConcurrency.integration.js 2>&1 | tee /tmp/rev-sequence-b.log
