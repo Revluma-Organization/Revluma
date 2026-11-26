@@ -452,7 +452,7 @@ export const FINAL_CTA = {
 // real sign-up / sign-in pages, the Founding Merchants waitlist, the contact
 // inbox already used for Enterprise, and the two real legal pages (the other
 // files under /pages are copies of the Terms page, so they are not linked).
-// Social: X only until the other official accounts are confirmed.
+// Social: the official Revluma accounts.
 export const FOOTER = {
   tagline: "Store intelligence for Shopify. Rev shows what happened in your store, how it knows, and what to look at next.",
   columns: [
@@ -488,7 +488,12 @@ export const FOOTER = {
       ],
     },
   ],
-  social: [{ label: "Revluma on X", href: "https://x.com/RevlumaAI" }],
+  social: [
+    { icon: "x", label: "Revluma on X", href: "https://x.com/RevlumaAI" },
+    { icon: "tiktok", label: "Revluma on TikTok", href: "https://www.tiktok.com/@revlumaai" },
+    { icon: "youtube", label: "Revluma on YouTube", href: "https://youtube.com/@revluma" },
+    { icon: "instagram", label: "Revluma on Instagram", href: "https://instagram.com/revluma.ai" },
+  ],
   // The scene's watching eye (Rev's orb as the iris) sits in the sky and looks
   // at one part of the store at a time. Positions are fractions of the image;
   // each label is Shopify data Revluma actually reads.
