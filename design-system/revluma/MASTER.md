@@ -12,6 +12,11 @@
 shipped Revluma brand truth. Spacing, shadows (extended), anti-patterns, and the
 pre-delivery checklist are kept from the generator.
 
+**Stage 1 (2026-11-26):** enterprise redesign spec reconciled in the glass-kept
+direction per explicit user decision — see “Stage 1 Addendum” at the bottom.
+No token values changed: every spec delta was measured and either adopted as a
+forward rule or rejected on contrast/drift grounds (details below).
+
 **Brand sources:** shipped command-center contract (`tokens.ts`), severity system
 (`findingDisplay.ts`), dashboard theme (`index.css`, Tailwind v3 config).
 Generator defaults that conflicted (blue/amber palette, Fira typography,
@@ -390,3 +395,74 @@ What the generator produced vs. what Revluma ships:
 Per the skill's own query contract, generated guidance was verified against
 the product before use; repository rules and shipped brand take precedence
 over dataset defaults.
+
+---
+
+## Stage 1 Addendum — Enterprise Redesign Reconcile
+
+**Direction (user decision, 2026-11-26): glass-kept enterprise.** The redesign
+spec's layout, density, and information-architecture rules are adopted; its
+call to remove decorative gradients is explicitly overridden — the shipped
+glass-bento identity (frosted shells, restrained mesh washes, inset
+highlights) stays. Accent discipline still applies: violet `#4438E8` only for
+the primary action per context, active navigation, selected controls, and
+keyboard focus. No new glowing edges, gradient borders, or purple floods.
+
+**Tests (user decision, 2026-11-26): rewrite authorized.** Later stages may
+restructure IA, rename headings, and rewrite affected assertions to the new
+contracts. Honesty/state/a11y assertions (no fabricated data, loading/error/
+empty behavior, focus, reduced-motion, token-sync guards) stay and extend to
+new components.
+
+### Spec token verdicts (all measured, none assumed)
+
+| Spec proposal | Verdict | Master truth + basis |
+|---|---|---|
+| Canvas `#F8FAFC`, border `#E2E8F0` | ❌ kept shipped | `workspace #F4F5F8`, `line #E7E9EF` — RGB distance 5–8/441, imperceptible; adopting = churn + pin invalidation for zero gain |
+| Ink `#0F172A`, muted `#64748B` | ❌ kept shipped | `ink #17191F` (17.57:1), `ink-muted #707582` (4.61:1) — close cousins, both pass; spec values already exist in-system as `slate-900` / `slate-500` stock utilities |
+| Critical `#DC2626`, success `#15803D` | ❌ kept shipped | `danger #B42318` (6.57:1), `success #067647` (5.69:1) — higher contrast than spec's 4.83 / 5.02 |
+| High `#C65D24`, medium `#B7791F` | ❌ rejected (a11y) | 4.21:1 and 3.64:1 on white — **fail** 4.5:1 as text. Shipped severity ramp stays |
+| Accent `#4438E8` | ✅ already canonical | `brand` — both systems agree |
+| Type scale 22–26 / 15–17 / 14–16 / 13–14 / 12–13 / 10–11 / KPI 24–28 | ✅ adopted as forward rules | Root is 14px: page `1.75rem` (24.5px) ✓, section `1.0625rem+` (≥15px), body `text-sm` ✓, meta `text-xs` ✓, eyebrows 10.5–11px ✓. New card headings 14–16px; existing 12px card titles migrate when rebuilt |
+| Card radius 10–12, input 7–9 | ✅ bridged | Glass bento cards keep `rounded-2xl`; **new dense surfaces** (queue rows, table shell, KPI cards) use `rounded-xl` (12px); inputs `rounded-lg` (8px at 14px root ≈ spec) |
+| 1px hairlines, padding 16–20, gaps 16–20 | ✅ already true | `line*` hairlines, `px-5/py-4` rhythms, `gap-3.5–5` grids |
+| Transitions 150ms | ✅ adopted (bare `transition-*` = 150ms) | Existing `duration-200` usages flagged for normalization in later stages, not this one |
+| Tabular numerals for metrics | ✅ already true | `tabular-nums` on all figures; extends to KPI + table |
+
+### Forward IA rules (Stages 3–4 build these; data-honest)
+
+- **KPI strip:** exactly the three spec cards (Open issues, Actionable
+  signals, Evidence coverage) — all derivable today (finding counts, signal
+  evaluation summary, resource availability). Trend comparisons and
+  sparklines render **only** with real series; the model has none, so v1
+  ships neutral slots (period label + coverage note), never fabricated
+  charts. No revenue/conversion/recovery/traffic inventions, ever.
+- **Workspace grid:** `lg:grid-cols-12`, 8-col priorities + 4-col sticky rail,
+  `max-w-[1440px]` (up from 1400), stacked below `lg`. Rail sticky without
+  nested scroll traps.
+- **Priority queue:** rank `01`, severity chip, category, verbatim headline,
+  two-line explanation, key recorded metric, impact + confidence + detected
+  timestamp, investigation action. **One** primary CTA (top item only);
+  the rest quiet secondary. Backend rank order + tie-break preserved; the
+  `?finding=` deep-link and `#priority-finding` anchor survive.
+- **Secondary rail:** business-health summary (no invented health score),
+  live signals (capped list + “explore all”), store coverage matrix with
+  honest per-domain states (available / syncing / stale / unavailable /
+  permission-required / not-connected) from resource availability +
+  freshness — never “available” from connection alone.
+- **Signals table:** tabs adapted to the data model — severity/type-based
+  (All / Critical & High / …), **no Open/Investigating/Resolved tabs**:
+  findings expose no lifecycle status and inventing one is forbidden. 6–8
+  rows, search + filter + sort + cursor pagination (reuse the activity
+  pagination contract), compact columns, rows open the existing
+  `FindingDetailsDrawer` (no new drawer), position preserved on close.
+- **Rev handoff:** unchanged mechanics — finding routes via
+  `investigationRoute`, store context + conversation continuity preserved;
+  Rev keeps the verified-fact / hypothesis / unknown separation.
+
+### Explicitly out of Stage 1
+
+- Zero component, layout, or token-value changes (this addendum is docs-only).
+- Sidebar/topbar alignment, Priorities/Signals destinations → Stage 2.
+- Dark-theme adaptation of command-center → still deferred (v1 light-locked).
+- `duration-200` → 150ms normalization → with each component's rebuild.
