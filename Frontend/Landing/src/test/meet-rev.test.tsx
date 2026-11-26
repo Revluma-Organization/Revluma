@@ -78,6 +78,40 @@ describe("Meet Rev (a mock of the Rev Intelligence chat)", () => {
     expect(within(log).getAllByText(T.ask.user).length).toBeGreaterThan(0);
   }, 10000);
 
+  it("answers like a full analyst reply: lede, KPI strip, daily chart and bottom line", () => {
+    const el = section();
+    const log = within(el).getByRole("log");
+    const answer = log.querySelector(".mr-turn .mr-rev--answer") as HTMLElement;
+    // Labelled as AI, and the direct answer comes before the detail.
+    expect(answer.querySelector(".mr-revhead")?.textContent).toContain("Rev");
+    expect(answer.querySelector(".mr-ai")?.textContent).toBe("AI");
+    expect(answer.querySelector(".mr-lead")?.textContent).toBe(T.ask.summary);
+    const kpis = within(answer).getByRole("list", { name: "What changed last week" });
+    expect(kpis.querySelectorAll("li")).toHaveLength(T.ask.kpis.length);
+    const chart = within(answer).getByRole("figure", { name: new RegExp(`^${T.ask.chart.title}`) });
+    expect(chart.querySelectorAll(".mr-bar")).toHaveLength(7);
+    expect(chart.querySelectorAll(".mr-bar.is-low")).toHaveLength(5);
+    expect(within(answer).getByText(T.ask.takeaway)).toBeInTheDocument();
+    // The way forward sits on the composer, outside the scrolling log.
+    const chip = within(el).getByRole("button", { name: T.ask.followUp });
+    expect(log.contains(chip)).toBe(false);
+  });
+
+  it("keeps the whole conversation in the log until the visitor starts over", async () => {
+    const el = section();
+    const log = within(el).getByRole("log");
+    await reply(el, T.ask.followUp);
+    expect(await within(log).findByText(T.verify.lead, {}, wait)).toBeInTheDocument();
+    // The first answer is still there, above, without its own action row.
+    expect(within(log).getByText(T.ask.summary)).toBeInTheDocument();
+    expect(log.querySelectorAll(".mr-exchange")).toHaveLength(2);
+    expect(within(log).getAllByText("Read aloud")).toHaveLength(1);
+    expect(within(log).getByText(T.verify.split.title)).toBeInTheDocument();
+    const ruled = log.querySelector(".mr-ruled") as HTMLElement;
+    for (const r of T.verify.ruledOut) expect(ruled.textContent).toContain(r.label);
+    for (const s of MEET_REV.sources) expect(within(log).getByText(s.detail)).toBeInTheDocument();
+  });
+
   it("cites a real source for every fact", () => {
     const sources = new Set(MEET_REV.sources.map((s) => s.n));
     for (const fact of T.verify.facts) expect(sources.has(fact.cite)).toBe(true);
@@ -97,6 +131,13 @@ describe("Meet Rev (a mock of the Rev Intelligence chat)", () => {
     expect(167 + 114).toBe(281);
     expect(167 - 130).toBe(37);
     expect(281 - 236).toBe(45);
+    // The daily chart averages the weekly mobile rate; the split adds up.
+    const days = T.ask.chart.days.map((d) => d.value);
+    expect((days.reduce((a, b) => a + b, 0) / days.length).toFixed(1)).toBe("38.2");
+    expect(T.ask.chart.baseline).toBe(48.4);
+    expect(T.verify.split.parts.map((p) => p.value)).toEqual([37, 8]);
+    expect(130 + 167 + 106 + 114 + 340 + 345 + 172 + 185 - (130 + 167 + 106 + 114)).toBe(1042);
+    expect(236 + 281).toBe(517);
     const text = JSON.stringify(MEET_REV.turns);
     for (const n of ["16.1%", "236", "281", "38.2%", "48.4%", "61.6%", "345 → 340", "37 of the 45"]) expect(text).toContain(n);
   });

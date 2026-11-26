@@ -110,7 +110,7 @@
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #6b7080;
+  color: #8b909d;
 }
 .mr-side__item {
   display: flex;
@@ -159,7 +159,7 @@
 }
 .mr-side__user em {
   font-style: normal;
-  color: #6b7080;
+  color: #8b909d;
 }
 
 .mr-main {
@@ -236,62 +236,89 @@
 }
 
 /* ---- Thread ---------------------------------------------------------------- */
-.mr-chat {
+/* The chat pane is a fixed-height scroller, like the app's viewport: the
+   window never jumps, every exchange stays in the history, and each new
+   question scrolls to the top while Rev's answer unfolds beneath it. */
+.mr-chatwrap {
+  position: relative;
   flex: 1;
-  padding: 1.25rem 1rem 0.5rem;
+  min-height: 0;
+}
+.mr-chat {
+  position: relative;
+  height: 30rem;
+  overflow-y: auto;
+  padding: 1.25rem 1rem 1.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: #d0d4de transparent;
+  scroll-padding-top: 0.75rem;
 }
 @container (min-width: 560px) {
   .mr-chat {
-    padding: 1.5rem 1.75rem 0.5rem;
+    height: 33rem;
+    padding: 1.5rem 1.75rem 1.75rem;
   }
 }
-/* Messages sit at the bottom, like a chat. Only the current exchange is
-   shown in full; the one before is a faded strip above it. */
+.mr-chat:focus-visible {
+  outline: 2px solid #1f06ac;
+  outline-offset: -2px;
+}
 .mr-thread {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  gap: 1.25rem;
-  max-width: 46rem;
-  min-height: 21rem;
+  gap: 2rem;
+  max-width: 44rem;
   margin: 0 auto;
 }
-/* On wider frames the chat keeps one height, like the app's viewport: the
-   window never jumps, and the previous exchange gives way first. */
+.mr-exchange {
+  display: grid;
+  gap: 1rem;
+}
+/* Room below the latest exchange so its question can reach the top. */
+.mr-turn {
+  min-height: 28rem;
+  align-content: start;
+}
 @container (min-width: 560px) {
-  .mr-thread {
-    height: 26rem;
-    min-height: 0;
-    overflow: hidden;
+  .mr-turn {
+    min-height: 30.75rem;
   }
 }
-.mr-turn {
-  display: grid;
-  gap: 1.25rem;
-}
-.mr-past {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  max-height: 4.2rem;
-  overflow: hidden;
-  opacity: 0.45;
-  pointer-events: none;
-}
-.mr-past::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background: linear-gradient(to bottom, #f7f8fc 0%, rgba(247, 248, 252, 0) 100%);
-}
-.mr-past .mr-user,
-.mr-past .mr-rev > * {
+.mr-exchange--past .mr-user,
+.mr-exchange--past .mr-rev > * {
   animation: none !important;
 }
-.mr-past .mr-user {
-  margin-bottom: 1.25rem;
+
+/* "Jump to latest", shown only when the newest content is below the fold. */
+.mr-down {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid #e4e7ee;
+  border-radius: 50%;
+  background: #fff;
+  color: #344054;
+  box-shadow: 0 4px 14px -4px rgba(16, 24, 40, 0.18);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  translate: -50% 6px;
+  transition:
+    opacity 0.2s,
+    translate 0.2s;
+}
+.mr-down.is-on {
+  opacity: 1;
+  pointer-events: auto;
+  translate: -50% 0;
+}
+.mr-down:focus-visible {
+  outline: 2px solid #1f06ac;
+  outline-offset: 2px;
 }
 
 /* User bubble: right-aligned, indigo, squared top-right corner. */
@@ -302,30 +329,63 @@
 .mr-user p {
   margin: 0;
   max-width: 72%;
-  padding: 0.75rem 1rem;
-  border-radius: 16px 6px 16px 16px;
-  background: linear-gradient(135deg, #1f06ac, #17057f);
+  padding: 0.7rem 1rem;
+  border-radius: 18px 6px 18px 18px;
+  background: #1f06ac;
   font-size: 0.9rem;
   line-height: 1.5;
   color: #fff;
 }
 
-/* Rev: no avatar, full width, plain text. */
+/* Rev: full-width, document-like answer under a small name row. */
 .mr-rev {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 0.75rem;
+  align-items: stretch;
+  gap: 0.85rem;
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.mr-rev--answer > * {
-  max-width: 100%;
+.mr-rev--pending {
+  align-items: flex-start;
+}
+.mr-revhead {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: #101828;
+}
+.mr-revhead b {
+  font-weight: 650;
+}
+.mr-ai {
+  padding: 1px 6px;
+  border: 1px solid #e0dcfb;
+  border-radius: 5px;
+  background: #f3f1ff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #3525b8;
 }
 .mr-text {
   margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.65;
+  font-size: 0.88rem;
+  line-height: 1.7;
+  color: #1d2433;
+}
+/* The direct answer comes first and reads slightly larger, like a lede. */
+.mr-lead {
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.6;
+  color: #0c1222;
+}
+.mr-h {
+  margin: 0.35rem 0 -0.25rem;
+  font-size: 0.8rem;
+  font-weight: 650;
   color: #101828;
 }
 .mr-pillrow {
@@ -335,71 +395,162 @@
   gap: 0.5rem;
   margin: 0;
   font-size: 0.72rem;
-  color: #667085;
+  color: #5d6679;
 }
 .mr-state {
-  padding: 3px 8px;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2px 8px;
+  border: 1px solid #f7d9a8;
+  border-radius: 6px;
   background: #fffaeb;
-  font-size: 0.62rem;
-  font-weight: 750;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #b54708;
+  font-size: 0.68rem;
+  font-weight: 650;
+  color: #93370d;
 }
-.mr-sec + .mr-sec {
-  margin-top: 0.75rem;
+.mr-state::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: #f79009;
+}
+
+/* Fact / hypothesis / limit lists. */
+.mr-sec {
+  padding: 0.8rem 0.95rem;
+  border: 1px solid #e7e9ef;
+  border-radius: 12px;
+  background: #fff;
 }
 .mr-sec h3 {
-  margin: 0 0 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.4rem;
+  font-size: 0.74rem;
+  font-weight: 650;
   color: #101828;
 }
+.mr-sec h3::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: #067647;
+}
+.mr-sec--guess h3::before {
+  background: #f79009;
+}
+.mr-sec--limit h3::before {
+  background: #98a2b3;
+}
 .mr-sec ul {
+  display: grid;
+  gap: 0.4rem;
   margin: 0;
   padding-left: 1rem;
   list-style: disc;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+.mr-sec li::marker {
+  color: #98a2b3;
+}
+.mr-cols {
+  display: grid;
+  gap: 0.6rem;
+}
+@container (min-width: 700px) {
+  .mr-cols {
+    grid-template-columns: 1.15fr 1fr;
+    align-items: start;
+  }
+}
+.mr-test {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: #5d6679;
+}
+.mr-test b {
+  font-weight: 600;
+  color: #344054;
 }
 .mr-marker {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.05rem;
+  height: 1.05rem;
   margin-left: 5px;
-  padding: 2px 5px;
-  border: 1px solid rgba(31, 6, 172, 0.18);
-  border-radius: 6px;
-  background: rgba(31, 6, 172, 0.07);
-  font-size: 0.62rem;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ebe8ff;
+  font-size: 0.6rem;
   font-weight: 700;
   line-height: 1;
-  color: #1f06ac;
-  vertical-align: baseline;
+  color: #2a1b9a;
+  vertical-align: 1px;
 }
 .mr-period {
   margin: 0;
-  font-size: 0.7rem;
-  color: #667085;
+  font-size: 0.72rem;
+  color: #5d6679;
 }
+
+/* Sources: small cards, like the citations under a researched answer. */
 .mr-sources {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem 0.6rem;
-  font-size: 0.7rem;
-  color: #1f06ac;
+  gap: 0.45rem;
 }
 .mr-sources > span:first-child {
-  font-size: 0.68rem;
+  margin-right: 0.15rem;
+  font-size: 0.72rem;
   font-weight: 650;
-  color: #667085;
+  color: #5d6679;
 }
-.mr-source b {
-  margin-right: 3px;
-  font-weight: 750;
+.mr-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.7rem 0.35rem 0.4rem;
+  border: 1px solid #e7e9ef;
+  border-radius: 10px;
+  background: #fff;
+}
+.mr-source > b {
+  display: grid;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 6px;
+  background: #ebe8ff;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #2a1b9a;
+}
+.mr-source > span {
+  display: grid;
+  line-height: 1.25;
+}
+.mr-source strong {
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: #101828;
+}
+.mr-source em {
+  font-size: 0.66rem;
+  font-style: normal;
+  color: #5d6679;
 }
 
-/* "How I checked" disclosure. */
+/* "How I checked": the reasoning disclosure that sits above the answer. */
 .mr-how {
-  width: 100%;
-  border: 1px solid #eaecf0;
+  border: 1px solid #e7e9ef;
   border-radius: 10px;
   background: #fff;
 }
@@ -407,33 +558,54 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 11px;
+  min-height: 2.4rem;
+  padding: 6px 11px;
   list-style: none;
-  font-size: 0.74rem;
-  font-weight: 650;
-  color: #667085;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #344054;
   cursor: pointer;
 }
 .mr-how summary::-webkit-details-marker {
   display: none;
 }
+.mr-how summary:focus-visible {
+  outline: 2px solid #1f06ac;
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+.mr-how summary > svg:first-child {
+  color: #067647;
+}
+.mr-how summary {
+  white-space: nowrap;
+}
+.mr-how__meta {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 450;
+  color: #5d6679;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .mr-how__chev {
+  flex: none;
   margin-left: auto;
+  color: #5d6679;
   transition: rotate 0.2s;
 }
 .mr-how[open] .mr-how__chev {
   rotate: 180deg;
 }
 .mr-how > div {
-  padding: 0 11px 10px;
+  padding: 2px 11px 10px;
+  border-top: 1px solid #eef0f4;
 }
 .mr-how__label {
-  margin: 0 0 0.35rem;
-  font-size: 0.66rem;
-  font-weight: 750;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: #667085;
+  margin: 0.5rem 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 650;
+  color: #5d6679;
 }
 .mr-how ul,
 .mr-inv ul {
@@ -442,7 +614,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   color: #344054;
 }
 .mr-how li,
@@ -454,7 +626,7 @@
 .mr-how em,
 .mr-inv em {
   font-style: normal;
-  color: #98a2b3;
+  color: #5d6679;
 }
 .is-done {
   flex: none;
@@ -462,53 +634,457 @@
 }
 .is-missing {
   flex: none;
-  color: #98a2b3;
+  color: #8a93a5;
 }
 
-/* Recommended next steps. */
+/* KPI strip: what changed, at a glance. */
+.mr-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #e7e9ef;
+  border-radius: 12px;
+  background: #e7e9ef;
+  gap: 1px;
+  list-style: none;
+}
+@container (min-width: 700px) {
+  .mr-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.mr-kpis li {
+  display: grid;
+  align-content: start;
+  gap: 0.2rem;
+  padding: 0.7rem 0.8rem;
+  background: #fff;
+}
+.mr-kpi__label {
+  font-size: 0.68rem;
+  font-weight: 550;
+  line-height: 1.3;
+  color: #5d6679;
+}
+.mr-kpi__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 1.05rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: #0c1222;
+}
+.mr-kpis .is-down svg {
+  color: #c4320a;
+}
+.mr-kpis .is-flat svg {
+  color: #8a93a5;
+}
+.mr-kpi__note {
+  font-size: 0.68rem;
+  color: #5d6679;
+}
+
+/* Daily chart: one bar per day, the week before as a dashed reference. */
+.mr-chart {
+  margin: 0;
+  padding: 0.85rem 0.95rem 0.7rem;
+  border: 1px solid #e7e9ef;
+  border-radius: 12px;
+  background: #fff;
+}
+.mr-chart figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.4rem 0.75rem;
+}
+.mr-chart figcaption > span:first-child {
+  display: grid;
+  gap: 0.1rem;
+}
+.mr-chart figcaption b {
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: #101828;
+}
+.mr-chart figcaption em {
+  font-size: 0.68rem;
+  font-style: normal;
+  color: #5d6679;
+}
+.mr-chart__flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #f3f1ff;
+  font-size: 0.66rem;
+  font-weight: 650;
+  color: #2a1b9a;
+}
+.mr-chart__flag::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: #1f06ac;
+}
+.mr-chart__plot {
+  --area: 6.6rem;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.5rem;
+  height: calc(var(--area) + 2.4rem);
+  margin-top: 0.75rem;
+  padding-right: 2.4rem;
+}
+.mr-chart__base {
+  position: absolute;
+  right: 0;
+  bottom: calc(1.3rem + var(--area) * var(--base));
+  left: 0;
+  border-top: 1px dashed #8a93a5;
+  pointer-events: none;
+}
+.mr-chart__base span {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #5d6679;
+}
+.mr-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.mr-bar__val {
+  margin-bottom: 3px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #5d6679;
+}
+.mr-bar__fill {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 1.9rem);
+  height: calc(var(--area) * var(--h));
+  border-radius: 5px 5px 2px 2px;
+  background: #d5d9e3;
+  transform-origin: bottom;
+}
+.mr-bar.is-low .mr-bar__fill {
+  background: #1f06ac;
+}
+.mr-bar.is-low .mr-bar__val {
+  color: #2a1b9a;
+}
+.mr-bar__day {
+  height: 1.3rem;
+  padding-top: 0.3rem;
+  font-size: 0.66rem;
+  line-height: 1;
+  color: #5d6679;
+}
+@container (max-width: 459px) {
+  .mr-bar__val {
+    visibility: hidden;
+  }
+  .mr-how__meta {
+    display: none;
+  }
+}
+
+/* Bottom line: a quiet callout with an accent rule. */
+.mr-callout {
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid #1f06ac;
+  border-radius: 4px 10px 10px 4px;
+  background: #f3f1ff;
+}
+.mr-callout b {
+  display: block;
+  margin-bottom: 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: #2a1b9a;
+}
+.mr-callout p {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.6;
+  color: #1d2433;
+}
+
+/* Where the fewer orders came from: one split bar with a legend. */
+.mr-split {
+  padding: 0.8rem 0.95rem;
+  border: 1px solid #e7e9ef;
+  border-radius: 12px;
+  background: #fff;
+}
+.mr-split__title {
+  margin: 0 0 0.55rem;
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: #101828;
+}
+.mr-split__bar {
+  display: flex;
+  gap: 3px;
+  height: 0.65rem;
+}
+.mr-split__bar span {
+  flex-basis: 0;
+  border-radius: 3px;
+  background: #d5d9e3;
+  transform-origin: left;
+}
+.mr-split__bar .is-main {
+  background: #1f06ac;
+}
+.mr-split__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.1rem;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.74rem;
+  color: #344054;
+}
+.mr-split__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.mr-split__legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #d5d9e3;
+}
+.mr-split__legend .is-main i {
+  background: #1f06ac;
+}
+.mr-split__legend b {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: #101828;
+}
+
+/* Ruled out: the alternatives the evidence already excludes. */
+.mr-ruled__title {
+  margin: 0 0 0.4rem;
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: #101828;
+}
+.mr-ruled ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@container (min-width: 700px) {
+  .mr-ruled ul {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.mr-ruled li {
+  display: flex;
+  gap: 0.45rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #e7e9ef;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: #5d6679;
+}
+.mr-ruled li > svg {
+  flex: none;
+  margin-top: 2px;
+  color: #067647;
+}
+.mr-ruled b {
+  display: block;
+  font-weight: 650;
+  color: #101828;
+}
+
+/* Evidence ladder: what is verified, suspected and out of sight. */
+.mr-ladder {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #e7e9ef;
+  border-radius: 12px;
+  background: #fff;
+  list-style: none;
+}
+.mr-ladder li {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.8rem;
+  color: #1d2433;
+}
+.mr-ladder li + li {
+  border-top: 1px solid #eef0f4;
+}
+.mr-ladder__level {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+.mr-ladder .is-0 .mr-ladder__level {
+  color: #05603a;
+}
+.mr-ladder .is-1 .mr-ladder__level {
+  color: #93370d;
+}
+.mr-ladder .is-2 .mr-ladder__level {
+  color: #475467;
+}
+@container (max-width: 419px) {
+  .mr-ladder li {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+}
+
+/* Recommended next steps: a numbered plan. */
 .mr-recs {
   display: grid;
-  gap: 0.5rem;
-  width: 100%;
-  padding-top: 10px;
-  border-top: 1px solid #eaecf0;
+  gap: 0.6rem;
 }
 .mr-recs p {
   margin: 0;
 }
 .mr-recs__label {
-  font-size: 0.68rem;
-  font-weight: 750;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: #667085;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: #101828;
 }
-.mr-recs__note {
-  font-size: 0.75rem;
-  color: #667085;
+.mr-recs ol {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 .mr-rec {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid #e7e9ef;
+  border-radius: 12px;
+  background: #fff;
 }
-.mr-rec > svg {
+.mr-rec.is-first {
+  border-color: #cfc8fb;
+  box-shadow: inset 3px 0 0 #1f06ac;
+}
+.mr-rec__n {
+  display: grid;
   flex: none;
-  margin-top: 3px;
-  color: #1f06ac;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: #f2f4f7;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #344054;
+}
+.mr-rec.is-first .mr-rec__n {
+  background: #1f06ac;
+  color: #fff;
+}
+.mr-rec__when {
+  font-size: 0.66rem;
+  font-weight: 650;
+  color: #5d6679;
+}
+.mr-rec.is-first .mr-rec__when {
+  color: #2a1b9a;
 }
 .mr-rec__label {
-  font-size: 0.8rem;
+  margin-top: 0.05rem !important;
+  font-size: 0.86rem;
   font-weight: 600;
   color: #101828;
 }
 .mr-rec__why {
-  margin-top: 1px !important;
-  font-size: 0.72rem;
+  margin-top: 0.1rem !important;
+  font-size: 0.78rem;
   line-height: 1.5;
-  color: #667085;
+  color: #5d6679;
+}
+.mr-rec__measure {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.45rem !important;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #ecfdf3;
+  font-size: 0.72rem;
+  font-weight: 550;
+  color: #05603a;
+}
+.mr-recs__note {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  color: #5d6679;
+}
+.mr-recs__note svg {
+  color: #067647;
 }
 
-/* Follow-up chip (the visitor's way forward) and the action row. */
+/* Action row, then the follow-up chip (the visitor's way forward). */
+.mr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.95rem;
+  padding-top: 0.15rem;
+  font-size: 0.72rem;
+  color: #5d6679;
+}
+.mr-actions span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.mr-suggest {
+  max-width: 44rem;
+  min-height: 2.5rem;
+  margin: 0 auto 0.6rem;
+}
 .mr-follow {
   display: flex;
   flex-wrap: wrap;
@@ -518,23 +1094,24 @@
 .mr-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.45rem;
   min-height: 2.5rem;
-  padding: 5px 13px;
-  border: 1px solid rgba(31, 6, 172, 0.16);
-  border-radius: 999px;
-  background: rgba(31, 6, 172, 0.06);
-  font-size: 0.78rem;
+  padding: 5px 15px 5px 12px;
+  border: 1px solid #d9d4fb;
+  border-radius: 12px;
+  background: #fff;
+  font-size: 0.82rem;
   font-weight: 550;
   color: #1f06ac;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
   transition:
     background-color 0.15s,
     border-color 0.15s;
 }
 .mr-chip:hover:not(:disabled) {
-  border-color: rgba(31, 6, 172, 0.35);
-  background: rgba(31, 6, 172, 0.11);
+  border-color: #b3a9f7;
+  background: #f6f4ff;
 }
 .mr-chip:focus-visible {
   outline: 2px solid #1f06ac;
@@ -544,33 +1121,34 @@
   cursor: default;
 }
 .mr-hint {
-  font-size: 0.7rem;
-  color: #98a2b3;
-}
-.mr-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.9rem;
-  font-size: 0.7rem;
-  color: #64748b;
-}
-.mr-actions span {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: #5d6679;
 }
 
-/* Rev at work: orb loader + the investigation card. */
+/* Rev at work: the investigation card or a working line with typing dots. */
 .mr-working {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   margin: 0;
-  font-size: 0.85rem;
-  color: #667085;
+  font-size: 0.86rem;
+  color: #475467;
+}
+.mr-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+.mr-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #1f06ac;
+  opacity: 0.35;
 }
 .mr-inv {
   width: min(100%, 30rem);
   overflow: hidden;
-  border: 1px solid #eaecf0;
+  border: 1px solid #e7e9ef;
   border-radius: 12px;
   background: #fff;
 }
@@ -589,12 +1167,10 @@
   color: #101828;
 }
 .mr-inv__head > span {
-  font-size: 0.72rem;
-  color: #667085;
-}
-.mr-inv__chev {
   margin-left: auto;
-  color: #667085;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: #5d6679;
 }
 .mr-spin {
   flex: none;
@@ -602,7 +1178,7 @@
 }
 .mr-inv ul {
   padding: 8px 14px 10px;
-  border-top: 1px solid #eaecf0;
+  border-top: 1px solid #eef0f4;
 }
 .mr-inv ul:empty {
   display: none;
@@ -611,32 +1187,33 @@
 /* ---- Composer -------------------------------------------------------------- */
 .mr-dock {
   padding: 0.5rem 1rem 0.75rem;
+  border-top: 1px solid #eef0f4;
 }
 @container (min-width: 560px) {
   .mr-dock {
-    padding: 0.5rem 1.75rem 0.85rem;
+    padding: 0.75rem 1.75rem 0.85rem;
   }
 }
 .mr-input {
-  max-width: 46rem;
+  max-width: 44rem;
   margin: 0 auto;
-  border: 1px solid #e8eaf0;
-  border-radius: 16px;
+  border: 1px solid #e4e7ee;
+  border-radius: 20px;
   background: #fff;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+  box-shadow: 0 2px 10px -4px rgba(16, 24, 40, 0.1);
 }
 .mr-input p {
   margin: 0;
-  padding: 0.9rem 1.25rem 0.4rem;
+  padding: 0.85rem 1.2rem 0.35rem;
   font-size: 0.9rem;
-  color: #98a2b3;
+  color: #667085;
 }
 .mr-input__bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 0.75rem 0.75rem;
-  color: #64748b;
+  padding: 0 0.6rem 0.6rem 0.75rem;
+  color: #5d6679;
 }
 .mr-input__right {
   display: inline-flex;
@@ -644,44 +1221,77 @@
   gap: 0.85rem;
 }
 .mr-input__right > svg {
-  opacity: 0.6;
+  opacity: 0.7;
 }
 .mr-send {
   display: grid;
   place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 12px;
-  background: #e5e7eb;
-  color: #9ca3af;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: #eceef2;
+  color: #8a93a5;
 }
 .mr-send--stop {
-  background: #111827;
+  background: #101828;
   color: #fff;
 }
 .mr-footer {
   margin: 0.5rem 0 0;
-  font-size: 0.63rem;
+  font-size: 0.64rem;
   text-align: center;
-  color: #64748b;
+  color: #5d6679;
 }
 
 /* ---- Motion ---------------------------------------------------------------- */
+/* Each block of an answer unfolds once, top to bottom, like streamed text.
+   Loading indicators loop only while Rev is working. */
 @media (prefers-reduced-motion: no-preference) {
   .mr-turn > .mr-user {
     animation: mr-in 0.35s ease-out both;
   }
-  .mr-turn .mr-rev > * {
-    animation: mr-in 0.4s ease-out both;
+  .mr-turn .mr-rev--pending > * {
+    animation: mr-in 0.35s ease-out both;
+  }
+  .mr-turn .mr-rev--answer > * {
+    --i: 0;
+    /* backwards, not both: once a block has arrived it keeps no mask, so
+       focus rings and the chip's glow are never clipped. */
+    animation: mr-stream 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+    animation-delay: calc(var(--i) * 0.13s);
+    mask-size: 100% 250%;
+    mask-repeat: no-repeat;
   }
   .mr-turn .mr-rev--answer > :nth-child(2) {
-    animation-delay: 0.08s;
+    --i: 1;
   }
   .mr-turn .mr-rev--answer > :nth-child(3) {
-    animation-delay: 0.16s;
+    --i: 2;
   }
-  .mr-turn .mr-rev--answer > :nth-child(n + 4) {
-    animation-delay: 0.24s;
+  .mr-turn .mr-rev--answer > :nth-child(4) {
+    --i: 3;
+  }
+  .mr-turn .mr-rev--answer > :nth-child(5) {
+    --i: 4;
+  }
+  .mr-turn .mr-rev--answer > :nth-child(6) {
+    --i: 5;
+  }
+  .mr-turn .mr-rev--answer > :nth-child(7) {
+    --i: 6;
+  }
+  .mr-turn .mr-rev--answer > :nth-child(8) {
+    --i: 7;
+  }
+  .mr-turn .mr-rev--answer > :nth-child(n + 9) {
+    --i: 8;
+  }
+  .mr-turn .mr-bar__fill {
+    animation: mr-grow 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: calc(1s + var(--i) * 0.06s);
+  }
+  .mr-turn .mr-split__bar span {
+    animation: mr-grow-x 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.6s both;
   }
   .mr-inv li {
     animation: mr-in 0.3s ease-out both;
@@ -689,14 +1299,29 @@
   .mr-spin {
     animation: mr-rotate 0.9s linear infinite;
   }
-  .mr-working {
-    animation:
-      mr-in 0.4s ease-out both,
-      mr-breathe 1.4s ease-in-out 0.4s infinite !important;
+  .mr-shimmer {
+    background: linear-gradient(90deg, #475467 0%, #475467 40%, #b9b1f7 50%, #475467 60%, #475467 100%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: mr-shimmer 1.8s linear infinite;
   }
-  /* The follow-up chip draws the eye once Rev has answered. */
-  .mr-turn .mr-chip:not(:disabled) {
-    animation: mr-ring 2.2s ease-out 0.9s 2;
+  .mr-dots i {
+    animation: mr-dot 1.1s ease-in-out infinite;
+  }
+  .mr-dots i:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .mr-dots i:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+  /* The follow-up chip arrives with the answer and draws the eye twice. */
+  .mr-suggest .mr-follow {
+    animation: mr-in 0.35s ease-out 0.5s both;
+  }
+  .mr-suggest .mr-chip:not(:disabled) {
+    animation: mr-ring 2.2s ease-out 1.6s 2;
   }
 
   @keyframes mr-in {
@@ -709,14 +1334,55 @@
       translate: 0 0;
     }
   }
+  @keyframes mr-stream {
+    0% {
+      opacity: 0;
+      mask-image: linear-gradient(to bottom, #000 40%, transparent 60%);
+      mask-position: 0 100%;
+      translate: 0 4px;
+    }
+    99% {
+      opacity: 1;
+      mask-image: linear-gradient(to bottom, #000 40%, transparent 60%);
+      mask-position: 0 0;
+      translate: 0 0;
+    }
+    100% {
+      mask-image: none;
+    }
+  }
+  @keyframes mr-grow {
+    from {
+      transform: scaleY(0);
+    }
+  }
+  @keyframes mr-grow-x {
+    from {
+      transform: scaleX(0);
+    }
+  }
   @keyframes mr-rotate {
     to {
       rotate: 360deg;
     }
   }
-  @keyframes mr-breathe {
-    50% {
-      opacity: 0.45;
+  @keyframes mr-shimmer {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: 0 0;
+    }
+  }
+  @keyframes mr-dot {
+    0%,
+    100% {
+      opacity: 0.25;
+      translate: 0 0;
+    }
+    40% {
+      opacity: 1;
+      translate: 0 -2px;
     }
   }
   @keyframes mr-ring {

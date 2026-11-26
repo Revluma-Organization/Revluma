@@ -132,8 +132,8 @@ export const MEET_REV = {
     { label: "Traffic", status: "unavailable", note: "not connected" },
   ],
   sources: [
-    { n: 1, label: "Orders" },
-    { n: 2, label: "Checkouts" },
+    { n: 1, label: "Orders", detail: "517 orders · last 2 weeks" },
+    { n: 2, label: "Checkouts", detail: "1,042 checkouts · last 2 weeks" },
   ],
   // One exchange per step, in the real Rev answer layout. Each reply does one job.
   turns: {
@@ -141,6 +141,28 @@ export const MEET_REV = {
       user: "Why did my sales drop last week?",
       working: "Checking orders, checkouts and products…",
       summary: "Sales fell 16.1% last week because fewer mobile checkouts were completed, starting on Wednesday.",
+      kpis: [
+        { label: "Sales", value: "−16.1%", note: "vs the week before", tone: "down" },
+        { label: "Orders", value: "236", note: "down from 281", tone: "down" },
+        { label: "Mobile checkout completion", value: "38.2%", note: "down from 48.4%", tone: "down" },
+        { label: "Average order value", value: "Unchanged", note: "same basket size", tone: "flat" },
+      ],
+      chart: {
+        title: "Mobile checkout completion by day",
+        caption: "Last week. Dashed line: the week before (48.4%).",
+        baseline: 48.4,
+        days: [
+          { day: "Mon", value: 48.6 },
+          { day: "Tue", value: 48.1 },
+          { day: "Wed", value: 34.9 },
+          { day: "Thu", value: 33.8 },
+          { day: "Fri", value: 34.2 },
+          { day: "Sat", value: 33.5 },
+          { day: "Sun", value: 34.3 },
+        ],
+        callout: "Drop starts Wednesday",
+      },
+      takeaway: "Shoppers still reached checkout on their phones, but fewer finished. That points to the mobile checkout itself, not demand.",
       followUp: "How do you know?",
     },
     verify: {
@@ -153,6 +175,18 @@ export const MEET_REV = {
         { text: "Desktop checkout completion was unchanged at 61.6%.", cite: 2 },
         { text: "Mobile accounts for 37 of the 45 fewer orders.", cite: 1 },
       ],
+      split: {
+        title: "Where the 45 fewer orders came from",
+        parts: [
+          { label: "Mobile", value: 37 },
+          { label: "Desktop", value: 8 },
+        ],
+      },
+      ruledOut: [
+        { label: "Basket size", text: "Average order value is unchanged." },
+        { label: "Desktop", text: "Completion held at 61.6%." },
+        { label: "Shoppers reaching checkout", text: "Mobile checkouts started held steady." },
+      ],
       period: "Based on recorded store data for last week.",
       followUp: "What could be causing it?",
     },
@@ -161,7 +195,13 @@ export const MEET_REV = {
       working: "Reviewing what the evidence can and can't show…",
       lead: "I can't confirm the cause from your store data, so here are possibilities to check, and what I can't see.",
       hypotheses: ["A theme, app or payment change to mobile checkout on Wednesday", "A payment method failing on phones"],
+      tests: ["Check your theme and app history for anything published on Wednesday.", "Compare payment methods used on phones before and after Wednesday."],
       unknowns: ["Theme, app and checkout-setting changes aren't visible to Revluma", "Traffic isn't connected, so mobile visits can't be checked"],
+      ladder: [
+        { level: "Verified", text: "Mobile checkout completion fell from Wednesday" },
+        { level: "Not verified", text: "Why it fell" },
+        { level: "Not visible", text: "Theme changes and mobile traffic" },
+      ],
       followUp: "What should I do?",
     },
     recommend: {
@@ -169,11 +209,17 @@ export const MEET_REV = {
       working: "Preparing next steps…",
       lead: "Start with the mobile checkout itself.",
       recommendations: [
-        { label: "Place a test order on a phone", why: "The drop is limited to mobile checkout.", measure: "mobile completion returns toward 48%." },
-        { label: "Review what changed on Wednesday", why: "Theme publishes, new apps and payment settings." },
-        { label: "Connect your analytics", why: "So Rev can check mobile traffic too." },
+        {
+          when: "Start here",
+          label: "Place a test order on a phone",
+          why: "The drop is limited to mobile checkout.",
+          measure: "mobile completion returns toward 48%.",
+        },
+        { when: "Next", label: "Review what changed on Wednesday", why: "Theme publishes, new apps and payment settings." },
+        { when: "When you can", label: "Connect your analytics", why: "So Rev can check mobile traffic too." },
       ],
       note: "Recommendations only. Nothing was changed or sent.",
+      closing: "After you make a change, I'll keep tracking mobile checkout completion on each sync so you can see whether it moves back toward 48%.",
       followUp: "Start over",
     },
   },
