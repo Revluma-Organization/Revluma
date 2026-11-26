@@ -1,6 +1,9 @@
 /** Canonical post-logout / unauthenticated landing page (exists as Frontend/auth/login.html). */
 export const LOGIN_PATH = "/auth/login.html";
 
+/** Password reset (exists as Frontend/auth/forgottenpassword.html). */
+export const FORGOT_PASSWORD_PATH = "/auth/forgottenpassword.html";
+
 /** BroadcastChannel name for cross-tab auth synchronization. */
 export const AUTH_CHANNEL_NAME = "revluma-auth";
 

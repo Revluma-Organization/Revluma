@@ -146,20 +146,14 @@ class RevlumaAuth {
     }
 
     // --- GOOGLE IDENTITY SERVICES FLOW ---
+    // The pages show "By continuing with Google or Apple, you agree to the
+    // Terms and Privacy Policy" next to the buttons, so consent defaults to true.
+    // Store details are collected by onboarding, not invented here.
     async googleLogin(credential, options = {}) {
         const payload = {
             credential: credential,
             terms_agreed: options.terms_agreed ?? true,
-            organization: options.organization || {
-                brand_name: "Store",
-                storeUrl: "",
-                storeCategory: "General",
-                country: "NG",
-                state: "Lagos"
-            },
-            preferences: options.preferences || {
-                monthlyRevenue: "0-10k"
-            }
+            ...(options.organization ? { organization: options.organization } : {}),
         };
 
         const response = await fetch(`${this.apiBase}/auth/google`, {
@@ -215,6 +209,187 @@ class RevlumaAuth {
 
     async linkGoogle(credential) {
         return this.linkGoogleAccount(credential);
+    }
+
+    // --- SIGN IN WITH APPLE (Apple JS, popup mode) ---
+    // The backend decides whether Apple is available (GET /auth/apple/config),
+    // so the button appears as soon as APPLE_CLIENT_ID is set on the server.
+    getAppleConfig() {
+        if (!this._appleConfig) {
+            this._appleConfig = fetch(`${this.apiBase}/auth/apple/config`, { credentials: 'omit' })
+                .then((response) => (response.ok ? response.json() : null))
+                .then((result) => (result && result.data && result.data.enabled ? result.data : { enabled: false }))
+                .catch(() => ({ enabled: false }));
+        }
+        return this._appleConfig;
+    }
+
+    _loadAppleJs() {
+        if (window.AppleID && window.AppleID.auth) return Promise.resolve();
+        if (!this._appleJs) {
+            this._appleJs = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
+                script.async = true;
+                script.onload = () => (window.AppleID && window.AppleID.auth ? resolve() : reject(new Error('Apple sign-in did not load.')));
+                script.onerror = () => { this._appleJs = null; reject(new Error('Apple sign-in could not load. Check your connection and try again.')); };
+                document.head.appendChild(script);
+            });
+        }
+        return this._appleJs;
+    }
+
+    _randomHex(bytes) {
+        const values = new Uint8Array(bytes);
+        window.crypto.getRandomValues(values);
+        return Array.from(values, (value) => value.toString(16).padStart(2, '0')).join('');
+    }
+
+    async _sha256Hex(text) {
+        const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+        return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('');
+    }
+
+    // Opens Apple's popup. Resolves { id_token, nonce, user } where nonce is the
+    // raw value; Apple only ever sees its SHA-256, and the server checks both.
+    async appleAuthorize() {
+        const config = await this.getAppleConfig();
+        if (!config.enabled) {
+            const error = new Error('Sign in with Apple is not available right now.');
+            error.code = 'APPLE_NOT_CONFIGURED';
+            throw error;
+        }
+        await this._loadAppleJs();
+        const nonce = this._randomHex(32);
+        const state = this._randomHex(16);
+        window.AppleID.auth.init({
+            clientId: config.client_id,
+            scope: config.scope || 'name email',
+            redirectURI: config.redirect_uri,
+            state,
+            nonce: await this._sha256Hex(nonce),
+            usePopup: true,
+        });
+        let response;
+        try {
+            response = await window.AppleID.auth.signIn();
+        } catch (failure) {
+            const reason = failure && failure.error;
+            const error = new Error(reason === 'popup_blocked_by_browser'
+                ? 'Your browser blocked the Apple window. Allow pop-ups for this site and try again.'
+                : 'Apple sign-in was cancelled.');
+            error.code = reason === 'popup_closed_by_user' || reason === 'user_cancelled_authorize' ? 'APPLE_CANCELLED' : 'APPLE_FAILED';
+            throw error;
+        }
+        const authorization = response && response.authorization;
+        if (!authorization || !authorization.id_token || authorization.state !== state) {
+            const error = new Error('Apple sign-in could not be confirmed. Please try again.');
+            error.code = 'APPLE_FAILED';
+            throw error;
+        }
+        return { id_token: authorization.id_token, nonce, user: response.user || null };
+    }
+
+    async appleLogin(options = {}) {
+        const authorization = options.authorization || await this.appleAuthorize();
+        const response = await fetch(`${this.apiBase}/auth/apple`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                id_token: authorization.id_token,
+                nonce: authorization.nonce,
+                user: authorization.user || undefined,
+                terms_agreed: options.terms_agreed ?? true,
+            }),
+        });
+        const result = await response.json();
+        if (!response.ok || result.success !== true) {
+            const error = new Error(result.error || result.message || 'Apple sign-in failed.');
+            error.code = result.code;
+            // Kept so the page can link this Apple ID after a password sign-in.
+            if (result.code === 'APPLE_ACCOUNT_LINK_REQUIRED') error.appleAuthorization = authorization;
+            throw error;
+        }
+        const tokenData = result.data || result;
+        this._storeTokens(tokenData.access_token || tokenData.accessToken || tokenData.token, tokenData.user);
+        return result;
+    }
+
+    async linkApple(authorization) {
+        const result = await this.authorizedRequest('POST', '/auth/apple/link', {
+            id_token: authorization.id_token,
+            nonce: authorization.nonce,
+        });
+        return result;
+    }
+
+    // --- AUTHENTICATED JSON REQUESTS (one silent refresh on 401) ---
+    async authorizedRequest(method, path, body) {
+        const send = async () => {
+            const token = this.getStoredToken();
+            return fetch(`${this.apiBase}${path}`, {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                credentials: 'include',
+                body: body === undefined ? undefined : JSON.stringify(body),
+            });
+        };
+        let response = await send();
+        if (response.status === 401 && await this.refreshToken()) response = await send();
+        let result = {};
+        try { result = await response.json(); } catch { result = {}; }
+        if (!response.ok || result.success !== true) {
+            const error = new Error(result.error || result.message || 'Request failed. Please try again.');
+            error.status = response.status;
+            error.code = result.code;
+            error.field = result.field;
+            throw error;
+        }
+        return result;
+    }
+
+    // --- ONBOARDING (saved to the server as each step completes) ---
+    getOnboarding() {
+        return this.authorizedRequest('GET', '/onboarding');
+    }
+
+    saveOnboardingStore(store) {
+        return this.authorizedRequest('PUT', '/onboarding/store', {
+            store_name: store.store_name,
+            store_url: store.store_url,
+            store_category: store.store_category,
+            monthly_orders: store.monthly_orders,
+        });
+    }
+
+    async saveOnboardingGoals(goals) {
+        const result = await this.authorizedRequest('PUT', '/onboarding/goals', { goals });
+        const user = this.getUser();
+        if (user) this._updateStoredUser({ ...user, onboarding_completed: true });
+        return result;
+    }
+
+    _updateStoredUser(user) {
+        for (const storage of [localStorage, sessionStorage]) {
+            try {
+                const raw = storage.getItem('rv-auth');
+                if (!raw) continue;
+                const parsed = JSON.parse(raw);
+                parsed.state = { ...(parsed.state || {}), user };
+                storage.setItem('rv-auth', JSON.stringify(parsed));
+            } catch {
+                // ignore
+            }
+        }
+    }
+
+    // Where a freshly signed-in user should land.
+    destinationAfterSignIn(user) {
+        return user && user.onboarding_completed === false ? '/auth/onboarding.html' : '/dashboard/overview';
     }
 
     // --- SILENT TOKEN REFRESH ---

@@ -7,13 +7,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="../assets/images/Revluma-icon.png" />
   <title>Sign In | Revluma</title>
-  <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&family=Archivo+Black&display=swap" rel="stylesheet" />
   <script src="../assets/js/apiConfig.js"></script>
   <script src="../assets/js/auth-client.js"></script>
+  <script src="../assets/js/auth-apple.js" defer></script>
 
   <style>
     /* Page-specific layout; shared components live in auth-theme.css. */
@@ -138,7 +138,7 @@
           <!-- 30-Day Trust Checkbox -->
           <div class="row-aux" style="margin-top: 16px; margin-bottom: 0; justify-content: flex-start;">
             <label class="remember-label">
-              <input type="checkbox" id="trustDevice" class="checkbox-custom mt-0.5" checked />
+              <input type="checkbox" id="trustDevice" class="checkbox-custom" checked />
               Trust this device for 30 days
             </label>
           </div>
@@ -150,11 +150,13 @@
           </div>
         </div>
         
-        <!-- Sign in with Google (Google Identity Services prompt) -->
+        <!-- Sign in with Google (Google Identity Services prompt) or Apple (shown when configured) -->
         <div class="social-auth-section">
           <div class="social-auth-grid">
             <button type="button" id="googleSignInBtn" class="social-auth-icon-button"><svg class="social-auth-icon google-auth-icon" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.76 7.18l7.73 6C44.42 37.94 46.98 31.8 46.98 24.55Z"/><path fill="#FBBC05" d="M10.53 28.59A14.4 14.4 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.9 23.9 0 0 0 0 24c0 3.87.93 7.52 2.56 10.78l7.97-6.19Z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.91-5.8l-7.73-6c-2.14 1.44-4.89 2.3-8.18 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z"/></svg><span>Continue with Google</span></button>
+            <button type="button" id="appleSignInBtn" class="social-auth-icon-button apple-auth-button" hidden><svg class="apple-auth-icon" viewBox="0 0 17 20" aria-hidden="true"><path d="M14.2 10.63c-.02-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.89-1.74.03-3.35 1.01-4.25 2.57-1.81 3.14-.46 7.79 1.3 10.34.86 1.25 1.89 2.65 3.24 2.6 1.3-.05 1.79-.84 3.36-.84 1.57 0 2.01.84 3.38.81 1.4-.03 2.28-1.27 3.13-2.53.99-1.45 1.4-2.85 1.42-2.92-.03-.01-2.71-1.04-2.72-4.13ZM11.62 3.01c.71-.87 1.2-2.07 1.06-3.27-1.03.04-2.28.69-3.02 1.55-.66.77-1.24 2-1.09 3.18 1.15.09 2.33-.59 3.05-1.46Z"/></svg><span>Continue with Apple</span></button>
           </div>
+          <p class="social-consent">By continuing with Google or Apple, you agree to our <a href="../pages/termsOfService.html">Terms</a> and <a href="../pages/privacyPolicy.html">Privacy Policy</a>.</p>
         </div>
 
         <div class="divider"><span>or sign in with email</span></div>
@@ -196,7 +198,7 @@
         <!-- Remember + Forgot -->
         <div class="row-aux">
           <label class="remember-label">
-            <input type="checkbox" id="rememberMe" class="checkbox-custom mt-0.5" />
+            <input type="checkbox" id="rememberMe" class="checkbox-custom" />
             Keep me signed in
           </label>
           <a href="forgottenpassword.html" class="forgot-link">Forgot password?</a>
@@ -301,24 +303,16 @@
       showGlassmorphismCard('loading', 'Signing in with Google…', 'Verifying your credentials.');
 
       try {
-        // Add this to auth-client.js 
         const result = await window.revlumaAuth.googleLogin(idToken);
         const user = result.data?.user || result.user;
-
-        showGlassmorphismCard('success', 'Welcome back!', 'Redirecting...');
-        setTimeout(() => {
-          if (user && user.onboarding_completed === false) {
-            window.location.href = '/auth/onboarding.html';
-          } else {
-            window.location.href = '/dashboard/overview';
-          }
-        }, 1000);
+        await linkPendingIdentities();
+        finishSignIn(user);
       } catch (err) {
         hideGlassmorphismCard();
         // Handle 409 Conflict logic!
         if (err.code === 'GOOGLE_ACCOUNT_LINK_REQUIRED') {
-          state.pendingGoogleCredential = idToken; // Save it to link after password login
-          showInfoBanner('Link your account', 'An account with this email already exists. Please enter your password below to link Google to your account.');
+          state.pendingGoogleCredential = idToken; // Linked right after the password sign-in
+          showInfoBanner('Link your account', 'An account with this email already exists. Enter your password below and we will link Google to it.');
           el.email.focus();
         } else {
           showError(err.message || 'Google sign-in failed. Please try again.');
@@ -345,6 +339,8 @@
       countdownTimer: null,
       lockoutTimer: null,
       temp2FAToken: null, // Stores the token when 2FA is required
+      pendingGoogleCredential: null, // Google identity to link after a password sign-in
+      pendingAppleAuthorization: null, // Apple identity to link after a password sign-in
     };
 
     const el = {
@@ -564,125 +560,38 @@
     window.addEventListener('unhandledrejection', function (event) {
       console.error('[UNHANDLED REJECTION]', event.reason);
     });
-    function storeSession(token, user, remember) {
-      console.log('[AUTH STEP 6] Storing session locally', {
-        remember,
-        userId: user?.id,
-        userEmail: user?.email,
-        hasToken: !!token
-      });
-      // Inside storeSession(token, user, remember)
-const storage = remember ? localStorage : sessionStorage;
-
-// Create the object structure that api.ts expects
-const authData = {
-  state: {
-    user: user,
-    accessToken: token, // This maps to the key api.ts needs
-    csrfToken: token // If you still need this for backward compatibility
-  },
-  version: 0
-};
-
-storage.setItem('rv-auth', JSON.stringify(authData));
-      console.log('[AUTH STEP 7] Session stored in ' + (remember ? 'localStorage' : 'sessionStorage'));
-      // Mirror to localStorage so other pages can find it
-      if (!remember) {
-        // sessionStorage only — remove from localStorage to avoid stale tokens
-        localStorage.removeItem('revluma_token');
-        localStorage.removeItem('revluma_user');
-        console.log('[AUTH STEP 8] Cleared localStorage to use sessionStorage only');
+    // Links any Google or Apple identity the user tried before signing in with
+    // their password. A failed link never blocks the sign-in itself.
+    async function linkPendingIdentities() {
+      if (state.pendingGoogleCredential) {
+        try { await window.revlumaAuth.linkGoogle(state.pendingGoogleCredential); showSuccess('Google is now linked to your account.'); }
+        catch (e) { console.warn('Could not link Google account', e); }
+        state.pendingGoogleCredential = null;
       }
-      // Safety: ensure session writes succeeded
+      if (state.pendingAppleAuthorization) {
+        try { await window.revlumaAuth.linkApple(state.pendingAppleAuthorization); showSuccess('Your Apple ID is now linked to your account.'); }
+        catch (e) { console.warn('Could not link Apple ID', e); showError('Signed in, but your Apple ID could not be linked. Try Continue with Apple again.'); }
+        state.pendingAppleAuthorization = null;
+      }
+    }
+
+    function finishSignIn(user) {
+      const destination = window.revlumaAuth.destinationAfterSignIn(user);
+      const toSetup = destination !== '/dashboard/overview';
+      showGlassmorphismCard('success',
+        'Welcome back!',
+        toSetup ? "You're signed in. Let's finish setting up your store." : "You're signed in. Taking you to your dashboard.",
+        () => window.location.href = destination,
+        toSetup ? 'Continue setup' : 'Continue to dashboard'
+      );
+      setTimeout(() => { window.location.href = destination; }, 1200);
+    }
+
+    function rememberEmail(email) {
       try {
-        const checkToken = remember ? localStorage.getItem('revluma_token') : sessionStorage.getItem('revluma_token');
-        if (!checkToken) {
-          console.error('[AUTH ERROR] Session token not present after storeSession', { remember, userId: user?.id });
-        }
-      } catch (err) {
-        console.error('[AUTH ERROR] storeSession validation failed', err);
-      }
-    }
-
-    function clearSession() {
-      console.log('[AUTH] Clearing all session data');
-      ['revluma_token', 'revluma_user', 'revluma_pending_token'].forEach(k => {
-        localStorage.removeItem(k);
-        sessionStorage.removeItem(k);
-      });
-      console.log('[AUTH] Session cleared');
-    }
-
-    function getStoredToken() {
-      const token = localStorage.getItem('revluma_token')
-        || sessionStorage.getItem('revluma_token')
-        || null;
-      console.log('[AUTH] Retrieved stored token', { hasToken: !!token, source: token ? (localStorage.getItem('revluma_token') ? 'localStorage' : 'sessionStorage') : 'none' });
-      return token;
-    }
-
-
-    function redirectAfterLogin(user) {
-      if (!user) {
-        console.warn('[AUTH ERROR] redirectAfterLogin called without user object');
-        console.log('[AUTH] Falling back to login page');
-        try {
-          const abs = new URL('/auth/login', window.location.origin).href;
-          window.location.replace(abs);
-        } catch (err) {
-          console.error('[AUTH ERROR] redirect fallback failed', err);
-        }
-        return;
-      }
-
-      const onboarding_status = user.onboarding_status;
-      console.log('[AUTH STEP 9] Determining redirect destination', {
-        userId: user.id,
-        email: user.email,
-        onboarding_status,
-        isCompleted: onboarding_status === 'completed'
-      });
-
-      const dest = (onboarding_status === 'completed')
-        ? '/dashboard/overview'
-        : 'onboarding.html';
-
-
-      console.log('[AUTH STEP 10] Redirecting to:', { destination: dest, reason: onboarding_status === 'completed' ? 'onboarding complete' : 'onboarding required' });
-      try {
-        const abs = new URL(dest, window.location.origin).href;
-        console.info('[AUTH] redirectAfterLogin ->', abs);
-        window.location.replace(abs);
-      } catch (err) {
-        console.error('[AUTH ERROR] redirectAfterLogin failed', err, { dest, onboarding_status, user });
-      }
-    }
-
-
-
-    /**
-     * Primary login — uses revlumaAuth client
-     */
-    async function apiLogin(email, password) {
-      const result = await revlumaAuth.login(email, password);
-
-      if (result.success) {
-        return result;
-      }
-
-      // BUG FIX: throw a proper Error object, not a plain object literal.
-      // Throwing a plain object with a `message` property causes issues when
-      // caught code tries to read .message — on some paths the runtime treats
-      // the thrown value as an Error and its .message becomes a read-only getter.
-      const codeMap = {
-        'INVALID_CREDENTIALS': 'WRONG_PASSWORD',
-        'EMAIL_NOT_VERIFIED': 'EMAIL_NOT_VERIFIED',
-        'ACCOUNT_SUSPENDED': 'ACCOUNT_SUSPENDED'
-      };
-      const err = new Error(result.error || 'Login failed');
-      err.code = codeMap[result.code] || result.code || 'UNKNOWN';
-      err.detail = 'An error occurred during login. Please try again.';
-      throw err;
+        if (el.rememberMe.checked) localStorage.setItem('revluma_remembered_email', email);
+        else localStorage.removeItem('revluma_remembered_email');
+      } catch { /* storage unavailable */ }
     }
 
     /**
@@ -812,25 +721,9 @@ storage.setItem('rv-auth', JSON.stringify(authData));
       el.verify2FaBtn.textContent = '…';
 
       try {
-        await window.revlumaAuth.verify2FA(code, state.temp2FAToken, trustDevice);
-        
-        // --- GOOGLE LINKING CHECK ---
-        if (state.pendingGoogleCredential) {
-          try { await window.revlumaAuth.linkGoogle(state.pendingGoogleCredential); } 
-          catch(e) { console.warn('Silently failed to link Google account', e); }
-        }
-
-        // Success!
-        showGlassmorphismCard('success',
-          'Verification successful!',
-          "You're signed in. Taking you to your dashboard…",
-          () => window.location.href = '/dashboard/overview',
-          'Continue to Dashboard'
-        );
-
-        setTimeout(() => {
-          window.location.href = '/dashboard/overview';
-        }, 1200);
+        const verified = await window.revlumaAuth.verify2FA(code, state.temp2FAToken, trustDevice);
+        await linkPendingIdentities();
+        finishSignIn(verified?.data?.user || verified?.user || window.revlumaAuth.getUser());
 
       } catch (err) {
         el.twoFactorError.textContent = err.message || 'Invalid 2FA code. Please try again.';
@@ -866,6 +759,7 @@ storage.setItem('rv-auth', JSON.stringify(authData));
           hideGlassmorphismCard(); // Hide the loading card
           
           state.temp2FAToken = loginResult.tempToken;
+          rememberEmail(email);
           
          if (el.mainLoginFields) el.mainLoginFields.style.display = 'none';
          if (el.twoFactorSection) el.twoFactorSection.classList.add('show');
@@ -875,23 +769,9 @@ storage.setItem('rv-auth', JSON.stringify(authData));
         }
 
         // --- STANDARD FLOW (If 2FA is OFF) ---
-
-        // --- GOOGLE LINKING CHECK ---
-        if (state.pendingGoogleCredential) {
-          try { await window.revlumaAuth.linkGoogle(state.pendingGoogleCredential); } 
-          catch(e) { console.warn('Silently failed to link Google account', e); }
-        }
-
-        showGlassmorphismCard('success',
-          'Welcome back!',
-          "You're signed in. Taking you to your dashboard…",
-          () => window.location.href = '/dashboard/overview',
-          'Continue to Dashboard'
-        );
-
-        setTimeout(() => {
-          window.location.href = '/dashboard/overview';
-        }, 1200);
+        rememberEmail(email);
+        await linkPendingIdentities();
+        finishSignIn(loginResult?.data?.user || loginResult?.user || window.revlumaAuth.getUser());
       } catch (err) {
         hideGlassmorphismCard();
         showError(err.message || 'An error occurred during sign in. Please try again.');
@@ -977,6 +857,28 @@ storage.setItem('rv-auth', JSON.stringify(authData));
     if (isLockedOut()) {
       startLockoutCountdown();
     }
+
+    // --- SIGN IN WITH APPLE ---
+    window.addEventListener('DOMContentLoaded', () => {
+      if (typeof window.initAppleButton !== 'function') return;
+      window.initAppleButton(document.getElementById('appleSignInBtn'), {
+        onStart: async () => {
+          await window.glassCardReady;
+          showGlassmorphismCard('loading', 'Signing in with Apple…', 'Verifying your Apple ID.');
+        },
+        onSuccess: user => finishSignIn(user),
+        onLinkRequired: err => {
+          hideGlassmorphismCard();
+          state.pendingAppleAuthorization = err.appleAuthorization;
+          showInfoBanner('Link your Apple ID', 'An account with this email already exists. Enter your password below (or continue with Google) and we will link your Apple ID to it.');
+          el.email.focus();
+        },
+        onError: message => {
+          hideGlassmorphismCard();
+          showError(message);
+        },
+      });
+    });
   </script>
   <script src="../assets/js/pageLoader.js"></script>
 </body>

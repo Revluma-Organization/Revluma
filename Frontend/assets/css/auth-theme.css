@@ -763,6 +763,50 @@ html .social-auth-icon-button:hover {
   height: 20px;
   flex: 0 0 20px;
 }
+/* Sign in with Apple: black on light pages, white on dark (Apple HIG). */
+html .social-auth-icon-button.apple-auth-button {
+  background: #000000;
+  border-color: #000000;
+  color: #ffffff;
+}
+html .social-auth-icon-button.apple-auth-button:hover {
+  background: #1d1d1f;
+  border-color: #1d1d1f;
+}
+html.dark .social-auth-icon-button.apple-auth-button {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #000000;
+}
+html.dark .social-auth-icon-button.apple-auth-button:hover {
+  background: #f0f0f2;
+  border-color: #f0f0f2;
+}
+.apple-auth-icon {
+  width: 18px;
+  height: 20px;
+  flex: 0 0 18px;
+  fill: currentColor;
+}
+.social-auth-icon-button[hidden] {
+  display: none;
+}
+.social-auth-icon-button[aria-busy="true"] {
+  opacity: 0.7;
+  pointer-events: none;
+}
+.social-consent {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--muted2);
+}
+.social-consent a {
+  color: var(--text-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .divider,
 .rv-divider {
   display: flex;
@@ -1220,50 +1264,16 @@ html #rv-page-loader .rv-loader-text {
 }
 
 /* ── Shared glassmorphism dialog (components/GlassmorphismCard.html) ──── */
-html .glassmorphism-overlay {
-  background: rgba(12, 10, 29, 0.32);
-  backdrop-filter: blur(6px);
-}
-html.dark .glassmorphism-overlay {
-  background: rgba(0, 0, 0, 0.6);
-}
+/* The component carries its own landing styles and reads the variables
+   above; these base rules only cover the moment before it has loaded. */
 html .glassmorphism-card {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 24px;
-  box-shadow: var(--pop-shadow);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-html .glassmorphism-card .card-title {
-  color: var(--text);
-  font-family: "Arial Black", "Archivo Black", Arial, sans-serif;
-  letter-spacing: -0.02em;
-}
-html .glassmorphism-card .card-message {
-  color: var(--muted);
-}
-html .glassmorphism-card .card-button {
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border-strong);
-}
-html .glassmorphism-card .success-btn,
-html .glassmorphism-card .card-icon.success {
-  background: var(--btn-bg);
-  color: var(--btn-text);
-  border-color: var(--btn-bg);
-}
-html .glassmorphism-card .card-icon.error {
-  background: var(--red-bg);
-  color: var(--red);
-  border-color: var(--red-border);
 }
 html .card-spinner {
   border-color: var(--border);
-  border-top-color: var(--text);
+  border-top-color: var(--accent);
 }
 
 /* ── Success tick ─────────────────────────────────────────────────────── */

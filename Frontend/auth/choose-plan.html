@@ -263,16 +263,21 @@
       return { res, data };
     }
 
-    // 7-day trial: no card needed (subscriptionController.startTrial).
+    // 7-day trial of the chosen plan: no card needed (subscriptionController.startTrial).
     async function startTrial(plan, button) {
       if (busy) return;
       showError('');
       setBusy(button, 'Starting your trial…');
       try {
-        const result = await request('/subscriptions/start-trial');
+        const result = await request('/subscriptions/start-trial', { plan, billing_cycle: billing });
         if (!result) return;
         const { res, data } = result;
         if (res.status === 401) { window.location.href = '/auth/login.html'; return; }
+        if (data.code === 'TRIAL_USED') {
+          showError('Your free trial has already been used. Choose <strong>subscribe now with Paystack</strong> under your plan to continue.');
+          setBusy(button, null);
+          return;
+        }
         if (res.ok || res.status === 409) {
           localStorage.setItem('rv-selected-plan', JSON.stringify({ plan, billing_cycle: billing, selected_at: new Date().toISOString() }));
           if (window.showPageLoader) window.showPageLoader();
@@ -292,7 +297,7 @@
       showError('');
       setBusy(button, 'Redirecting to Paystack…');
       try {
-        const result = await request('/subscriptions/initialize', { plan, billing_cycle: billing, currency: 'NGN' });
+        const result = await request('/subscriptions/initialize', { plan, billing_cycle: billing, currency: 'USD' });
         if (!result) return;
         const { res, data } = result;
         if (res.status === 401) { window.location.href = '/auth/login.html'; return; }

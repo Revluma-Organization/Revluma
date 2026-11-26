@@ -1,306 +1,289 @@
-<!-- Glassmorphism Card Component -->
+<!--
+  Shared confirmation dialog for the auth pages (landing look).
+  API: showGlassmorphismCard(type, title, message, onClose, buttonText)
+       type = 'loading' | 'success' | 'error'
+       hideGlassmorphismCard(), handleCardButtonClick(), autoHideCard(delay)
+  Colours come from auth-theme.css variables (light and dark), with landing
+  fallbacks so the card still looks right on a page without the theme.
+-->
 <style>
-    .glassmorphism-overlay {
+    html .glassmorphism-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.6);
-        backdrop-filter: blur(4px);
+        z-index: 9999;
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 9999;
-        animation: fadeIn 0.3s ease-in-out;
+        padding: 20px;
+        background: rgba(12, 10, 29, 0.36);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        animation: gcFade 0.2s ease-out both;
+    }
+    html.dark .glassmorphism-overlay {
+        background: rgba(0, 0, 0, 0.62);
+    }
+    html .glassmorphism-overlay.hidden {
+        display: none;
     }
 
-    @keyframes fadeIn {
-        from {
-            opacity: 0;
-        }
-
-        to {
-            opacity: 1;
-        }
-    }
-
-    .glassmorphism-card {
-        background: rgba(255, 255, 255, 0.12);
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 20px;
-        padding: 2rem;
-        max-width: 420px;
-        width: 90%;
-        box-shadow:
-            0 20px 60px rgba(0, 0, 0, 0.3),
-            inset 0 1px 1px rgba(255, 255, 255, 0.2);
-        animation: slideUp 0.4s cubic-bezier(0.23, 1, 0.320, 1);
+    html .glassmorphism-card {
+        position: relative;
+        width: 100%;
+        max-width: 400px;
+        padding: 36px 32px 28px;
+        border: 1px solid var(--border, #e8e6e1);
+        border-radius: 28px;
+        background: var(--surface, #ffffff);
+        color: var(--text, #0c0a1d);
+        box-shadow: var(--pop-shadow, 0 18px 36px -14px rgba(12, 10, 29, 0.28), 0 4px 10px -4px rgba(12, 10, 29, 0.1));
+        font-family: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
         text-align: center;
-        color: #f0f0f5;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        animation: gcRise 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    html .glassmorphism-card:focus {
+        outline: none;
     }
 
-    @keyframes slideUp {
-        from {
-            transform: translateY(30px);
-            opacity: 0;
-        }
-
-        to {
-            transform: translateY(0);
-            opacity: 1;
-        }
-    }
-
-    .glassmorphism-card.success {
-        border-color: rgba(255, 255, 255, 0.28);
-        background: rgba(255, 255, 255, 0.1);
-    }
-
-    .glassmorphism-card.error {
-        border-color: rgba(255, 255, 255, 0.14);
-        background: rgba(0, 0, 0, 0.35);
-    }
-
-    .glassmorphism-card.loading {
-        border-color: rgba(255, 255, 255, 0.18);
-        background: rgba(255, 255, 255, 0.08);
-    }
-
-    /* Big, unmistakable spinner for the loading state — bigger and more
-       visible than any inline button spinner, so a person never has to
-       wonder whether something is happening. */
-    .card-spinner {
-        width: 56px;
-        height: 56px;
-        margin: 0 auto 1.5rem;
-        border: 3px solid rgba(255, 255, 255, 0.15);
-        border-top-color: #ffffff;
-        border-radius: 50%;
-        animation: cardSpin 0.8s linear infinite;
-    }
-
-    @keyframes cardSpin {
-        to {
-            transform: rotate(360deg);
-        }
-    }
-
-    .card-icon {
+    html .glassmorphism-card .card-icon,
+    html .glassmorphism-card .card-spinner {
+        display: grid;
+        place-items: center;
         width: 64px;
         height: 64px;
-        margin: 0 auto 1.5rem;
-        display: flex;
+        margin: 0 auto 22px;
+        border-radius: 999px;
+    }
+    html .glassmorphism-card .card-icon.success {
+        background: var(--btn-bg, #0c0a1d);
+        color: var(--btn-text, #ffffff);
+        border: 0;
+        animation: gcPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s both;
+    }
+    html .glassmorphism-card .card-icon.success path {
+        stroke-dasharray: 30;
+        stroke-dashoffset: 30;
+        animation: gcDraw 0.4s ease-out 0.3s forwards;
+    }
+    html .glassmorphism-card .card-icon.error {
+        background: var(--red-bg, #fef3f2);
+        color: var(--red, #b42318);
+        border: 1px solid var(--red-border, #fecdca);
+        animation: gcPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s both;
+    }
+    html .glassmorphism-card .card-spinner {
+        box-sizing: border-box;
+        border: 3px solid var(--border, #e8e6e1);
+        border-top-color: var(--accent, #2b13cf);
+        animation: gcSpin 0.8s linear infinite;
+    }
+
+    html .glassmorphism-card .card-title {
+        margin: 0 0 10px;
+        font-family: "Arial Black", "Archivo Black", Arial, sans-serif;
+        font-size: 24px;
+        font-weight: 900;
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+        color: var(--text, #0c0a1d);
+    }
+    html .glassmorphism-card .card-message {
+        margin: 0 0 26px;
+        font-size: 15px;
+        line-height: 1.55;
+        color: var(--muted, #5e5c6b);
+    }
+    html .glassmorphism-card.loading .card-message {
+        margin-bottom: 6px;
+    }
+
+    html .glassmorphism-card .card-button {
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        border-radius: 50%;
-        animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-
-    @keyframes popIn {
-        0% {
-            transform: scale(0);
-            opacity: 0;
-        }
-
-        50% {
-            transform: scale(1.1);
-        }
-
-        100% {
-            transform: scale(1);
-            opacity: 1;
-        }
-    }
-
-    /* Strictly monochrome — success and error are told apart by icon
-       shape (check vs. X) and fill weight, never by hue. */
-    .card-icon.success {
-        background: #ffffff;
-        color: #0a0a0a;
-    }
-
-    .card-icon.error {
-        background: rgba(255, 255, 255, 0.12);
-        color: #ffffff;
-        border: 1.5px solid rgba(255, 255, 255, 0.35);
-    }
-
-    .card-title {
-        font-size: 1.5rem;
-        font-weight: 700;
-        margin-bottom: 0.75rem;
-        letter-spacing: -0.5px;
-        color: #ffffff;
-    }
-
-    .card-message {
-        font-size: 0.95rem;
-        color: rgba(255, 255, 255, 0.62);
-        margin-bottom: 2rem;
-        line-height: 1.5;
-    }
-
-    .card-button {
-        background: rgba(255, 255, 255, 0.15);
-        color: #ffffff;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        padding: 0.75rem 1.5rem;
-        border-radius: 10px;
-        font-weight: 600;
-        font-size: 0.95rem;
-        cursor: pointer;
-        transition: all 0.3s ease;
+        gap: 12px;
         width: 100%;
+        min-height: 52px;
+        padding: 6px 6px 6px 22px;
+        border: 1px solid var(--border-strong, #d6d3cc);
+        border-radius: 999px;
+        background: var(--surface, #ffffff);
+        color: var(--text, #0c0a1d);
+        font: inherit;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+    }
+    html .glassmorphism-card .card-button:hover {
+        border-color: var(--text, #0c0a1d);
+        transform: translateY(-1px);
+    }
+    html .glassmorphism-card .card-button:active {
+        transform: scale(0.985);
+    }
+    html .glassmorphism-card .card-button:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 4px var(--ring, rgba(43, 19, 207, 0.18));
+    }
+    html .glassmorphism-card .card-button.success-btn {
+        justify-content: space-between;
+        border-color: var(--btn-bg, #0c0a1d);
+        background: var(--btn-bg, #0c0a1d);
+        color: var(--btn-text, #ffffff);
+    }
+    html .glassmorphism-card .card-button.success-btn:hover {
+        border-color: var(--btn-hover, #1f06ac);
+        background: var(--btn-hover, #1f06ac);
+        box-shadow: 0 10px 24px -12px rgba(31, 6, 172, 0.55);
+    }
+    html .glassmorphism-card .card-button.error-btn {
+        padding-right: 22px;
+    }
+    html .glassmorphism-card .card-button-chip {
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        flex: 0 0 40px;
+        border-radius: 999px;
+        background: var(--chip, rgba(255, 255, 255, 0.16));
+    }
+    html .glassmorphism-card .card-button.error-btn .card-button-chip {
+        display: none;
+    }
+    html .glassmorphism-card .card-button-chip svg {
+        width: 16px;
+        height: 16px;
+        transition: transform 0.2s ease;
+    }
+    html .glassmorphism-card .card-button.success-btn:hover .card-button-chip svg {
+        transform: translate(2px, -2px);
     }
 
-    .card-button:hover {
-        background: rgba(255, 255, 255, 0.25);
-        border-color: rgba(255, 255, 255, 0.3);
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-    }
-
-    /* Solid white, black text — the strongest possible affordance for the
-       primary/success action, staying inside the monochrome palette. */
-    .card-button.success-btn {
-        background: #ffffff;
-        border-color: #ffffff;
-        color: #0a0a0a;
-    }
-
-    .card-button.success-btn:hover {
-        background: rgba(255, 255, 255, 0.88);
-        box-shadow: 0 12px 30px rgba(255, 255, 255, 0.15);
-    }
-
-    .card-button.error-btn {
-        background: rgba(255, 255, 255, 0.1);
-        border-color: rgba(255, 255, 255, 0.3);
-        color: #ffffff;
-    }
-
-    .card-button.error-btn:hover {
-        background: rgba(255, 255, 255, 0.18);
-        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
-    }
-
-    .card-loading {
-        display: inline-block;
-        width: 4px;
-        height: 4px;
-        border-radius: 50%;
-        background: currentColor;
-        animation: dot-bounce 1.4s infinite;
-        margin-left: 0.3rem;
-    }
-
-    @keyframes dot-bounce {
-
-        0%,
-        80%,
-        100% {
-            opacity: 0;
-            transform: translateY(0);
-        }
-
-        40% {
-            opacity: 1;
-            transform: translateY(-8px);
-        }
-    }
-
+    html .glassmorphism-card .hidden,
     .hidden {
         display: none !important;
+    }
+
+    @keyframes gcFade { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes gcRise { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
+    @keyframes gcPop { 0% { opacity: 0; transform: scale(0.6); } 100% { opacity: 1; transform: scale(1); } }
+    @keyframes gcDraw { to { stroke-dashoffset: 0; } }
+    @keyframes gcSpin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 480px) {
+        html .glassmorphism-card { padding: 30px 22px 22px; border-radius: 24px; }
+        html .glassmorphism-card .card-title { font-size: 21px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        html .glassmorphism-overlay,
+        html .glassmorphism-card,
+        html .glassmorphism-card .card-icon,
+        html .glassmorphism-card .card-icon path { animation: none; stroke-dashoffset: 0; }
+        html .glassmorphism-card .card-spinner { animation-duration: 1.6s; }
     }
 </style>
 
 <div id="glassmorphism-overlay" class="glassmorphism-overlay hidden">
-    <div class="glassmorphism-card" id="glassmorphism-card">
-        <div class="card-spinner hidden" id="card-spinner"></div>
-        <div class="card-icon" id="card-icon">
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path id="icon-path"
-                    d="M16 2C8.26875 2 2 8.26875 2 16C2 23.7313 8.26875 30 16 30C23.7313 30 30 23.7313 30 16C30 8.26875 23.7313 2 16 2ZM13 22L7 16L8.7 14.3L13 18.6L23.3 8.3L25 10L13 22Z"
-                    fill="currentColor" />
-            </svg>
-        </div>
-        <h2 class="card-title" id="card-title">Account Created!</h2>
-        <p class="card-message" id="card-message">Your account has been successfully created.</p>
-        <button class="card-button success-btn" id="card-button" onclick="handleCardButtonClick()">Continue</button>
+    <div class="glassmorphism-card" id="glassmorphism-card" role="dialog" aria-modal="true" aria-labelledby="card-title" aria-describedby="card-message" tabindex="-1">
+        <div class="card-spinner hidden" id="card-spinner" role="progressbar" aria-label="Loading"></div>
+        <div class="card-icon success" id="card-icon" aria-hidden="true"></div>
+        <h2 class="card-title" id="card-title"></h2>
+        <p class="card-message" id="card-message" aria-live="polite"></p>
+        <button type="button" class="card-button success-btn" id="card-button" onclick="handleCardButtonClick()">
+            <span id="card-button-label">Continue</span>
+            <span class="card-button-chip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg></span>
+        </button>
     </div>
 </div>
 
 <script>
-    function showGlassmorphismCard(type, title, message, onClose, buttonText) {
-        const overlay = document.getElementById('glassmorphism-overlay');
-        const card = document.getElementById('glassmorphism-card');
-        const spinner = document.getElementById('card-spinner');
-        const icon = document.getElementById('card-icon');
-        const titleEl = document.getElementById('card-title');
-        const messageEl = document.getElementById('card-message');
-        const button = document.getElementById('card-button');
+    (function () {
+        var ICONS = {
+            success: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+            error: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7.5v5.5"/><path d="M12 16.75h.01"/></svg>'
+        };
+        var lastFocus = null;
 
-        // Set type-specific styling
-        card.classList.remove('success', 'error', 'loading');
-        icon.classList.remove('success', 'error');
-        button.classList.remove('success-btn', 'error-btn');
+        function el(id) { return document.getElementById(id); }
 
-        if (type === 'loading') {
-            card.classList.add('loading');
-            spinner.classList.remove('hidden');
-            icon.classList.add('hidden');
-            button.classList.add('hidden');
-        } else if (type === 'success') {
-            card.classList.add('success');
-            spinner.classList.add('hidden');
-            icon.classList.remove('hidden');
-            button.classList.remove('hidden');
-            icon.classList.add('success');
-            button.classList.add('success-btn');
-            // Success icon
-            icon.innerHTML = '<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 2C8.26875 2 2 8.26875 2 16C2 23.7313 8.26875 30 16 30C23.7313 30 30 23.7313 30 16C30 8.26875 23.7313 2 16 2ZM13 22L7 16L8.7 14.3L13 18.6L23.3 8.3L25 10L13 22Z" fill="currentColor"/></svg>';
-            button.textContent = buttonText || 'Continue';
-        } else if (type === 'error') {
-            card.classList.add('error');
-            spinner.classList.add('hidden');
-            icon.classList.remove('hidden');
-            button.classList.remove('hidden');
-            icon.classList.add('error');
-            button.classList.add('error-btn');
-            // Error icon
-            icon.innerHTML = '<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 2C8.26875 2 2 8.26875 2 16C2 23.7313 8.26875 30 16 30C23.7313 30 30 23.7313 30 16C30 8.26875 23.7313 2 16 2ZM16 25C15.4 25 15 24.6 15 24C15 23.4 15.4 23 16 23C16.6 23 17 23.4 17 24C17 24.6 16.6 25 16 25ZM17 19H15V10H17V19Z" fill="currentColor"/></svg>';
-            button.textContent = buttonText || 'Try Again';
-        }
+        window.showGlassmorphismCard = function (type, title, message, onClose, buttonText) {
+            var overlay = el('glassmorphism-overlay');
+            var card = el('glassmorphism-card');
+            var spinner = el('card-spinner');
+            var icon = el('card-icon');
+            var button = el('card-button');
+            var wasHidden = overlay.classList.contains('hidden');
 
-        titleEl.textContent = title;
-        messageEl.textContent = message;
+            card.classList.remove('success', 'error', 'loading');
+            icon.classList.remove('success', 'error');
+            button.classList.remove('success-btn', 'error-btn');
+            card.classList.add(type);
+            card.setAttribute('aria-busy', String(type === 'loading'));
 
-        // Store the callback for when button is clicked
-        window.cardOnClose = onClose;
-
-        // Show overlay
-        overlay.classList.remove('hidden');
-    }
-
-    function hideGlassmorphismCard() {
-        const overlay = document.getElementById('glassmorphism-overlay');
-        overlay.classList.add('hidden');
-    }
-
-    function handleCardButtonClick() {
-        if (window.cardOnClose) {
-            window.cardOnClose();
-        } else {
-            hideGlassmorphismCard();
-        }
-    }
-
-    // Auto-hide after 5 seconds if success (unless interacted)
-    function autoHideCard(delay = 5000) {
-        setTimeout(() => {
-            const overlay = document.getElementById('glassmorphism-overlay');
-            if (!overlay.classList.contains('hidden')) {
-                hideGlassmorphismCard();
+            if (type === 'loading') {
+                spinner.classList.remove('hidden');
+                icon.classList.add('hidden');
+                button.classList.add('hidden');
+            } else {
+                var isError = type === 'error';
+                spinner.classList.add('hidden');
+                icon.classList.remove('hidden');
+                button.classList.remove('hidden');
+                icon.classList.add(isError ? 'error' : 'success');
+                icon.innerHTML = isError ? ICONS.error : ICONS.success;
+                button.classList.add(isError ? 'error-btn' : 'success-btn');
+                el('card-button-label').textContent = buttonText || (isError ? 'Try again' : 'Continue');
             }
-        }, delay);
-    }
+
+            el('card-title').textContent = title || '';
+            el('card-message').textContent = message || '';
+            window.cardOnClose = onClose || null;
+
+            if (wasHidden) lastFocus = document.activeElement;
+            overlay.classList.remove('hidden');
+            // Move focus into the dialog so keyboard and screen-reader users land on it.
+            setTimeout(function () {
+                if (type === 'loading') card.focus({ preventScroll: true });
+                else button.focus({ preventScroll: true });
+            }, 30);
+        };
+
+        window.hideGlassmorphismCard = function () {
+            el('glassmorphism-overlay').classList.add('hidden');
+            if (lastFocus && typeof lastFocus.focus === 'function' && document.contains(lastFocus)) {
+                lastFocus.focus({ preventScroll: true });
+            }
+            lastFocus = null;
+        };
+
+        window.handleCardButtonClick = function () {
+            if (typeof window.cardOnClose === 'function') window.cardOnClose();
+            else window.hideGlassmorphismCard();
+        };
+
+        window.autoHideCard = function (delay) {
+            setTimeout(function () {
+                if (!el('glassmorphism-overlay').classList.contains('hidden')) window.hideGlassmorphismCard();
+            }, delay || 5000);
+        };
+
+        // Keep Tab inside the dialog; Escape dismisses an error.
+        document.addEventListener('keydown', function (event) {
+            var overlay = el('glassmorphism-overlay');
+            if (!overlay || overlay.classList.contains('hidden')) return;
+            var card = el('glassmorphism-card');
+            if (event.key === 'Escape' && card.classList.contains('error')) {
+                event.preventDefault();
+                window.handleCardButtonClick();
+            } else if (event.key === 'Tab') {
+                var button = el('card-button');
+                event.preventDefault();
+                (button.classList.contains('hidden') ? card : button).focus();
+            }
+        });
+    })();
 </script>

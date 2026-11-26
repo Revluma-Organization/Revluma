@@ -75,6 +75,33 @@ access token.
 - `REDIS_URL`, or the existing `REDIS_HOST` configuration, is required before
   the global beta action switch is deliberately set to `false`.
 
+Sign in with Apple (optional; the Apple button stays hidden until it is set):
+
+- `APPLE_CLIENT_ID`: the **Services ID** identifier from Apple Developer
+  (for example `com.revluma.web`). Comma-separate it with an app bundle ID if a
+  native app is added later; the first value is the one the website uses.
+- `APPLE_REDIRECT_URI` is optional and defaults to `${FRONTEND_URL}/auth/login`.
+- Apple Developer setup (Certificates, Identifiers & Profiles):
+  1. Create or reuse an App ID with the "Sign in with Apple" capability.
+  2. Create a Services ID, enable "Sign in with Apple", and set it up with
+     that App ID as the primary.
+  3. Under the Services ID's website URLs, add the domain `revluma.vercel.app`
+     and the return URL `https://revluma.vercel.app/auth/login` (or the
+     `APPLE_REDIRECT_URI` value). Apple does not accept `localhost`.
+  4. For emails to reach Hide My Email addresses, register the SendGrid
+     sending domain (`SENDGRID_FROM_EMAIL`'s domain) under
+     "Sign in with Apple for Email Communication" and pass SPF/DKIM.
+- No private key is required: the site uses Apple JS in popup mode and the
+  backend verifies the identity token against Apple's public keys
+  (`https://appleid.apple.com/auth/keys`, cached for an hour, nonce-bound).
+- `GET /api/v1/auth/apple/config` reports whether Apple is enabled;
+  `POST /api/v1/auth/apple` signs in or creates the account;
+  `POST /api/v1/auth/apple/link` links an Apple ID to the signed-in account.
+
+Billing is in US dollars only. Paystack amounts are sent in cents (the legacy
+`amount_kobo` column name is kept) and every charge is checked against the
+amount and currency the server initiated before a plan is activated.
+
 Optional services retain their existing Paystack, Cloudinary, WooCommerce,
 logging, and scheduler interval variables. Redis remains optional only while
 real beta actions are globally disabled or for a single-process local setup.

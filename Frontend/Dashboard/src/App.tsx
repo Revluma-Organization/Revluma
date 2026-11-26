@@ -9,14 +9,13 @@ import { AuthSync } from './components/AuthSync';
 import { DashboardRoutes } from './routes';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import Overview from './pages/Overview';
-import LoginRedirect from './pages/LoginRedirect';
+import LoginRedirect, { ForgotPasswordRedirect } from './pages/LoginRedirect';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
 import { TooltipProvider } from './components/ui/tooltip';
 import { Toaster as Sonner } from './components/ui/sonner';
 import { Toaster } from './components/ui/toaster';
 import NotFound from './pages/NotFound';
-import ForgotPassword from "./pages/auth/ForgotPassword";
 import InviteAccept from './pages/InviteAccept';
 import { getAccessToken } from './lib/auth/session';
 
@@ -96,7 +95,7 @@ function App() {
               }
             />
             <Route path="/login" element={<LoginRedirect />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/forgot-password" element={<ForgotPasswordRedirect />} />
             <Route path="/invite/accept" element={<InviteAccept />} />
             <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
             <Route path="*" element={<NotFound />} />
