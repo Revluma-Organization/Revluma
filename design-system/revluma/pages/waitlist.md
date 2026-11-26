@@ -4,7 +4,7 @@
 > `/waitlist` (`Frontend/waitlist.html` + `Frontend/Landing/src/waitlist/`).
 > Anything not listed here follows Master.
 
-**Decided:** 2026-11-18, round 6 (waitlist rebuilt into a saved, multi-step
+**Decided:** 2026-11-26, round 6 (waitlist rebuilt into a saved, multi-step
 Founding Merchants application; user asked for Revluma's look, not a generic form builder).
 
 ## How this was derived (ui-ux-pro-max)
