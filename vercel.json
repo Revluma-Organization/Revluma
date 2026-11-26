@@ -28,6 +28,26 @@
       "source": "/features/:path*",
       "destination": "/",
       "permanent": true
+    },
+    {
+      "source": "/login",
+      "destination": "/auth/login",
+      "permanent": false
+    },
+    {
+      "source": "/signup",
+      "destination": "/auth/signup",
+      "permanent": false
+    },
+    {
+      "source": "/auth/signUp",
+      "destination": "/auth/signup",
+      "permanent": false
+    },
+    {
+      "source": "/forgot-password",
+      "destination": "/auth/forgottenpassword",
+      "permanent": false
     }
   ],
   "headers": [
@@ -83,28 +103,8 @@
   ],
   "rewrites": [
     {
-      "source": "/forgot-password",
-      "destination": "/auth/forgottenpassword.html"
-    },
-    {
       "source": "/dashboard/:path*",
       "destination": "/dashboard/index"
-    },
-    {
-      "source": "/login",
-      "destination": "/auth/login.html"
-    },
-    {
-      "source": "/auth/login",
-      "destination": "/auth/login.html"
-    },
-    {
-      "source": "/auth/signup",
-      "destination": "/auth/signup.html"
-    },
-    {
-      "source": "/auth/signUp",
-      "destination": "/auth/signup.html"
     }
   ]
 }
