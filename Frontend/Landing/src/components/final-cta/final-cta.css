@@ -1,0 +1,129 @@
+/* Final CTA (FinalCtaSection.tsx). A single contained card, narrower than the
+ * page, on the light canvas, with a soft indigo glow and a faint grid behind
+ * the copy. Reuses .fm-eyebrow and .fm-cta. */
+
+.fc-section {
+  background: #fbfaf8;
+  border-top: 1px solid #eeece7;
+}
+
+.fc-card {
+  position: relative;
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 2.75rem;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid #e9e6f3;
+  border-radius: 2rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f7f5ff 100%);
+  box-shadow:
+    0 1px 2px rgba(12, 10, 29, 0.04),
+    0 40px 80px -48px rgba(31, 6, 172, 0.35);
+}
+@media (min-width: 640px) {
+  .fc-card {
+    padding: 3.75rem 3rem 3.25rem;
+  }
+}
+@media (min-width: 1024px) {
+  .fc-card {
+    padding: 4.25rem 4rem 3.5rem;
+  }
+}
+
+/* Indigo light from the top, behind the orb. */
+.fc-glow {
+  position: absolute;
+  z-index: -1;
+  top: -14rem;
+  left: 50%;
+  width: 40rem;
+  height: 26rem;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(116, 96, 255, 0.28), rgba(116, 96, 255, 0));
+}
+/* Faint grid, fading out towards the edges. */
+.fc-grid {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-image: linear-gradient(rgba(31, 6, 172, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(31, 6, 172, 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 0%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 0%, transparent 75%);
+}
+
+.fc-orb {
+  display: block;
+  width: 4rem;
+  height: 4rem;
+  filter: drop-shadow(0 12px 24px rgba(31, 6, 172, 0.35));
+}
+.fc-orb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.fc-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  margin-top: 2rem;
+}
+@media (min-width: 640px) {
+  .fc-actions {
+    flex-direction: row;
+    gap: 1.25rem;
+  }
+}
+
+.fc-secondary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 3rem;
+  padding: 0 1.4rem;
+  border: 1px solid #dcd8ee;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #0c0a1d;
+  text-decoration: none;
+  transition:
+    border-color 0.25s ease,
+    color 0.25s ease,
+    background-color 0.25s ease;
+}
+.fc-secondary:hover {
+  border-color: #1f06ac;
+  color: #1f06ac;
+  background: #f7f5ff;
+}
+.fc-secondary:focus-visible {
+  outline: 2px solid #1f06ac;
+  outline-offset: 3px;
+}
+
+.fc-notes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1.25rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: #6e6c7a;
+}
+.fc-notes li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.fc-notes svg {
+  color: #1f06ac;
+}

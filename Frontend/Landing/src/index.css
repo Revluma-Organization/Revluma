@@ -8,6 +8,7 @@
 @import "./components/reviews/reviews.css";
 @import "./components/faq/faq.css";
 @import "./components/pricing/pricing.css";
+@import "./components/final-cta/final-cta.css";
 @import "./motion.css";
 
 @tailwind base;
