@@ -272,6 +272,24 @@ describe("SignalsTable", () => {
     expect(row).not.toHaveAttribute("data-selected");
   });
 
+  it("hands the row's authoritative finding id to Rev from the drawer", async () => {
+    const rowId = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+    const row = signal({
+      id: rowId, title: "Authoritative signal",
+      investigation: {
+        finding_id: rowId, route: `/dashboard/rev-intell?finding=${rowId}`,
+        context_contract: "rev-selected-finding-v1", revalidate_on_open: true,
+      },
+    });
+    renderTable(dataFor([row], { priority_finding: row }));
+    fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Ask Rev about this finding" }));
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith(
+      expect.stringContaining(`/dashboard/rev-intell?finding=${rowId}`));
+  });
+
   it("passes axe-core checks for the toolbar, table, and empty states", async () => {
     const { container, unmount } = renderTable(
       dataFor([

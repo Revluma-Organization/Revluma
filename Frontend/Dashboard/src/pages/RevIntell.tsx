@@ -1105,7 +1105,19 @@ export default function RevIntell() {
       setMessagesMore(msgs.length === MESSAGE_PAGE_SIZE);
       setMessages(previous => [...new Map([...(append ? previous : []), ...parsed].map(item => [item.id, item])).values()]);
       if (!append && !findingId) {
-        const persistedFinding = [...parsed].reverse().find(message => message.payload?.selected_finding)?.payload?.selected_finding;
+        // Phase 5C: the latest Rev turn that reports finding state decides.
+        // A turn with an explicit null echo means the finding was deliberately
+        // left behind (topic change); older echoes must not resurrect it and
+        // re-attach finding_id on the next send. Payloads that predate the
+        // echo carry no key and are skipped for backward compatibility.
+        let persistedFinding = null;
+        for (const message of [...parsed].reverse()) {
+          const payload = message.payload;
+          if (!payload || typeof payload !== 'object') continue;
+          if (!Object.prototype.hasOwnProperty.call(payload, 'selected_finding')) continue;
+          persistedFinding = payload.selected_finding || null;
+          break;
+        }
         setFindingContext(persistedFinding ? {
           id: persistedFinding.finding_id, title: persistedFinding.title,
           description: "", lifecycleState: persistedFinding.lifecycle_state,

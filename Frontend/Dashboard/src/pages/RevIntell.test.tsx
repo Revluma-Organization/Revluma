@@ -497,6 +497,49 @@ describe('finding investigation handoff', () => {
     expect(screen.queryByText('First finding question')).not.toBeInTheDocument();
     expect(screen.getAllByText('Second finding question')).toHaveLength(2);
   });
+  it('does not resurrect a finding banner after a topic change cleared it', async () => {
+    const echo = {
+      contract_version: 'rev-selected-finding-v1', finding_id: findingOne,
+      title: 'Revenue decline', lifecycle_state: 'open',
+      current_validity: 'current_evidence_verified', evidence_quality: 'verified',
+    };
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [
+      { id: 'u1', role: 'user', content: { text: 'Help me investigate this finding' }, created_at: '2026-11-02T12:00:00Z' },
+      { id: 'r1', role: 'rev', created_at: '2026-11-02T12:01:00Z', content: { ...answer('A', 'Finding answer'), selected_finding: echo } },
+      { id: 'u2', role: 'user', content: { text: 'Instead, how is inventory?' }, created_at: '2026-11-02T12:02:00Z' },
+      { id: 'r2', role: 'rev', created_at: '2026-11-02T12:03:00Z', content: { ...answer('A', 'Inventory answer'), selected_finding: null } },
+    ] })));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText('Inventory answer');
+    expect(screen.queryByRole('region', { name: 'Finding context' })).not.toBeInTheDocument();
+    send('Another inventory question');
+    expect(streams[0].request.findingId).toBeUndefined();
+  });
+  it('restores finding context per conversation when switching, without leaking into unrelated threads', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [{
+      id: 'rev-selected', role: 'rev', created_at: '2026-11-02T12:00:00Z',
+      content: { ...answer('A', 'Finding answer'), selected_finding: {
+        contract_version: 'rev-selected-finding-v1', finding_id: findingOne,
+        title: 'Persisted refund finding', lifecycle_state: 'open',
+        current_validity: 'current_evidence_verified', evidence_quality: 'verified',
+      } },
+    }] })));
+    replies.set('/rev/conversation/B', Promise.resolve(reply({ messages: [
+      { id: 'uB', role: 'user', content: { text: 'Unrelated question' }, created_at: '2026-11-02T12:00:00Z' },
+      { id: 'rB', role: 'rev', created_at: '2026-11-02T12:01:00Z', content: { ...answer('B', 'Unrelated answer'), selected_finding: null } },
+    ] })));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByRole('heading', { name: 'Persisted refund finding' });
+    await historyReady();
+    await select('B');
+    await screen.findByText('Unrelated answer');
+    expect(screen.queryByRole('region', { name: 'Finding context' })).not.toBeInTheDocument();
+    send('Follow-up without finding');
+    expect(streams[0].request).toMatchObject({ conversationId: 'B' });
+    expect(streams[0].request.findingId).toBeUndefined();
+    await select('A');
+    await screen.findByRole('heading', { name: 'Persisted refund finding' });
+  });
 });
 
 describe('conversation history reliability', () => {

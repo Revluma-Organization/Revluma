@@ -400,3 +400,28 @@ def test_60_same_finding_version_has_stable_recommendation_identity():
 def test_61_topic_change_ignores_even_a_client_supplied_selection():
     assert selected_finding_reference("Instead, discuss inventory", selected_payload(),
         {"last_selected_finding": {"finding_id": FINDING}}, topic_change=True) is None
+
+
+# ── Phase 5C: contextual investigation E2E ────────────────────────────────────
+def test_5c_explicit_first_turn_selection_scopes_finding_investigation():
+    """The client's real prefill draft plus an explicit selection must open a
+    finding investigation scoped to the authoritative identifier — the first
+    response addresses the finding, never a generic subject."""
+    draft = ("Help me investigate this finding: Verified revenue decreased. "
+             "Explain the observed change, limitations and supported next steps.")
+    result = run_investigation(ORG, USER, draft, db=finding_db(), now=NOW,
+                               context_payload=selected_payload(), persist=False)
+    assert result["investigation"]["intent"] == "finding_investigation"
+    assert result["selected_finding"]["finding_id"] == FINDING
+    assert result["selected_finding"]["tenant"]["organization_id"] == ORG
+    assert result["selected_finding"]["evidence_references"]
+
+
+def test_5c_malformed_explicit_reference_raises_without_assuming_a_finding():
+    """A malformed selection fails closed: no finding is assumed, no echo is
+    produced. (Node's resolver rejects these first; this pins the Python
+    defense-in-depth boundary.)"""
+    with pytest.raises(ValueError, match="invalid selected finding reference"):
+        run_investigation(ORG, USER, "Explain this", db=finding_db(), now=NOW,
+                          context_payload={"selected_finding": {"finding_id": "not-a-uuid"}},
+                          persist=False)
