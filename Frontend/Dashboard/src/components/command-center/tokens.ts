@@ -14,7 +14,7 @@
  * operational statuses and never used decoratively.
  */
 export const cc = {
-  page: "mx-auto w-full min-w-0 max-w-[1400px] space-y-7 overflow-x-clip pb-14 text-[#17191F]",
+  page: "mx-auto w-full min-w-0 max-w-[1440px] space-y-7 overflow-x-clip pb-14 text-[#17191F]",
   surface: "min-w-0 rounded-2xl border border-[#E7E9EF] bg-white",
   surfaceSubtle: "min-w-0 rounded-xl border border-[#E7E9EF] bg-[#F8F9FB]",
   intelligence: "min-w-0 overflow-hidden rounded-2xl border border-[#D8D7FA] bg-white",

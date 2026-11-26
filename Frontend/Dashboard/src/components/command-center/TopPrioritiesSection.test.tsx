@@ -369,6 +369,7 @@ describe("TopPrioritiesSection — Premium Hybrid Redesign", () => {
 
     expect(screen.getByRole("heading", { name: "Checkout conversion dropped sharply", level: 3 })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Signal evaluation coverage" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Signal evaluation coverage" })).toHaveAttribute("id", "recent-signals");
     expect(screen.getByText("Recent signals")).toBeInTheDocument();
     expect(screen.getByText("5/6 signals evaluated")).toBeInTheDocument();
     expect(screen.getByText("Failed")).toBeInTheDocument();

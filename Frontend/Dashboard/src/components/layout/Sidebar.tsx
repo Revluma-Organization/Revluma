@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown, ChevronLeft, ChevronRight, CreditCard, HelpCircle, LogOut,
   Moon, Settings, Sun, Users as UsersIcon, X,
 } from "lucide-react";
 import { useUI } from "@/store/ui";
 import { useThemeStore } from "@/store";
-import { MVP_NAV } from "@/data/nav";
+import { MVP_NAV, type NavItem } from "@/data/nav";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import revlumaIcon from "@/assets/brand/revluma-icon.png";
@@ -17,12 +17,60 @@ function initials(name: string | null | undefined) {
   return name?.split(" ").filter(Boolean).map(part => part[0]).join("").slice(0, 2).toUpperCase() || "--";
 }
 
+/** `?section=` view owned by an overview deep-link nav item, if any. */
+function overviewSectionOf(target: string): string | null {
+  const query = target.split("?")[1];
+  if (!query) return null;
+  return new URLSearchParams(query).get("section");
+}
+
+// Sections owned by sidebar deep-link items, derived from nav so future
+// overview views work without touching this component.
+const OWNED_OVERVIEW_SECTIONS = new Set(
+  MVP_NAV.map((item) => overviewSectionOf(item.to)).filter((section): section is string => section !== null),
+);
+
+/**
+ * Search-aware active state. React Router matches NavLinks on pathname only,
+ * which would light up Command Center + Priorities + Signals together (all
+ * three share `/dashboard/overview`) and triple `aria-current`. Plain Links
+ * with this manual match keep exactly one current page:
+ * - a deep-link item is active on its exact `?section=`;
+ * - `?finding=` deep-links land on the priority finding, so Priorities owns them;
+ * - non-nav sections (briefing/activity/evidence/health) keep Command Center lit.
+ */
+function isNavItemActive(
+  item: NavItem,
+  pathname: string,
+  overviewSection: string | null,
+  findingDeepLink: boolean,
+): boolean {
+  const [itemPath] = item.to.split("?");
+  const itemSection = overviewSectionOf(item.to);
+  if (itemSection !== null) {
+    if (pathname !== itemPath) return false;
+    if (itemSection === "priority") return overviewSection === "priority" || findingDeepLink;
+    return overviewSection === itemSection && !findingDeepLink;
+  }
+  if (itemPath === "/dashboard/overview") {
+    return (
+      pathname === itemPath &&
+      !findingDeepLink &&
+      (overviewSection === null || !OWNED_OVERVIEW_SECTIONS.has(overviewSection))
+    );
+  }
+  return pathname === itemPath || pathname.startsWith(`${itemPath}/`);
+}
+
 export function Sidebar() {
   const { sidebarCollapsed, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen } = useUI();
   const theme = useThemeStore(state => state.theme);
   const toggleTheme = useThemeStore(state => state.toggleTheme);
   const { user, logout } = useAuth();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  const overviewParams = pathname === "/dashboard/overview" ? new URLSearchParams(search) : null;
+  const overviewSection = overviewParams?.get("section") ?? null;
+  const findingDeepLink = overviewParams !== null && overviewParams.has("finding");
   const navigate = useNavigate();
   const [userOpen, setUserOpen] = useState(false);
   const asideRef = useRef<HTMLElement | null>(null);
@@ -130,23 +178,24 @@ export function Sidebar() {
           {!sidebarCollapsed && <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8992a3]">{group}</p>}
           <ul className="space-y-1">{items.map(item => {
             const Icon = item.icon;
-            return <li key={item.to}><NavLink
+            const active = isNavItemActive(item, pathname, overviewSection, findingDeepLink);
+            return <li key={item.to}><Link
               to={item.to}
-              end={item.to === "/"}
               title={sidebarCollapsed ? item.label : undefined}
+              aria-current={active ? "page" : undefined}
               onClick={() => setMobileSidebarOpen(false)}
-              className={({ isActive }) => cn(
+              className={cn(
                 "group flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm text-[#c6ccd8] transition-colors",
                 shell.sidebarHover, shell.focus,
                 sidebarCollapsed && "md:justify-center md:px-2",
-                isActive && shell.sidebarActive,
+                active && shell.sidebarActive,
               )}
-            >{({ isActive }) => <>
+            >
               {item.useCustomIcon
                 ? <RevOrbVideo size={24} className="shrink-0" />
-                : <Icon aria-hidden="true" className={cn("h-[18px] w-[18px] shrink-0", isActive ? "text-white" : "text-[#aeb5c2] group-hover:text-white")} strokeWidth={1.8} />}
-              {!sidebarCollapsed && <><span className="min-w-0 flex-1 truncate">{item.label}</span>{item.badge && <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide", isActive ? "bg-white/15 text-white" : "bg-white/[0.08] text-[#c6ccd8]")}>{item.badge.text}</span>}</>}
-            </>}</NavLink></li>;
+                : <Icon aria-hidden="true" className={cn("h-[18px] w-[18px] shrink-0", active ? "text-white" : "text-[#aeb5c2] group-hover:text-white")} strokeWidth={1.8} />}
+              {!sidebarCollapsed && <><span className="min-w-0 flex-1 truncate">{item.label}</span>{item.badge && <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide", active ? "bg-white/15 text-white" : "bg-white/[0.08] text-[#c6ccd8]")}>{item.badge.text}</span>}</>}
+            </Link></li>;
           })}</ul>
         </div>)}
       </nav>

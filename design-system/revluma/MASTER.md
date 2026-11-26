@@ -17,6 +17,12 @@ direction per explicit user decision — see “Stage 1 Addendum” at the botto
 No token values changed: every spec delta was measured and either adopted as a
 forward rule or rejected on contrast/drift grounds (details below).
 
+**Stage 2 (2026-11-26):** shell landed — sidebar 240/68px, workspace
+`max-w-[1440px]`, Priorities/Signals as overview deep-link nav
+(`?section=priority|signals`; anchors, not routes), section-aware breadcrumb.
+Topbar kept functional-only: no date-range (no backend range support exists)
+and no avatar move (already in the sidebar account menu).
+
 **Brand sources:** shipped command-center contract (`tokens.ts`), severity system
 (`findingDisplay.ts`), dashboard theme (`index.css`, Tailwind v3 config).
 Generator defaults that conflicted (blue/amber palette, Fira typography,

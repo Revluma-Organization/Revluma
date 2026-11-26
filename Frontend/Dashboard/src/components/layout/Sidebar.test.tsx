@@ -25,6 +25,42 @@ describe("Task 219 dark sidebar and responsive navigation", () => {
     expect(screen.getByRole("link", { name: /Rev Intell/ })).toHaveAttribute("href", "/dashboard/rev-intell");
     expect(screen.getByRole("link", { name: "Integrations" })).toHaveAttribute("href", "/dashboard/integrations");
   });
+  it("exposes Priorities and Signals as Command Center deep links (anchors, not routes)", () => {
+    renderSidebar();
+    expect(screen.getByRole("link", { name: "Priorities" })).toHaveAttribute("href", "/dashboard/overview?section=priority");
+    expect(screen.getByRole("link", { name: "Signals" })).toHaveAttribute("href", "/dashboard/overview?section=signals");
+  });
+  it("lights exactly one overview view active for each deep-link state", () => {
+    const priority = renderSidebar("/dashboard/overview?section=priority");
+    expect(screen.getByRole("link", { name: "Priorities" }).className).toContain("bg-[#1F06AC]");
+    expect(screen.getByRole("link", { name: "Command Center" }).className).not.toContain("bg-[#1F06AC]");
+    expect(screen.getByRole("link", { name: "Signals" }).className).not.toContain("bg-[#1F06AC]");
+    priority.unmount();
+    renderSidebar("/dashboard/overview?section=signals");
+    expect(screen.getByRole("link", { name: "Signals" }).className).toContain("bg-[#1F06AC]");
+    expect(screen.getByRole("link", { name: "Command Center" }).className).not.toContain("bg-[#1F06AC]");
+    expect(screen.getByRole("link", { name: "Priorities" }).className).not.toContain("bg-[#1F06AC]");
+  });
+  it("treats a finding deep link as the Priorities view", () => {
+    renderSidebar("/dashboard/overview?finding=3ed79446-cb6d-4a1c-b174-9ec1ab91fe15");
+    expect(screen.getByRole("link", { name: "Priorities" }).className).toContain("bg-[#1F06AC]");
+    expect(screen.getByRole("link", { name: "Command Center" }).className).not.toContain("bg-[#1F06AC]");
+  });
+  it("keeps Command Center active for non-nav overview sections", () => {
+    renderSidebar("/dashboard/overview?section=activity");
+    expect(screen.getByRole("link", { name: "Command Center" }).className).toContain("bg-[#1F06AC]");
+    expect(screen.getByRole("link", { name: "Priorities" }).className).not.toContain("bg-[#1F06AC]");
+    expect(screen.getByRole("link", { name: "Signals" }).className).not.toContain("bg-[#1F06AC]");
+  });
+  it("announces a single current page across overview deep links", () => {
+    const plain = renderSidebar("/dashboard/overview");
+    expect(plain.container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Command Center" })).toHaveAttribute("aria-current", "page");
+    plain.unmount();
+    renderSidebar("/dashboard/overview?section=signals");
+    expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Signals" })).toHaveAttribute("aria-current", "page");
+  });
   it("communicates the active route with text and an active surface", () => {
     renderSidebar();
     expect(screen.getByRole("link", { name: "Command Center" }).className).toContain("bg-[#1F06AC]");

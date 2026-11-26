@@ -261,7 +261,7 @@ describe("Task 219 tokens, controls and responsive viewport contracts", () => {
   it("uses red only for meaningful negative status", () => { expect(cc.negative).toBe("text-[#B42318]"); });
   it("uses one restrained surface treatment without unnecessary shadows", () => { expect(cc.surface).toContain("rounded-2xl"); expect(cc.surface).not.toContain("shadow"); });
   it("uses one body text color and line height", () => { expect(cc.body).toBe("text-sm leading-6 text-[#343844]"); });
-  it("uses a bounded content width", () => { expect(cc.page).toContain("max-w-[1400px]"); expect(cc.page).toContain("overflow-x-clip"); });
+  it("uses a bounded content width", () => { expect(cc.page).toContain("max-w-[1440px]"); expect(cc.page).toContain("overflow-x-clip"); });
   it("refresh exposes pending state and disables duplicate submission", () => {
     render(<CommandCenterHeader data={ccFixture()} refreshing onRefresh={() => {}} />);
     expect(screen.getByRole("button", { name: "Refreshing…" })).toBeDisabled();

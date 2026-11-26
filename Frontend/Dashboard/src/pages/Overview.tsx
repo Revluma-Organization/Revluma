@@ -99,13 +99,21 @@ export default function Overview() {
     }
     const sections: Record<string, string> = {
       priority: "priority-finding",
+      signals: "recent-signals",
       briefing: "operational-briefing-heading",
       activity: "operational-activity-heading",
       evidence: "evidence-heading",
       health: "business-health-heading",
     };
     const target = selectedSection && sections[selectedSection];
-    if (target) document.getElementById(target)?.scrollIntoView({ block: "start" });
+    if (target) {
+      // The signals panel only renders when evaluated signals exist; fall back
+      // to the priorities block that hosts it so the link never dead-ends.
+      const anchor =
+        document.getElementById(target) ??
+        (selectedSection === "signals" ? document.getElementById("priority-finding") : null);
+      anchor?.scrollIntoView({ block: "start" });
+    }
   }, [selectedFinding, selectedSection, data]);
 
   return (

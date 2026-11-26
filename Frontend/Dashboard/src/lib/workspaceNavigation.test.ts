@@ -9,6 +9,7 @@ describe("Task 225 workspace navigation", () => {
   it("T225-104 preserves activity section", () => expect(safeWorkspaceRoute("/dashboard/overview?section=activity")).toContain("activity"));
   it("T225-105 preserves evidence section", () => expect(safeWorkspaceRoute("/dashboard/overview?section=evidence")).toContain("evidence"));
   it("T225-106 preserves health section", () => expect(safeWorkspaceRoute("/dashboard/overview?section=health")).toContain("health"));
+  it("T225-136 preserves signals section", () => expect(safeWorkspaceRoute("/dashboard/overview?section=signals")).toBe("/dashboard/overview?section=signals"));
   it("T225-107 preserves safe anchor", () => expect(safeWorkspaceRoute("/dashboard/overview#priority-finding")).toContain("#priority-finding"));
   it("T225-108 rejects external return URL", () => expect(safeWorkspaceRoute("https://evil.example/dashboard/overview")).toBe("/dashboard/overview"));
   it("T225-109 rejects protocol-relative return URL", () => expect(safeWorkspaceRoute("//evil.example/path")).toBe("/dashboard/overview"));

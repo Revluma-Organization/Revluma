@@ -48,9 +48,52 @@ function mockApi(data: CommandCenterData) {
   vi.spyOn(api, "get").mockImplementation((() => Promise.resolve({ ok: true, status: 200, data: { success: true, data } })) as typeof api.get);
 }
 async function renderPage(data: CommandCenterData) { mockApi(data); render(<MemoryRouter><Overview /></MemoryRouter>); await screen.findByText("Operational briefing"); }
+async function renderPageAt(route: string, data: CommandCenterData) { mockApi(data); render(<MemoryRouter initialEntries={[route]}><Overview /></MemoryRouter>); await screen.findByText("Operational briefing"); }
 
 describe("Task 216 Command Center", () => {
   afterEach(() => { vi.restoreAllMocks(); navigate.mockReset(); });
+
+  it("priority deep link scrolls to the priorities block", async () => {
+    let scrolled: Element | null = null;
+    window.HTMLElement.prototype.scrollIntoView = function (this: Element) { scrolled = this; };
+    try {
+      await renderPageAt("/dashboard/overview?section=priority", fixture());
+      expect(scrolled).not.toBeNull();
+      expect((scrolled as unknown as Element).id).toBe("priority-finding");
+    } finally {
+      delete (window.HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it("signals deep link scrolls to the recent-signals panel when signals are evaluated", async () => {
+    let scrolled: Element | null = null;
+    window.HTMLElement.prototype.scrollIntoView = function (this: Element) { scrolled = this; };
+    const evaluation = {
+      contract_version: "signal-evaluation-coverage-v1", evaluated_at: "2026-11-24T12:00:00Z", period_days: 7,
+      complete: true, incomplete: false,
+      summary: { total_signals: 1, evaluated_count: 1, verified_findings_count: 0, not_detected_count: 1, not_evaluated_count: 0, failed_count: 0, stale_count: 0 },
+      signals: [{ id: "sales_revenue", label: "Sales & revenue", category: "sales_revenue", state: "not_detected", finding_types: [], source: "orders", last_evaluated_at: "2026-11-24T11:30:00.000Z", reason: "Order history evaluated." }],
+    };
+    try {
+      await renderPageAt("/dashboard/overview?section=signals", fixture({ findings: [finding() as CommandCenterData["findings"][number]], signal_evaluation: evaluation } as Partial<CommandCenterData>));
+      expect(scrolled).not.toBeNull();
+      expect((scrolled as unknown as Element).id).toBe("recent-signals");
+    } finally {
+      delete (window.HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it("signals deep link falls back to the priorities block when no signals are evaluated", async () => {
+    let scrolled: Element | null = null;
+    window.HTMLElement.prototype.scrollIntoView = function (this: Element) { scrolled = this; };
+    try {
+      await renderPageAt("/dashboard/overview?section=signals", fixture());
+      expect(scrolled).not.toBeNull();
+      expect((scrolled as unknown as Element).id).toBe("priority-finding");
+    } finally {
+      delete (window.HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
 
   it("orders Welcome, Top Priorities, Operational Briefing, and Supporting Intelligence", async () => {
     await renderPage(fixture());

@@ -70,6 +70,7 @@ export function RecentSignalsPanel({ evaluation }: RecentSignalsPanelProps) {
 
   return (
     <section
+      id="recent-signals"
       aria-label="Signal evaluation coverage"
       className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-line-soft bg-white"
       style={{
