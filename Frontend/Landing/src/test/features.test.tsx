@@ -77,6 +77,23 @@ describe("What Revluma does (features section)", () => {
     }
   });
 
+  it("draws each visual as the real product: workspace breadcrumb, worded statuses, calm motion", () => {
+    const el = section();
+    const crumbs = [...el.querySelectorAll(".fx-window__crumbs b")].map((b) => b.textContent);
+    expect(crumbs).toEqual(["Command Center", "Rev Intelligence", "Command Center", "Rev Intelligence"]);
+    // Severity and lifecycle never rely on colour alone: every marker carries a word.
+    const marks = [...el.querySelectorAll(".fx-sev, .fx-state, .fx-mon__state")];
+    expect(marks.length).toBeGreaterThan(10);
+    marks.forEach((mark) => expect(mark.textContent?.trim()).toMatch(/^[A-Z][a-z]+/));
+    // Level meters announce their label and level to assistive tech.
+    el.querySelectorAll(".fx-meter").forEach((meter) =>
+      expect(meter.querySelector(".fx-sr")?.textContent).toMatch(/^(Impact|Urgency|Evidence): (Low|Medium|High)$/),
+    );
+    // No looping decorative animation (ux guideline: infinite motion is for loaders only).
+    const css = readFileSync(resolve(__dirname, "../components/features/features.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css).not.toMatch(/\binfinite\b/);
+  });
+
   it("replaces the old problem section on the homepage, before How It Works", () => {
     expect(homepage).not.toContain('id="problem"');
     const host = homepage.indexOf('<div id="platform"');
