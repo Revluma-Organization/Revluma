@@ -35,7 +35,7 @@ export function FinalCtaSection({ id }: { id?: string }) {
         </p>
 
         <div className="fc-actions fx-up" style={vars({ "--i": 2 })}>
-          <a href={signUpHref} className="fm-cta group">
+          <a href={signUpHref} className="fm-cta group" data-magnetic>
             {FINAL_CTA.primary}
             <span className="fm-cta__arrow" aria-hidden="true">
               <ArrowUpRight size={15} className="fm-cta__a1" />

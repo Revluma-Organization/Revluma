@@ -5,6 +5,7 @@
 .ft {
   position: relative;
   overflow: hidden;
+  overflow: clip;
   isolation: isolate;
   background: #ffffff;
   color: #0c0a1d;

@@ -59,6 +59,9 @@
             background-color: #0A0A0A;
             color: white;
             overflow-x: hidden;
+            /* clip crops like hidden but does not make <body> a scroll container,
+               so scroll-driven (view-timeline) animations track the real viewport scroll */
+            overflow-x: clip;
             min-height: 100%;
             transition: background-color 0.3s ease, color 0.3s ease;
         }
@@ -1029,6 +1032,47 @@
     }
   </script>
     <style>
+        /* Motion for the two static sections between the hero and the embedded ones
+           (the rest lives in Frontend/Landing/src/motion/motion-system.css). */
+        @media (prefers-reduced-motion: no-preference) {
+            /* "Powering growth for stores on": a single glint crosses the label as it
+               arrives. text-fill-color, so the label stays solid white before and after. */
+            .tb-label.active {
+                background: linear-gradient(100deg, #fff 42%, #c9c2ff 50%, #fff 58%) 120% 0 / 250% 100% no-repeat;
+                -webkit-background-clip: text;
+                background-clip: text;
+                -webkit-text-fill-color: transparent;
+                animation: tb-glint 1.8s cubic-bezier(0.45, 0, 0.2, 1) 0.5s both;
+            }
+            @keyframes tb-glint {
+                from { background-position: 120% 0; }
+                to { background-position: -20% 0; }
+            }
+            .tb-logo img { transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+            .tb-logo:hover img { transform: translateY(-2px) rotate(-4deg); }
+        }
+        @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+            /* Split promo rows answer the pointer: label nudges, arrow slides up its line. */
+            .promo-label { transition: translate 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+            .promo-arrow { transition: translate 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.25s ease; }
+            .promo-item:hover .promo-label { translate: 4px 0; }
+            .promo-item:hover .promo-arrow { translate: 3px -3px; background-color: rgba(255, 255, 255, 0.08); }
+        }
+        @supports (animation-timeline: view()) {
+            @media (prefers-reduced-motion: no-preference) {
+                /* The dashboard video drifts against the scroll while it is on screen. */
+                .laptop-container .laptop-img {
+                    animation: promo-drift linear both;
+                    animation-timeline: view();
+                    animation-range: cover 0% cover 100%;
+                }
+                @keyframes promo-drift {
+                    from { transform: translateY(28px); }
+                    to { transform: translateY(-28px); }
+                }
+            }
+        }
+
         /* Landing hero host (see #revluma-hero). Reserve space until the embed mounts. */
         #revluma-hero { display: block; position: relative; background: #FBFAF8; }
         #revluma-hero[data-pending] { min-height: 100svh; }
@@ -1411,9 +1455,9 @@
     <section class="py-10 px-6 border-y border-[#161616] overflow-hidden"
         style="background: linear-gradient(180deg, rgba(255,255,255,0.015) 0%, transparent 100%);">
         <div class="max-w-7xl mx-auto">
-            <p class="text-center text-xs sm:text-[13px] uppercase tracking-[0.22em] text-white font-bold mb-6" style="color:#fff">Powering
+            <p class="reveal tb-label text-center text-xs sm:text-[13px] uppercase tracking-[0.22em] text-white font-bold mb-6" style="color:#fff">Powering
                 growth for stores on</p>
-            <div class="flex items-center justify-center gap-3 opacity-40">
+            <div class="reveal tb-logo flex items-center justify-center gap-3 opacity-40">
                 <img src="assets/images/shopifyLoog.png" alt="Shopify"
                     class="h-6 w-auto object-contain filter brightness-0 invert">
                 <span class="text-sm font-semibold tracking-wide text-white">Shopify</span>
@@ -1643,6 +1687,15 @@
             if (mobileDashboardLink) mobileDashboardLink.remove();
         }
         window.addEventListener('DOMContentLoaded', updateNav);
+
+        // The looping dashboard video only plays while it is on screen.
+        const promoVideo = document.querySelector('.laptop-container video');
+        if (promoVideo && 'IntersectionObserver' in window) {
+            new IntersectionObserver(([entry]) => {
+                if (entry.isIntersecting) promoVideo.play().catch(() => {});
+                else promoVideo.pause();
+            }, { rootMargin: '25% 0px' }).observe(promoVideo);
+        }
 
         // Laptop + promo items scatter animation on scroll
         const laptop = document.querySelector('.laptop-container');

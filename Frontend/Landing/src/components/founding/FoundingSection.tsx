@@ -30,7 +30,7 @@ const vars = (v: Record<string, string | number>) => v as CSSProperties;
 
 function Pass() {
   return (
-    <div className="fm-pass">
+    <div className="fm-pass" data-tilt>
       <div className="fm-pass__top">
         <span className="fm-pass__brand">
           <img src={revlumaIcon} alt="" width={22} height={22} />
@@ -69,7 +69,7 @@ export function FoundingSection({ id }: { id?: string }) {
   useReveal(card);
 
   return (
-    <section id={id} aria-labelledby="fm-title" className="fm-section relative overflow-hidden py-16 sm:py-20 lg:py-24">
+    <section id={id} aria-labelledby="fm-title" className="fm-section relative overflow-hidden overflow-clip py-16 sm:py-20 lg:py-24">
       <div className="relative mx-auto grid max-w-page items-center gap-12 px-5 sm:px-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16">
         <div ref={copy} className="max-w-[36rem]">
           <p className="fm-eyebrow fx-up" style={vars({ "--i": 0 })}>
@@ -91,7 +91,7 @@ export function FoundingSection({ id }: { id?: string }) {
           </p>
 
           <div className="fx-up mt-7" style={vars({ "--i": 3 })}>
-            <a href={joinHref} onClick={onJoin} className="fm-cta group">
+            <a href={joinHref} onClick={onJoin} className="fm-cta group" data-magnetic>
               {FOUNDING.cta}
               <span className="fm-cta__arrow" aria-hidden="true">
                 <ArrowUpRight size={15} className="fm-cta__a1" />
@@ -116,8 +116,8 @@ export function FoundingSection({ id }: { id?: string }) {
           </ol>
         </div>
 
-        <div ref={card} className="fm-stage">
-          <div className="fm-card">
+        <div ref={card} className="fm-stage sx-drift" style={vars({ "--sx-d": "26px" })}>
+          <div className="fm-card" data-spot>
             <div aria-hidden="true">
               <Pass />
             </div>

@@ -469,7 +469,7 @@ export function MeetRevSection({ id }: { id?: string }) {
   useReveal(stage);
 
   return (
-    <section id={id} aria-labelledby="mr-title" className="mr-section relative overflow-hidden py-14 sm:py-16 lg:py-20">
+    <section id={id} aria-labelledby="mr-title" className="mr-section relative overflow-hidden overflow-clip py-14 sm:py-16 lg:py-20">
       <div className="mr-glow" aria-hidden="true" />
       <div className="relative mx-auto max-w-[1160px] px-4 sm:px-8">
         <div ref={intro} className="mx-auto max-w-[60rem] text-center">
@@ -493,7 +493,7 @@ export function MeetRevSection({ id }: { id?: string }) {
           </p>
         </div>
 
-        <div ref={stage} className="mr-stage">
+        <div ref={stage} className="mr-stage sx-tilt">
           <Conversation />
         </div>
       </div>

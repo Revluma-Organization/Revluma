@@ -12,7 +12,7 @@
  *
  * Built by `npm run build:embed` into Frontend/landing-hero/ (see vercel.json).
  */
-import { StrictMode } from "react";
+import { StrictMode, useLayoutEffect } from "react";
 import type { MouseEvent, ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import fontCss from "./fonts.css?inline";
@@ -29,6 +29,8 @@ import { FaqSection } from "./components/faq/FaqSection";
 import { PricingSection } from "./components/pricing/PricingSection";
 import { FinalCtaSection } from "./components/final-cta/FinalCtaSection";
 import { FooterSection } from "./components/footer/FooterSection";
+import { startSmoothScroll } from "./motion/smoothScroll";
+import { enhanceInteractions } from "./motion/interactions";
 
 // Only sections that exist on the current homepage. "Platform" leads to the
 // features section (what Revluma does).
@@ -67,6 +69,36 @@ export const SECTIONS: Record<string, () => ReactNode> = {
   "site-footer": () => <FooterSection />,
 };
 
+/**
+ * Drops the host's placeholder height (data-pending) only once React has
+ * committed the section, before the browser paints it. Removing it straight
+ * after root.render() (which is asynchronous) left the hero host empty for a
+ * frame: the page jumped up by a screen and back, a 1.09 layout shift.
+ */
+function Mounted({ host, children }: { host: HTMLElement; children: ReactNode }) {
+  useLayoutEffect(() => {
+    host.removeAttribute("data-pending");
+  }, [host]);
+  return <>{children}</>;
+}
+
+/**
+ * Marks a host data-rl-off while it is well off screen; the section's styles
+ * pause every animation inside it then (see motion-system.css), so ambient
+ * loops in sections the visitor is not looking at cost nothing.
+ */
+let offscreen: IntersectionObserver | null = null;
+function pauseWhenOffscreen(host: HTMLElement) {
+  if (typeof IntersectionObserver === "undefined") return;
+  offscreen ??= new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) entry.target.toggleAttribute("data-rl-off", !entry.isIntersecting);
+    },
+    { rootMargin: "30% 0px 30% 0px" },
+  );
+  offscreen.observe(host);
+}
+
 function mountSection(hostId: string, render: () => ReactNode) {
   const host = document.getElementById(hostId);
   if (!host || host.shadowRoot) return;
@@ -77,13 +109,16 @@ function mountSection(hostId: string, render: () => ReactNode) {
   const root = document.createElement("div");
   root.className = "rl-root";
   shadow.append(styles, root);
+  enhanceInteractions(shadow);
+  pauseWhenOffscreen(host);
 
   createRoot(root).render(
     <StrictMode>
-      <LandingConfigProvider value={EMBED_CONFIG}>{render()}</LandingConfigProvider>
+      <LandingConfigProvider value={EMBED_CONFIG}>
+        <Mounted host={host}>{render()}</Mounted>
+      </LandingConfigProvider>
     </StrictMode>,
   );
-  host.removeAttribute("data-pending");
 }
 
 function mount() {
@@ -95,6 +130,7 @@ function mount() {
     document.head.appendChild(fonts);
   }
   for (const [hostId, render] of Object.entries(SECTIONS)) mountSection(hostId, render);
+  startSmoothScroll();
 }
 
 mount();

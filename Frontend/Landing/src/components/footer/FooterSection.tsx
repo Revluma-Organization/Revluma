@@ -1,6 +1,7 @@
-import type { MouseEvent } from "react";
+import { useRef, type CSSProperties, type MouseEvent } from "react";
 import { FOOTER } from "@/content";
 import { useLandingConfig } from "@/config";
+import { useReveal } from "@/useReveal";
 import icon from "@/assets/revluma-icon.png";
 import { FooterScene } from "./FooterScene";
 
@@ -10,6 +11,8 @@ import { FooterScene } from "./FooterScene";
  * wide illustrated scene (a small e-commerce world with the bold "Revluma"
  * wordmark) watched over by Rev's eye.
  */
+
+const vars = (v: Record<string, string | number>) => v as CSSProperties;
 
 type FooterLink = (typeof FOOTER.columns)[number]["links"][number];
 
@@ -38,6 +41,8 @@ function SocialIcon({ name }: { name: keyof typeof SOCIAL_ICONS }) {
 
 export function FooterSection({ id }: { id?: string }) {
   const { signUpHref, signInHref, joinHref, onJoin } = useLandingConfig();
+  const top = useRef<HTMLDivElement>(null);
+  useReveal(top);
 
   const resolve = (link: FooterLink): { href: string; onClick?: (e: MouseEvent<HTMLAnchorElement>) => void } => {
     if ("href" in link) return { href: link.href };
@@ -48,15 +53,17 @@ export function FooterSection({ id }: { id?: string }) {
 
   return (
     <footer id={id} className="ft">
-      <div className="ft-top mx-auto max-w-page px-5 pt-14 sm:px-8 sm:pt-16 lg:pt-20">
+      <div ref={top} className="ft-top mx-auto max-w-page px-5 pt-14 sm:px-8 sm:pt-16 lg:pt-20">
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.75fr)] lg:gap-12">
           <div>
-            <a href="/" className="ft-brand" aria-label="Revluma home">
+            <a href="/" className="ft-brand fx-up" style={vars({ "--i": 0 })} aria-label="Revluma home">
               <img src={icon} alt="" width={28} height={28} />
               <span>Revluma</span>
             </a>
-            <p className="ft-tag">{FOOTER.tagline}</p>
-            <ul className="ft-social" aria-label="Revluma on social media">
+            <p className="ft-tag fx-up" style={vars({ "--i": 1 })}>
+              {FOOTER.tagline}
+            </p>
+            <ul className="ft-social fx-up" style={vars({ "--i": 2 })} aria-label="Revluma on social media">
               {FOOTER.social.map((s) => (
                 <li key={s.href}>
                   <a href={s.href} target="_blank" rel="noopener noreferrer" aria-label={s.label}>
@@ -69,8 +76,8 @@ export function FooterSection({ id }: { id?: string }) {
 
           <div>
             <nav aria-label="Footer" className="ft-cols">
-              {FOOTER.columns.map((col) => (
-                <div key={col.title}>
+              {FOOTER.columns.map((col, i) => (
+                <div key={col.title} className="fx-up" style={vars({ "--i": i + 1 })}>
                   <h2 className="ft-h">{col.title}</h2>
                   <ul>
                     {col.links.map((link) => {
@@ -87,7 +94,9 @@ export function FooterSection({ id }: { id?: string }) {
                 </div>
               ))}
             </nav>
-            <p className="ft-copy">© {new Date().getFullYear()} Revluma.</p>
+            <p className="ft-copy fx-up" style={vars({ "--i": 5 })}>
+              © {new Date().getFullYear()} Revluma.
+            </p>
           </div>
         </div>
       </div>
