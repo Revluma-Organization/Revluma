@@ -299,6 +299,7 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
+            background: #FBFAF8;
         }
 
         .video-promo-card {
@@ -483,7 +484,7 @@
             align-items: flex-end;
             justify-content: space-between;
             width: 100%;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid rgba(12, 10, 29, 0.1);
             padding-bottom: 8px;
             gap: 12px;
         }
@@ -506,7 +507,7 @@
         .promo-label {
             font-size: clamp(0.8rem, 1.2vw, 1rem);
             font-weight: 600;
-            color: #ffffff;
+            color: #0C0A1D;
             letter-spacing: -0.01em;
             line-height: 1.4;
             margin: 0;
@@ -518,7 +519,8 @@
             width: 36px;
             height: 36px;
             border-radius: 50%;
-            border: 1px solid rgba(255, 255, 255, 0.25);
+            border: 1px solid rgba(12, 10, 29, 0.18);
+            background: #ffffff;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -527,14 +529,14 @@
         }
 
         .promo-arrow:hover {
-            border-color: rgba(255, 255, 255, 0.6);
+            border-color: rgba(31, 6, 172, 0.45);
             transform: scale(1.1);
         }
 
         .promo-arrow svg {
             width: 14px;
             height: 14px;
-            stroke: white;
+            stroke: #0C0A1D;
         }
 
         /* Scatter-in keyframes */
@@ -1036,9 +1038,10 @@
            (the rest lives in Frontend/Landing/src/motion/motion-system.css). */
         @media (prefers-reduced-motion: no-preference) {
             /* "Powering growth for stores on": a single glint crosses the label as it
-               arrives. text-fill-color, so the label stays solid white before and after. */
+               arrives. text-fill-color, so the label stays solid ink before and after. */
             .tb-label.active {
-                background: linear-gradient(100deg, #fff 42%, #c9c2ff 50%, #fff 58%) 120% 0 / 250% 100% no-repeat;
+                /* Solid ink under the glint, so text outside the gradient never turns transparent (narrow screens). */
+                background: linear-gradient(100deg, #0C0A1D 42%, #7460FF 50%, #0C0A1D 58%) 120% 0 / 250% 100% no-repeat #0C0A1D;
                 -webkit-background-clip: text;
                 background-clip: text;
                 -webkit-text-fill-color: transparent;
@@ -1056,7 +1059,7 @@
             .promo-label { transition: translate 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
             .promo-arrow { transition: translate 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.25s ease; }
             .promo-item:hover .promo-label { translate: 4px 0; }
-            .promo-item:hover .promo-arrow { translate: 3px -3px; background-color: rgba(255, 255, 255, 0.08); }
+            .promo-item:hover .promo-arrow { translate: 3px -3px; background-color: #EEEBFF; }
         }
         @supports (animation-timeline: view()) {
             @media (prefers-reduced-motion: no-preference) {
@@ -1072,6 +1075,11 @@
                 }
             }
         }
+
+        /* Trusted-by bar and split promo sit on the landing's warm off-white, like every section around them. */
+        .tb-band { background: #FBFAF8; border-top: 1px solid rgba(12, 10, 29, 0.06); border-bottom: 1px solid rgba(12, 10, 29, 0.06); }
+        .tb-label { color: #0C0A1D; }
+        .tb-name { color: #0C0A1D; }
 
         /* Landing hero host (see #revluma-hero). Reserve space until the embed mounts. */
         #revluma-hero { display: block; position: relative; background: #FBFAF8; }
@@ -1452,15 +1460,14 @@
              </div>
 
     <!-- ── Trusted By Logos Bar ── -->
-    <section class="py-10 px-6 border-y border-[#161616] overflow-hidden"
-        style="background: linear-gradient(180deg, rgba(255,255,255,0.015) 0%, transparent 100%);">
+    <section class="tb-band py-10 px-6 overflow-hidden">
         <div class="max-w-7xl mx-auto">
-            <p class="reveal tb-label text-center text-xs sm:text-[13px] uppercase tracking-[0.22em] text-white font-bold mb-6" style="color:#fff">Powering
+            <p class="reveal tb-label text-center text-xs sm:text-[13px] uppercase tracking-[0.22em] font-bold mb-6">Powering
                 growth for stores on</p>
             <div class="reveal tb-logo flex items-center justify-center gap-3 opacity-40">
                 <img src="assets/images/shopifyLoog.png" alt="Shopify"
-                    class="h-6 w-auto object-contain filter brightness-0 invert">
-                <span class="text-sm font-semibold tracking-wide text-white">Shopify</span>
+                    class="h-6 w-auto object-contain filter brightness-0">
+                <span class="tb-name text-sm font-semibold tracking-wide">Shopify</span>
             </div>
         </div>
     </section>
@@ -1484,7 +1491,7 @@
                         <p class="promo-label">Spot Problems <br>Before They Grow.</p>
                         <div class="promo-arrow-line">
                             <svg class="promo-slash" viewBox="0 0 140 40" fill="none">
-                                <path class="slash-path" d="M0 38 L60 38 L100 10 L140 10" stroke="white"
+                                <path class="slash-path" d="M0 38 L60 38 L100 10 L140 10" stroke="#1F06AC"
                                     stroke-width="1.5" />
                             </svg>
                             <div class="promo-arrow mb-[22px]"> <svg class="rotate-up" fill="none" stroke="currentColor"
@@ -1502,7 +1509,7 @@
                         <p class="promo-label">Understand What&rsquo;s <br>Behind the Numbers.</p>
                         <div class="promo-arrow-line">
                             <svg class="promo-slash" viewBox="0 0 140 40" fill="none">
-                                <path class="slash-path" d="M0 38 L50 38 L90 10 L140 10" stroke="white"
+                                <path class="slash-path" d="M0 38 L50 38 L90 10 L140 10" stroke="#1F06AC"
                                     stroke-width="1.5" />
                             </svg>
                             <div class="promo-arrow">
@@ -1520,7 +1527,7 @@
                         <p class="promo-label">Know What <br>Deserves Attention First.</p>
                         <div class="promo-arrow-line">
                             <svg class="promo-slash" viewBox="0 0 140 40" fill="none">
-                                <path class="slash-path" d="M0 10 L60 10 L100 38 L140 38" stroke="white"
+                                <path class="slash-path" d="M0 10 L60 10 L100 38 L140 38" stroke="#1F06AC"
                                     stroke-width="1.5" />
                             </svg>
                             <div class="promo-arrow">
