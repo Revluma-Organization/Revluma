@@ -62,8 +62,9 @@ function PlanCard({ plan, cycle, index }: { plan: Plan; cycle: Cycle; index: num
   const href = plan.cta.kind === "contact" ? PRICING.contactHref : signUpHref;
   return (
     <article
-      className={`pr-card pr-card--${plan.id}${featured ? " pr-card--featured" : ""} fx-up`}
-      style={vars({ "--i": index + 1 })}
+      className={`pr-card pr-card--${plan.id}${featured ? " pr-card--featured" : ""} fx-up sx-rise`}
+      style={vars({ "--i": index + 1, "--sx-from": featured ? "76px" : "28px" })}
+      data-spot
       aria-labelledby={`pr-${plan.id}`}
     >
       {featured ? <span className="pr-badge">{plan.badge}</span> : null}
@@ -83,7 +84,7 @@ function PlanCard({ plan, cycle, index }: { plan: Plan; cycle: Cycle; index: num
           </li>
         ))}
       </ul>
-      <a href={href} className="pr-btn">
+      <a href={href} className="pr-btn" data-magnetic={featured ? "" : undefined}>
         {plan.cta.label}
         {plan.cta.kind === "signup" ? <span className="sr-only"> with {plan.name}</span> : null}
       </a>

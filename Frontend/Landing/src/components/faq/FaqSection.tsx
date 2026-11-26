@@ -132,7 +132,7 @@ export function FaqSection({ id }: { id?: string }) {
         </div>
 
         <div ref={aside} className="faq-aside">
-          <div className="faq-ask fx-up" style={vars({ "--i": 0 })}>
+          <div className="faq-ask fx-up sx-drift" style={vars({ "--i": 0, "--sx-d": "22px" })}>
             <span className="faq-ask__orb faq-ask__orb--a" aria-hidden="true" />
             <span className="faq-ask__orb faq-ask__orb--b" aria-hidden="true" />
             <div className="faq-ask__avatars" aria-hidden="true">

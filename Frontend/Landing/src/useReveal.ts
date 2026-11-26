@@ -16,12 +16,14 @@ export function useReveal(ref: RefObject<HTMLElement | null>) {
     }
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
+        // Tall elements (stacked pricing / reviews on phones) never reach 25%
+        // until well after their first card is on screen, so 160px also counts.
+        if (entries.some((entry) => entry.isIntersecting && (entry.intersectionRatio >= 0.25 || entry.intersectionRect.height >= 160))) {
           el.classList.add("is-in");
           observer.disconnect();
         }
       },
-      { threshold: 0.25, rootMargin: "0px 0px -8% 0px" },
+      { threshold: [0, 0.05, 0.1, 0.15, 0.2, 0.25], rootMargin: "0px 0px -8% 0px" },
     );
     observer.observe(el);
     return () => observer.disconnect();

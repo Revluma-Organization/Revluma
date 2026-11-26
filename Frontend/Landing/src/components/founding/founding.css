@@ -381,10 +381,6 @@
     opacity: 1;
     translate: 0 0;
   }
-  .fm-pass {
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .fm-card:hover .fm-pass {
-    transform: translateY(-2px);
-  }
+  /* The pass tilts under the pointer: see .fm-pass[data-tilt] in
+     motion/motion-system.css. */
 }

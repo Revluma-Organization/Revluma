@@ -57,6 +57,7 @@ export function Hero() {
               href={joinHref}
               onClick={onJoin}
               style={at(820)}
+              data-magnetic
               className="m-pop m-shine group relative isolate overflow-hidden inline-flex min-h-[2.275rem] shrink-0 items-center gap-[0.7rem] whitespace-nowrap rounded-full text-left bg-ink py-[0.2625rem] pl-[1.05rem] pr-[0.2625rem] text-[0.665rem] font-semibold text-white transition-colors hover:bg-indigo-deep"
             >
               {CTA.primary.label}

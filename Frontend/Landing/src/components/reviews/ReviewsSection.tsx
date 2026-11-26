@@ -150,7 +150,7 @@ export function ReviewsSection({ id }: { id?: string }) {
 
         <ul ref={grid} className="rv-grid" aria-label="Merchant feedback">
           {REVIEWS.items.map((r, i) => (
-            <li key={r.id} className="rv-card fx-up" style={vars({ "--i": i + 1 })}>
+            <li key={r.id} className="rv-card fx-up sx-rise" data-spot style={vars({ "--i": i + 1, "--sx-from": i === 1 ? "84px" : "36px" })}>
               <figure className="rv-figure">
                 <div className="rv-top">
                   <Stars rating={r.rating} />

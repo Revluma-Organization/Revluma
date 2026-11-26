@@ -42,12 +42,14 @@ export function Navbar() {
 
   return (
     <header className="relative h-20 lg:h-[clamp(4rem,9svh,5rem)]">
+      <div className="rl-progress" aria-hidden="true" />
       <div className="pointer-events-none fixed inset-x-0 top-0 z-40 px-4 sm:px-8">
         <div className="mx-auto flex h-20 max-w-page items-center justify-center lg:h-[clamp(4rem,9svh,5rem)]">
           <nav
             aria-label="Primary"
-            className={`m-drop pointer-events-auto flex h-14 w-full items-center justify-between gap-2 rounded-full p-[5px] lg:h-[clamp(3.1rem,6.4svh,3.5rem)] lg:w-auto lg:justify-start ${PILL}`}
+            className={`m-drop pointer-events-auto relative flex h-14 w-full items-center justify-between gap-2 rounded-full p-[5px] lg:h-[clamp(3.1rem,6.4svh,3.5rem)] lg:w-auto lg:justify-start ${PILL}`}
           >
+            <span className="rl-nav-lift" aria-hidden="true" />
             <a
               href="/"
               aria-label="Revluma home"

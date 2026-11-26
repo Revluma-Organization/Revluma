@@ -11,6 +11,7 @@
 @import "./components/final-cta/final-cta.css";
 @import "./components/footer/footer.css";
 @import "./motion.css";
+@import "./motion/motion-system.css";
 
 @tailwind base;
 @tailwind components;

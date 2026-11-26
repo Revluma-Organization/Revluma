@@ -117,7 +117,7 @@ export function FooterScene() {
   const iris = { x: (dx / dist) * 30 * reach, y: (dy / dist) * 14 * reach };
 
   return (
-    <div ref={stage} className="ft-scene" aria-hidden="true">
+    <div ref={stage} className="ft-scene sx-rise" aria-hidden="true">
       <picture>
         <source type="image/avif" srcSet={`${avif760} 760w, ${avif1120} 1120w, ${avif1584} 1584w`} sizes="100vw" />
         <source type="image/webp" srcSet={`${webp760} 760w, ${webp1120} 1120w, ${webp1584} 1584w`} sizes="100vw" />

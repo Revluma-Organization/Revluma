@@ -1,0 +1,357 @@
+/* Landing motion system: the layer shared by every section, on top of each
+ * section's own choreography (motion.css for the hero, the section CSS files
+ * for the rest).
+ *
+ *   1. Scroll progress line under the nav.
+ *   2. Headline reveals: section headlines rise out of a mask.
+ *   3. Scroll-linked depth: product visuals tilt up into place, cards rise at
+ *      different speeds, side pieces drift (CSS scroll-driven animations, so
+ *      they run off the main thread and track the scrollbar exactly).
+ *   4. Pointer feedback: spotlight cards, magnetic CTAs, the Founding pass
+ *      tilt, button shine and press, link underlines.
+ *   5. Off-screen sections pause their animations.
+ *
+ * Rules that the guidelines in .agents/skills/ui-ux-pro-max set for this:
+ * transform/opacity only (compositor), small offsets, no parallax on body
+ * copy, at most one magnetic element per screen, and nothing moves at all with
+ * prefers-reduced-motion: reduce. Browsers without scroll-driven animations
+ * simply skip section 3; everything still reveals on scroll.
+ */
+
+/* ---- 1. Scroll progress ---------------------------------------------------- */
+.rl-progress,
+.rl-nav-lift {
+  display: none;
+}
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .rl-progress {
+      position: fixed;
+      inset: 0 0 auto;
+      z-index: 60;
+      display: block;
+      height: 2px;
+      background: linear-gradient(90deg, #7460ff 0%, #2b13cf 55%, #1f06ac 100%);
+      transform-origin: 0 50%;
+      pointer-events: none;
+      animation: rl-progress linear both;
+      animation-timeline: scroll(root block);
+    }
+    @keyframes rl-progress {
+      from {
+        transform: scaleX(0);
+      }
+      to {
+        transform: scaleX(1);
+      }
+    }
+    /* Once the page starts moving, the nav pill settles onto a deeper shadow.
+       Only the opacity of a pre-shadowed layer animates (compositor only). */
+    .rl-nav-lift {
+      display: block;
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      border-radius: 999px;
+      box-shadow:
+        0 18px 40px -14px rgba(12, 10, 29, 0.55),
+        0 0 0 1px rgba(116, 96, 255, 0.28);
+      pointer-events: none;
+      animation: rl-nav-lift linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0px 160px;
+    }
+    @keyframes rl-nav-lift {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* ---- 2. Headline reveals -------------------------------------------------- */
+  /* Section headlines rise up out of their baseline: the existing blur-rise
+     (.fx-up) plus a clip that opens from the bottom up. */
+  h2.fx-up,
+  h3.fx-show__title.fx-up {
+    clip-path: inset(100% -0.5em -0.35em -0.5em);
+    transition:
+      opacity 0.9s cubic-bezier(0.25, 1, 0.5, 1) calc(var(--i, 0) * 120ms),
+      translate 1.2s cubic-bezier(0.16, 1, 0.3, 1) calc(var(--i, 0) * 120ms),
+      filter 0.9s ease-out calc(var(--i, 0) * 120ms),
+      clip-path 1.3s cubic-bezier(0.16, 1, 0.3, 1) calc(var(--i, 0) * 120ms);
+  }
+  .is-in h2.fx-up,
+  .is-in h3.fx-show__title.fx-up {
+    clip-path: inset(-0.3em -0.5em -0.35em -0.5em);
+  }
+
+  /* Small details that arrive with their text. */
+  .fx-show__rule {
+    transform-origin: 0 50%;
+    scale: 0 1;
+    transition: scale 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.35s;
+  }
+  .is-in .fx-show__rule {
+    scale: 1 1;
+  }
+  .is-in .fm-eyebrow__icon,
+  .is-in .fx-show__icon {
+    animation: rl-icon-pop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both;
+  }
+  @keyframes rl-icon-pop {
+    from {
+      transform: scale(0.4) rotate(-30deg);
+      opacity: 0;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  .is-in .fc-notes svg {
+    animation: rl-icon-pop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    animation-delay: 0.65s;
+  }
+  .is-in .fc-notes li:nth-child(2) svg {
+    animation-delay: 0.8s;
+  }
+  .is-in .fc-notes li:nth-child(3) svg {
+    animation-delay: 0.95s;
+  }
+
+  /* Pricing: the price rolls up out of a blur when the billing period
+     changes; the "save" tag pops when Yearly is picked. */
+  .pr-price__amount {
+    animation: rl-price-roll 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes rl-price-roll {
+    from {
+      opacity: 0;
+      transform: translateY(55%) scale(0.92);
+      filter: blur(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
+  }
+  .pr-switch__opt[aria-checked="true"] .pr-switch__save {
+    animation: rl-icon-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+
+/* ---- 3. Scroll-linked depth ------------------------------------------------- */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* A product visual tilts up from the floor and settles flat as it comes
+       into view. */
+    .sx-tilt {
+      transform-origin: 50% 100%;
+      animation: sx-tilt linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 34%;
+    }
+    @keyframes sx-tilt {
+      from {
+        transform: perspective(1600px) rotateX(18deg) scale(0.93);
+      }
+      to {
+        transform: none;
+      }
+    }
+
+    /* Rises into place over the first part of its way up the screen; a larger
+       --sx-from arrives later, so siblings land at different speeds. */
+    .sx-rise {
+      animation: sx-rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover var(--sx-end, 30%);
+    }
+    @keyframes sx-rise {
+      from {
+        transform: translateY(var(--sx-from, 56px));
+      }
+      to {
+        transform: none;
+      }
+    }
+
+    /* Drifts gently against the scroll the whole time it is on screen. */
+    .sx-drift {
+      animation: sx-drift linear both;
+      animation-timeline: view();
+      animation-range: cover 0% cover 100%;
+    }
+    @keyframes sx-drift {
+      from {
+        transform: translateY(var(--sx-d, 32px));
+      }
+      to {
+        transform: translateY(calc(var(--sx-d, 32px) * -1));
+      }
+    }
+
+    /* Grows from slightly small to full size as it arrives. */
+    .sx-grow {
+      animation: sx-grow linear both;
+      animation-timeline: view();
+      animation-range: entry 10% cover 40%;
+    }
+    @keyframes sx-grow {
+      from {
+        transform: scale(0.94);
+      }
+      to {
+        transform: none;
+      }
+    }
+
+    /* The footer scene rises the last stretch as the page comes to rest. */
+    .ft-scene.sx-rise {
+      --sx-from: 72px;
+      animation-range: entry 0% entry 100%;
+    }
+  }
+}
+
+/* ---- 4. Pointer feedback ---------------------------------------------------- */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  /* Spotlight: a soft light that follows the pointer, painted between the
+     card's background and its content. */
+  [data-spot] {
+    position: relative;
+    isolation: isolate;
+  }
+  [data-spot]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: radial-gradient(34rem circle at var(--mx, 50%) var(--my, 50%), var(--spot, rgba(116, 96, 255, 0.13)), transparent 42%);
+    opacity: 0;
+    transition: opacity 0.45s ease;
+    pointer-events: none;
+  }
+  [data-spot]:hover::after {
+    opacity: 1;
+  }
+  .pr-card--featured[data-spot] {
+    --spot: rgba(255, 255, 255, 0.2);
+  }
+
+  /* Magnetic CTAs lean towards the pointer and spring back. */
+  [data-magnetic] {
+    translate: var(--mgx, 0px) var(--mgy, 0px);
+    transition:
+      color 0.25s ease,
+      background-color 0.25s ease,
+      border-color 0.25s ease,
+      box-shadow 0.25s ease,
+      translate 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+      scale 0.2s ease;
+  }
+
+  /* The Founding pass tilts under the pointer like a card in the hand, with
+     a sheen that follows it. */
+  .fm-pass[data-tilt] {
+    transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+    transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .fm-pass[data-tilt]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(22rem circle at var(--gx, 50%) var(--gy, 0%), rgba(255, 255, 255, 0.32), transparent 45%);
+    mix-blend-mode: soft-light;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    pointer-events: none;
+  }
+  .fm-pass[data-tilt]:hover::after {
+    opacity: 1;
+  }
+
+  /* Buttons: a light sweep on hover. */
+  .fm-cta,
+  .pr-btn {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+  .fm-cta::before,
+  .pr-btn::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.26) 50%, transparent 70%);
+    translate: -110% 0;
+    transition: translate 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+  }
+  .fm-cta:hover::before,
+  .pr-btn:hover::before {
+    translate: 110% 0;
+  }
+
+  /* Footer links draw an underline; social icons hop. */
+  .ft-link {
+    background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat;
+    transition:
+      color 0.2s ease,
+      background-size 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ft-link:hover {
+    background-size: 100% 1px;
+  }
+  .ft-social svg {
+    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .ft-social a:hover svg {
+    transform: translateY(-2px) rotate(-8deg) scale(1.08);
+  }
+
+  /* FAQ questions lean in under the pointer. */
+  .faq-q__text {
+    transition:
+      translate 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+      color 0.2s ease;
+  }
+  .faq-q:hover .faq-q__text {
+    translate: 4px 0;
+  }
+}
+
+/* Press feedback for every button-like control (touch included). */
+@media (prefers-reduced-motion: no-preference) {
+  .fm-cta,
+  .pr-btn,
+  .fc-secondary,
+  .faq-inline-cta,
+  .pr-switch__opt {
+    transition-property: color, background-color, border-color, box-shadow, translate, scale;
+  }
+  .fm-cta:active,
+  .pr-btn:active,
+  .fc-secondary:active,
+  .faq-inline-cta:active,
+  [data-magnetic]:active {
+    scale: 0.97;
+  }
+}
+
+/* ---- 5. Off-screen sections pause ------------------------------------------- */
+/* The embed marks a section's host data-rl-off while it is well off screen,
+   so its ambient loops stop costing frames. */
+/* (The progress line lives in the hero's root but tracks the whole page.) */
+:host([data-rl-off]) .rl-root *:not(.rl-progress) {
+  animation-play-state: paused !important;
+}

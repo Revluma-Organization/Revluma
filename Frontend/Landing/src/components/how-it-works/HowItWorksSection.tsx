@@ -94,7 +94,7 @@ export function HowItWorksSection({ id }: { id?: string }) {
   useReveal(body);
 
   return (
-    <section id={id} aria-labelledby="hiw-title" className="hiw-section relative overflow-hidden py-14 sm:py-16">
+    <section id={id} aria-labelledby="hiw-title" className="hiw-section relative overflow-hidden overflow-clip py-14 sm:py-16">
       <div className="relative mx-auto max-w-page px-5 sm:px-8">
         <div ref={intro} className="hiw-intro mx-auto max-w-[46rem] text-center">
           <p className="fx-intro__eyebrow hiw-eyebrow fx-up" style={vars({ "--i": 0 })}>
@@ -118,7 +118,7 @@ export function HowItWorksSection({ id }: { id?: string }) {
 
         <div ref={body} className="hiw-body">
           {/* Desktop diagram: decorative; the steps themselves are the list below. */}
-          <div className="hiw-diagram" aria-hidden="true" style={{ aspectRatio: `${W} / ${H}` }}>
+          <div className="hiw-diagram sx-grow" aria-hidden="true" style={{ aspectRatio: `${W} / ${H}` }}>
             <svg className="hiw-diagram__svg" viewBox={`0 0 ${W} ${H}`} fill="none">
               <defs>
                 <linearGradient id="hiw-grad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2={W} y2="0">
