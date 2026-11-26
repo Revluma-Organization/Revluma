@@ -137,6 +137,64 @@ jobs:
             exit "$status"
           fi
 
+      - name: Rev sequence probe (module loads)
+        working-directory: Backend
+        run: |
+          node -e "const m = require('./src/services/revSequence'); console.log('revSequence exports: ' + Object.keys(m).join(','))"
+
+      - name: Rev sequence probe (guard env)
+        working-directory: Backend
+        env:
+          RELEASE_CANDIDATE_ISOLATED_DB: 'true'
+        run: |
+          node -e "if (process.env.RELEASE_CANDIDATE_ISOLATED_DB !== 'true') throw new Error('opt-in missing'); if (!/@127\.0\.0\.1:5432\/revluma_rc\b/.test(String(process.env.DATABASE_URL || ''))) throw new Error('unexpected DATABASE_URL'); console.log('guard env ok')"
+
+      - name: Rev sequence races (accepts)
+        working-directory: Backend
+        env:
+          RELEASE_CANDIDATE_ISOLATED_DB: 'true'
+          C2_SCENARIOS: '0,1,2'
+        run: |
+          set +e
+          node src/tests/revSequenceConcurrency.integration.js 2>&1 | tee /tmp/rev-sequence-a.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(tail -n 25 /tmp/rev-sequence-a.log | tr '\n' ' ' | tr -s ' ')
+            echo "::error title=rev-sequence-concurrency::${summary:0:1200}"
+            exit "$status"
+          fi
+
+      - name: Rev sequence races (accept race, serial)
+        working-directory: Backend
+        env:
+          RELEASE_CANDIDATE_ISOLATED_DB: 'true'
+          C2_SCENARIOS: '0,1,2'
+          C2_PARALLEL: '1'
+        run: |
+          set +e
+          node src/tests/revSequenceConcurrency.integration.js 2>&1 | tee /tmp/rev-sequence-b.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(tail -n 25 /tmp/rev-sequence-b.log | tr '\n' ' ' | tr -s ' ')
+            echo "::error title=rev-sequence-concurrency::${summary:0:1200}"
+            exit "$status"
+          fi
+
+      - name: Rev sequence races and SQL package (parallel races, tuple, repair, migration, rollback)
+        working-directory: Backend
+        env:
+          RELEASE_CANDIDATE_ISOLATED_DB: 'true'
+          C2_SCENARIOS: '0,1,2,3,4,5,6,7,8'
+        run: |
+          set +e
+          node src/tests/revSequenceConcurrency.integration.js 2>&1 | tee /tmp/rev-sequence-c.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(tail -n 25 /tmp/rev-sequence-c.log | tr '\n' ' ' | tr -s ' ')
+            echo "::error title=rev-sequence-concurrency::${summary:0:1200}"
+            exit "$status"
+          fi
+
       - name: Financial integrity SQL checks
         working-directory: Backend
         run: |

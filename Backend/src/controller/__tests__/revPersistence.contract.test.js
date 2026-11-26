@@ -65,16 +65,20 @@ test('streamed assistant turn is persisted with tenant, trace and replayable res
   assert.ok(insertStart > 0 && insertEnd > insertStart, 'message persistence function must exist');
   const insertSource = source.slice(insertStart, insertEnd);
   const statements = [];
+  const record = (segments, values) => statements.push({
+    sql: segments.reduce((sql, part, index) => sql + part + (index < values.length ? ` $${index + 1} ` : ''), ''),
+    values,
+  });
+  const tx = {
+    $queryRaw: async (segments, ...values) => { record(segments, values); return []; },
+    $executeRaw: async (segments, ...values) => { record(segments, values); return 1; },
+  };
   const prisma = {
-    $executeRaw: async (segments, ...values) => {
-      statements.push({
-        sql: segments.reduce((sql, part, index) => sql + part + (index < values.length ? ` $${index + 1} ` : ''), ''),
-        values,
-      });
-    },
+    $transaction: async (callback) => callback(tx),
   };
   const context = {
     prisma,
+    revSequence: require('../../services/revSequence'),
     uuidv4: () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     _executionPersistenceFields: executionFields,
     exports: {},
@@ -99,14 +103,18 @@ test('streamed assistant turn is persisted with tenant, trace and replayable res
       token_usage: { input: 1200, output: 64, total: 1264 }, agent: { model_directed: true } },
   });
   const messageId = await insertMessage({
-    organizationId, conversationId, userId, sequenceNumber: 2, correlationId,
+    organizationId, conversationId, userId, correlationId,
     content: responseContent, investigation: responseContent.investigation,
     agentsUsed: ['revenue_observations'], latencyMs: 37,
   });
   assert.equal(messageId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
-  assert.equal(statements.length, 1);
-  const [{ sql, values }] = statements;
+  assert.equal(statements.length, 2);
+  assert.match(statements[0].sql, /pg_advisory_xact_lock/);
+  assert.equal(statements[0].values.includes(conversationId), true);
+  const [{ sql, values }] = statements.slice(1);
   assert.match(sql, /INSERT INTO conversation_messages/);
+  assert.match(sql, /COALESCE\(MAX\(sequence_number\), 0\) \+ 1/,
+    'the rev row allocates its number at write time, never from a precomputed value');
   assert.match(sql, /conversation_id, organization_id, user_id, role, content/);
   assert.equal(values.includes(conversationId), true);
   assert.equal(values.includes(organizationId), true);

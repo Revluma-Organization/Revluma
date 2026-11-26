@@ -99,6 +99,8 @@ test('first new-conversation acceptance creates deterministic conversation and o
   assert.equal(calls.length, 2);
   assert.match(calls[0].sql, /ON CONFLICT \(id\) DO NOTHING/);
   assert.match(calls[1].sql, /ON CONFLICT \(organization_id, conversation_id, role, correlation_id\) DO NOTHING/);
+  assert.equal(calls[1].sql.includes('//'), false,
+    'JavaScript comments must never be embedded in shipped SQL: PostgreSQL rejects //');
   assert.equal(calls[1].values.includes(REQ), true);
 });
 
@@ -256,4 +258,71 @@ test('acceptance stores NULL metadata for ordinary merchant turns', async () => 
     message: 'Revenue?', requestId: REQ });
   assert.equal(calls.length, 2);
   assert.equal(calls[1].values.filter(value => value === null).length, 1);
+});
+
+// ── C2: single-writer sequence allocation ────────────────────────────────────
+test('acceptance takes the conversation write lock before the user insert', async () => {
+  const queries = [];
+  const prisma = {
+    $queryRaw: (strings, ...values) => { queries.push({ sql: strings.join('?'), values }); return []; },
+    $executeRaw: () => 1,
+  };
+  await acceptSubmission({ prisma: transactionCapable(prisma), organizationId: ORG, userId: USER,
+    message: 'Revenue?', requestId: REQ });
+  const lockIndex = queries.findIndex(call => call.sql.includes('pg_advisory_xact_lock'));
+  assert.ok(lockIndex >= 0, 'the allocating transaction must take the advisory lock');
+  assert.equal(queries[lockIndex].values.includes(CONV) || queries[lockIndex].values.some(value => typeof value === 'string'), true);
+});
+
+test('existing-conversation acceptance verifies ownership before locking', async () => {
+  const queries = [];
+  const prisma = {
+    $queryRaw: (strings, ...values) => {
+      const sql = strings.join('?');
+      queries.push(sql);
+      return sql.includes('FROM conversations') ? [{ organization_id: ORG }] : [];
+    },
+    $executeRaw: () => 1,
+  };
+  await acceptSubmission({ prisma: transactionCapable(prisma), organizationId: ORG, userId: USER,
+    message: 'Revenue?', requestId: REQ, requestedConversationId: CONV });
+  const ownershipIndex = queries.findIndex(sql => sql.includes('SELECT organization_id FROM conversations'));
+  const lockIndex = queries.findIndex(sql => sql.includes('pg_advisory_xact_lock'));
+  assert.ok(ownershipIndex >= 0 && lockIndex >= 0, 'ownership check and lock must both run');
+  assert.ok(ownershipIndex < lockIndex, 'unauthorized requests must never serialize against writers');
+});
+
+test('a unique violation from a non-cooperating writer retries the accept transaction', async () => {
+  let attempts = 0;
+  const prisma = {
+    $queryRaw: (strings) => (strings.join('?').includes('FROM conversations') ? [{ organization_id: ORG }] : []),
+    $transaction: async (callback) => {
+      attempts += 1;
+      if (attempts === 1) throw Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' });
+      return callback({
+        $queryRaw: async (strings) => (strings.join('?').includes('FROM conversations') ? [{ organization_id: ORG }] : []),
+        $executeRaw: async () => 1,
+      });
+    },
+  };
+  const result = await acceptSubmission({ prisma, organizationId: ORG, userId: USER,
+    message: 'Revenue?', requestId: REQ, requestedConversationId: CONV });
+  assert.equal(result.duplicate, false);
+  assert.equal(attempts, 2);
+});
+
+test('a persistent unique violation is retried bounded times then surfaces', async () => {
+  let attempts = 0;
+  const prisma = {
+    $queryRaw: () => [],
+    $transaction: async () => {
+      attempts += 1;
+      throw Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' });
+    },
+  };
+  await assert.rejects(
+    acceptSubmission({ prisma, organizationId: ORG, userId: USER, message: 'Revenue?', requestId: REQ }),
+    /duplicate key/,
+  );
+  assert.equal(attempts, 3);
 });

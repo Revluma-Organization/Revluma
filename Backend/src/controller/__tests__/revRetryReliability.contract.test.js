@@ -16,6 +16,7 @@ const routeSource = fs.readFileSync(path.join(__dirname, '..', '..', 'route', 'r
 const submissionSource = fs.readFileSync(path.join(__dirname, '..', '..', 'services', 'revSubmission.js'), 'utf8');
 const outcomesSource = fs.readFileSync(path.join(__dirname, '..', '..', 'services', 'revInvestigationOutcomes.js'), 'utf8');
 const failurePolicySource = fs.readFileSync(path.join(__dirname, '..', '..', 'services', 'revFailureContract.js'), 'utf8');
+const pagingSource = fs.readFileSync(path.join(__dirname, '..', '..', 'services', 'revConversationPaging.js'), 'utf8');
 const feSource = fs.readFileSync(
   path.join(__dirname, '..', '..', '..', '..', 'Frontend', 'Dashboard', 'src', 'pages', 'RevIntell.tsx'),
   'utf8',
@@ -108,8 +109,14 @@ assert.match(source, /imageAssisted: Boolean\(imageBase64\)/,
   'the chat acceptance must flag image turns for the retry guard');
 
 // ── 3. Newest-first cursor paging guards ──
-assert.match(source, /req\.query\.before/,
-  'getConversation must support the `before` sequence cursor');
+assert.match(source, /parsePageCursor\(req\.query\)/,
+  'getConversation must page through the tested cursor parser');
+assert.match(pagingSource, /query\?\.before/,
+  'the cursor parser must support the `before` sequence cursor');
+assert.match(pagingSource, /query\.before_id/,
+  'the cursor parser must support the C2 `before_id` tuple cursor');
+assert.match(source, /nextPageCursor\(safeMessages, limit\)/,
+  'getConversation must return the next-page tuple cursor');
 assert.match(source, /cm\.sequence_number < \$\{before\}/,
   'older pages must be addressed by sequence, never by shifting offsets');
 assert.match(source, /ORDER BY cm\.sequence_number DESC[\s\S]*?ORDER BY sequence_number ASC/,
