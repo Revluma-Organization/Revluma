@@ -127,7 +127,7 @@ describe("TopPrioritiesSection — Premium Hybrid Redesign", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("heading", { name: "Top priorities", level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Today's Priorities", level: 2 })).toBeInTheDocument();
     expect(screen.getByText("0 active findings")).toBeInTheDocument();
     expect(screen.getByText("Critical & High")).toBeInTheDocument();
     expect(screen.getByText("Medium")).toBeInTheDocument();

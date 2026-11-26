@@ -62,9 +62,11 @@ function signalVisual(item: SignalEvaluationItem) {
 
 export interface RecentSignalsPanelProps {
   evaluation: SignalEvaluationCoverage;
+  /** `list` stacks rows single-column for the narrow workspace rail. */
+  layout?: "grid" | "list";
 }
 
-export function RecentSignalsPanel({ evaluation }: RecentSignalsPanelProps) {
+export function RecentSignalsPanel({ evaluation, layout = "grid" }: RecentSignalsPanelProps) {
   const reducedMotion = Boolean(useReducedMotion());
   const evaluatedAgo = relativeTime(evaluation.evaluated_at);
 
@@ -108,7 +110,7 @@ export function RecentSignalsPanel({ evaluation }: RecentSignalsPanelProps) {
       </header>
 
       {/* Clean signal rows (responsive grid for the full-width below layout) */}
-      <ul className="grid gap-px bg-wash sm:grid-cols-2 xl:grid-cols-3">
+      <ul className={cn("grid gap-px bg-wash", layout === "list" ? undefined : "sm:grid-cols-2 xl:grid-cols-3")}>
         {evaluation.signals.map((signal, idx) => {
           const visual = signalVisual(signal);
           return (

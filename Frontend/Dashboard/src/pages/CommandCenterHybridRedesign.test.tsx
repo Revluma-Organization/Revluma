@@ -39,7 +39,7 @@ async function renderOverview(data: CommandCenterData) {
       <Overview />
     </MemoryRouter>,
   );
-  await screen.findByRole("heading", { name: "Top priorities", level: 2 });
+  await screen.findByRole("heading", { name: "Today's Priorities", level: 2 });
   return view;
 }
 
@@ -51,20 +51,22 @@ afterEach(() => {
 });
 
 describe("Command Center — Premium Hybrid Redesign V1", () => {
-  it("renders the exact four-section hierarchy: Welcome -> Top Priorities -> Operational Briefing -> Supporting Intelligence", async () => {
+  it("renders the workspace hierarchy: Welcome -> KPI strip -> Today's Priorities + rail -> Operational Briefing", async () => {
     const { container } = await renderOverview(ccPriorityFixture());
 
     const welcome = screen.getByRole("heading", { name: /^Good (morning|afternoon|evening), Ada\.$/, level: 1 });
-    const priorities = screen.getByRole("heading", { name: "Top priorities", level: 2 });
+    const kpis = screen.getByRole("region", { name: "Key store indicators" });
+    const priorities = screen.getByRole("heading", { name: "Today's Priorities", level: 2 });
     const briefing = screen.getByRole("heading", {
       name: "There are developments in your store that deserve closer attention.",
       level: 2,
     });
     const supporting = screen.getByRole("heading", { name: "Supporting intelligence", level: 2 });
 
-    expect(welcome.compareDocumentPosition(priorities) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(priorities.compareDocumentPosition(briefing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(briefing.compareDocumentPosition(supporting) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(welcome.compareDocumentPosition(kpis) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(kpis.compareDocumentPosition(priorities) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(priorities.compareDocumentPosition(supporting) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(supporting.compareDocumentPosition(briefing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     // Supporting panels inside the Hybrid Operational Briefing right rail
     const evidenceHeading = screen.getByRole("heading", { name: "Evidence & data coverage", level: 3 });
@@ -98,7 +100,7 @@ describe("Command Center — Premium Hybrid Redesign V1", () => {
   it("renders the Top Priorities empty state with exact required copy and a working Rev Intell navigation action", async () => {
     await renderOverview(ccFixture());
 
-    expect(screen.getByRole("heading", { name: "Top priorities", level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Today's Priorities", level: 2 })).toBeInTheDocument();
     expect(
       screen.getByText("The most important issues identified across your store."),
     ).toBeInTheDocument();
@@ -114,7 +116,7 @@ describe("Command Center — Premium Hybrid Redesign V1", () => {
     expect(navigate).toHaveBeenCalledWith(expect.stringContaining("/dashboard/rev-intell"));
   });
 
-  it("renders populated Top Priorities immediately after Welcome with verified evidence, read-only recommendation, and Rev handoff", async () => {
+  it("renders populated Today's Priorities after the KPI strip with verified evidence, read-only recommendation, and Rev handoff", async () => {
     const { container } = await renderOverview(ccPriorityFixture());
     const prioritiesSection = container.querySelector("#priority-finding") as HTMLElement;
     expect(prioritiesSection).toBeTruthy();

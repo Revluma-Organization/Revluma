@@ -112,7 +112,7 @@ describe("Command Center runtime states (Task 220)", () => {
     // The failed resource is flagged...
     expect(screen.getByRole("alert")).toHaveTextContent("The briefing service had a problem");
     // ...but every unaffected section remains accessible.
-    expect(screen.getByRole("heading", { name: "Top priorities" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Today's Priorities" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Your latest synchronized business picture" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Supporting intelligence" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Evidence & data coverage" })).toBeInTheDocument();

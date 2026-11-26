@@ -62,6 +62,21 @@ export function observationText(item: Observation): string {
   return `${item.value} ${item.unit}`;
 }
 
+/**
+ * The visible priority queue: the backend-selected primary finding first
+ * (unless it already appears in the findings list), then every other finding
+ * in backend order. Shared by the priorities section and the KPI strip so the
+ * "Open issues" count always matches the rendered queue.
+ */
+export function selectQueueFindings(
+  data: { priority_finding: Finding | null; findings: Finding[] } | null | undefined,
+): Finding[] {
+  if (!data) return [];
+  const primary = data.priority_finding ?? null;
+  const secondary = data.findings.filter((item) => item.id !== primary?.id);
+  return primary ? [primary, ...secondary] : secondary;
+}
+
 export function isVerifiedFinding(finding: Finding): boolean {
   return (
     finding.evidence?.classification === "verified_observation" &&

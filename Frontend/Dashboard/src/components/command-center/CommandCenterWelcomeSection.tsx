@@ -347,12 +347,12 @@ export function CommandCenterWelcomeSection({
 
   return (
     <header aria-labelledby="command-center-welcome-heading" className="min-w-0">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between xl:gap-6">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between xl:gap-6">
         {/* Greeting + contextual introduction */}
         <div className="min-w-0 shrink-0">
           <h1
             id="command-center-welcome-heading"
-            className="text-[1.75rem] font-semibold leading-[1.18] tracking-[-0.03em] text-ink sm:text-[2rem]"
+            className="text-[1.75rem] font-semibold leading-[1.18] tracking-[-0.03em] text-ink"
           >
             {greeting.text}.
           </h1>

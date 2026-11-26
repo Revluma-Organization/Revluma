@@ -23,6 +23,15 @@ forward rule or rejected on contrast/drift grounds (details below).
 Topbar kept functional-only: no date-range (no backend range support exists)
 and no avatar move (already in the sidebar account menu).
 
+**Stage 3a (2026-11-26):** workspace landed — compact header (greeting clamped
+to 24.5px), KPI strip (Open issues / Actionable signals / Evidence coverage,
+all verified counts, neutral context lines, zero trends), `lg:grid-cols-12`
+workspace (8-col Today's Priorities + 4-col sticky rail, stacked below
+`lg`), rail order business summary → live signals → store coverage via
+reused components (`HealthIndicators` stacked, `RecentSignalsPanel` list,
+`EvidenceFreshness`). Briefing + activity preserved below the grid. No card
+rebuilds, no table work, no Rev changes (3b/4/5 untouched).
+
 **Brand sources:** shipped command-center contract (`tokens.ts`), severity system
 (`findingDisplay.ts`), dashboard theme (`index.css`, Tailwind v3 config).
 Generator defaults that conflicted (blue/amber palette, Fira typography,
@@ -469,6 +478,6 @@ new components.
 ### Explicitly out of Stage 1
 
 - Zero component, layout, or token-value changes (this addendum is docs-only).
-- Sidebar/topbar alignment, Priorities/Signals destinations → Stage 2.
+- ✅ Sidebar/topbar alignment, Priorities/Signals destinations → Stage 2 (landed 2026-11-26; see header note).
 - Dark-theme adaptation of command-center → still deferred (v1 light-locked).
 - `duration-200` → 150ms normalization → with each component's rebuild.
