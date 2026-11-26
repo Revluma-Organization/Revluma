@@ -1087,6 +1087,9 @@
         /* Rebuilt landing sections rendered by the same embed (see #platform). */
         .revluma-section { display: block; position: relative; background: #FBFAF8; }
         .revluma-section[data-pending] { min-height: 60rem; }
+        /* Hairline between sections, the same #eeece7 line Founding, Reviews, Pricing and the
+           final CTA draw at their top edge (those four carry it inside their own CSS). */
+        #platform, #how-it-works, #meet-rev, #faq, #site-footer { border-top: 1px solid #eeece7; }
         /* The landing nav is pinned to the top (fixed, inside the hero embed), so in-page
            links like #platform stop just below it instead of underneath it. */
         html { scroll-padding-top: 5rem; }
