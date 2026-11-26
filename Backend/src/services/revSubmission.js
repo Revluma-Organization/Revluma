@@ -149,14 +149,15 @@ async function acceptSubmission({ prisma, organizationId, userId, message, reque
     // Stage 1 (H2): scripted-traffic annotation rides in the existing metadata
     // column. No schema change; ordinary merchant turns store NULL as before.
     const clientMetadata = clientContext == null ? null : JSON.stringify({ client_context: clientContext });
+    // Phase 5D: an image-assisted question is marked so a later retry refuses
+    // to re-run it imageless (the bytes are never persisted). This comment
+    // must stay outside the SQL template: PostgreSQL has no // comments.
     const inserted = await tx.$executeRaw`
       INSERT INTO conversation_messages (
         id, conversation_id, organization_id, user_id,
         role, content, sequence_number, correlation_id, has_error, metadata
       )
       SELECT ${uuidv4()}::uuid, ${acceptedConversationId}::uuid, ${organizationId}::uuid, ${userId}::uuid,
-             // Phase 5D: an image-assisted question is marked so a later retry
-             // refuses to re-run it imageless (the bytes are never persisted).
              'user', ${JSON.stringify(imageAssisted ? { text: message, image_assisted: true } : { text: message })}::jsonb,
              COALESCE(MAX(sequence_number), 0) + 1, ${requestId}::uuid, false, ${clientMetadata}::jsonb
       FROM conversation_messages

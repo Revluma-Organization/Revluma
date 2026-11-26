@@ -99,6 +99,8 @@ test('first new-conversation acceptance creates deterministic conversation and o
   assert.equal(calls.length, 2);
   assert.match(calls[0].sql, /ON CONFLICT \(id\) DO NOTHING/);
   assert.match(calls[1].sql, /ON CONFLICT \(organization_id, conversation_id, role, correlation_id\) DO NOTHING/);
+  assert.equal(calls[1].sql.includes('//'), false,
+    'JavaScript comments must never be embedded in shipped SQL: PostgreSQL rejects //');
   assert.equal(calls[1].values.includes(REQ), true);
 });
 
