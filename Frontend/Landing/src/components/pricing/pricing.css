@@ -318,36 +318,6 @@
   font-weight: 600;
   color: #0c0a1d;
 }
-.pr-foot__list {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.6rem 1.5rem;
-  margin: 0.9rem 0 0;
-  padding: 0;
-  list-style: none;
-  font-size: 0.8rem;
-  color: #6e6c7a;
-}
-.pr-foot__list li,
-.pr-foot__link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-.pr-foot__list svg {
-  color: #1f06ac;
-}
-.pr-foot__link {
-  font-weight: 600;
-  color: #1f06ac;
-  text-decoration: none;
-}
-.pr-foot__link:hover {
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
-}
-
 /* Price change when switching billing period. */
 @media (prefers-reduced-motion: no-preference) {
   .pr-price__amount {

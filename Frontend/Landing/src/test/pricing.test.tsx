@@ -66,6 +66,7 @@ describe("Pricing", () => {
       expect(within(card(el, name)).getByRole("link", { name: /Start free trial/ })).toHaveAttribute("href", "/auth/signup");
     }
     expect(within(el).getByText(PRICING.trial)).toBeInTheDocument();
+    expect(el).not.toHaveTextContent(/Read-only Shopify access on every plan|Prices in US dollars|Questions\? Read the FAQ/);
   });
 
   it("replaces the old pricing teaser on the homepage, after the FAQ", () => {
