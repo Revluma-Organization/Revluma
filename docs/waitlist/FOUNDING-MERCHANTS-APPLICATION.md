@@ -62,6 +62,15 @@ The migration is additive and idempotent and runs through Render's
    `rolled_back_at` null; the four new CHECK constraints and the three new
    unique indexes exist; row count unchanged.
 
+### Pre-merge record (2026-11-26 22:28 UTC, database clock)
+
+- Platform backups / PITR for `Revluma-Database`: confirmed on by the owner in
+  the Supabase dashboard.
+- Census re-run immediately before merge: 0 rows, 41 columns, latest migration
+  `20261126000000_apple_sign_in_usd_billing`, no unfinished or rolled-back
+  migrations. With 0 rows there was no data to copy, so no logical backup table
+  was created.
+
 ### Order
 
 1. Merge the PR (Vercel deploys the page and proxy).
