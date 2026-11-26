@@ -76,6 +76,22 @@ async function partB() {
   const orgId = randomUUID();
   const userId = randomUUID();
   const convId = randomUUID();
+  const suffix = randomUUID().slice(0, 8);
+  // FK parents first (conversation_messages references organizations/users).
+  await prisma.users.create({
+    data: { id: userId, full_name: 'RC C2NP', email: `rc-c2np-${suffix}@example.invalid`, password_hash: 'x' },
+  });
+  await prisma.organizations.create({
+    data: { id: orgId, owner_id: userId, company_name: `RC C2NP ${suffix}`, slug: `rc-c2np-${suffix}`, industry: 'test', country: 'NG' },
+  });
+  const backstop = await prisma.$queryRaw`
+    SELECT indexname FROM pg_indexes
+    WHERE tablename = 'conversation_messages' AND indexname = 'uq_conversation_message_sequence'`;
+  record('B0 unique backstop exists before the proof starts', backstop.length === 1);
+  if (backstop.length !== 1) {
+    await prisma.$disconnect();
+    return false;
+  }
   await prisma.$executeRaw`
     INSERT INTO conversations (id, organization_id, user_id, status, message_count, last_activity_at)
     VALUES (${convId}::uuid, ${orgId}::uuid, ${userId}::uuid, 'active', 1, NOW())`;
