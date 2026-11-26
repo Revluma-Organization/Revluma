@@ -266,6 +266,7 @@ exports.chat = async (req, res, next) => {
         prisma, organizationId: org.id, userId: req.user.id,
         message, requestId: correlationId, requestedConversationId: conversationId,
         imageAssisted: Boolean(imageBase64),
+        clientContext: validated.clientContext,
       });
       activeConvId = acceptance.conversationId;
       if (acceptance.duplicate) {
@@ -690,7 +691,7 @@ exports.getConversation = async (req, res, next) => {
         SELECT
           cm.id, cm.role, cm.content, cm.sequence_number,
           cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
-          cm.created_at,
+          cm.created_at, cm.metadata->'client_context' AS client_context,
           fb.rating AS feedback_rating
         FROM conversation_messages cm
         JOIN conversations cv ON cv.id = cm.conversation_id
@@ -706,7 +707,7 @@ exports.getConversation = async (req, res, next) => {
         SELECT
           cm.id, cm.role, cm.content, cm.sequence_number,
           cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
-          cm.created_at,
+          cm.created_at, cm.metadata->'client_context' AS client_context,
           fb.rating AS feedback_rating
         FROM conversation_messages cm
         JOIN conversations cv ON cv.id = cm.conversation_id
@@ -1747,6 +1748,7 @@ exports.chatStream = async (req, res, next) => {
         prisma, organizationId: org.id, userId: req.user.id,
         message: validated.message, requestId: correlationId,
         requestedConversationId,
+        clientContext: validated.clientContext,
       });
       activeConvId = acceptance.conversationId;
       if (acceptance.duplicate) {

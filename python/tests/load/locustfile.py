@@ -26,9 +26,13 @@ _INTERNAL_KEY = os.environ.get("ML_INTERNAL_KEY", "revluma-load-test-key")
 
 # NOTE: convert_underscores=False is set in api.py's Header dependency,
 # so the server expects the literal header name with an underscore, not hyphen.
+# Stage 1 (H2): load traffic identifies its run. REVLUMA_LOAD_RUN_ID defaults
+# to a stable-per-process value so concurrent runs stay distinguishable.
+_LOAD_RUN_ID = os.environ.get("REVLUMA_LOAD_RUN_ID", f"load-{os.getpid()}")
 _HEADERS = {
     "x_internal_key": _INTERNAL_KEY,
     "Content-Type": "application/json",
+    "User-Agent": f"revluma-load/locust/{_LOAD_RUN_ID}",
 }
 
 
