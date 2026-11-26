@@ -139,13 +139,15 @@ jobs:
 
       - name: Rev sequence probe (module loads)
         working-directory: Backend
-        run: node -e "const m = require('./src/services/revSequence'); console.log('revSequence exports: ' + Object.keys(m).join(','))"
+        run: |
+          node -e "const m = require('./src/services/revSequence'); console.log('revSequence exports: ' + Object.keys(m).join(','))"
 
       - name: Rev sequence probe (guard env)
         working-directory: Backend
         env:
           RELEASE_CANDIDATE_ISOLATED_DB: 'true'
-        run: node -e "if (process.env.RELEASE_CANDIDATE_ISOLATED_DB !== 'true') throw new Error('opt-in missing'); if (!/@127\.0\.0\.1:5432\/revluma_rc\b/.test(String(process.env.DATABASE_URL || ''))) throw new Error('unexpected DATABASE_URL'); console.log('guard env ok')"
+        run: |
+          node -e "if (process.env.RELEASE_CANDIDATE_ISOLATED_DB !== 'true') throw new Error('opt-in missing'); if (!/@127\.0\.0\.1:5432\/revluma_rc\b/.test(String(process.env.DATABASE_URL || ''))) throw new Error('unexpected DATABASE_URL'); console.log('guard env ok')"
 
       - name: Rev sequence races (accepts)
         working-directory: Backend
