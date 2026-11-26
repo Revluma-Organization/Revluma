@@ -3,6 +3,11 @@ const { v4: uuidv4, v5: uuidv5 } = require('uuid');
 const MAX_QUESTION_LENGTH = 2000;
 const REQUEST_CONVERSATION_NAMESPACE = '6f35db54-8925-4e0f-9ef4-2cf8db85f97b';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Stage 1 (H2): scripted evaluation/load traffic annotates itself through an
+// allowlisted client_context object. Only the source label and run identifiers
+// are accepted; everything else is rejected, never silently stored.
+const CLIENT_CONTEXT_SOURCES = new Set(['eval', 'load']);
+const CLIENT_CONTEXT_TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 function submissionError(status, code, message) {
   const error = new Error(message);
@@ -32,7 +37,26 @@ function validateSubmission(body) {
   if (!UUID.test(requestId)) {
     throw submissionError(400, 'INVALID_REQUEST_ID', 'request_id must be a valid UUID.');
   }
-  return { message, requestId };
+  return { message, requestId, clientContext: validateClientContext(body?.client_context) };
+}
+
+function validateClientContext(value) {
+  if (value == null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw submissionError(400, 'INVALID_CLIENT_CONTEXT', 'client_context must be an object.');
+  }
+  if (!CLIENT_CONTEXT_SOURCES.has(value.source)) {
+    throw submissionError(400, 'INVALID_CLIENT_CONTEXT', "client_context.source must be 'eval' or 'load'.");
+  }
+  const context = { source: value.source };
+  for (const field of ['run_id', 'harness']) {
+    if (value[field] == null) continue;
+    if (typeof value[field] !== 'string' || !CLIENT_CONTEXT_TOKEN.test(value[field])) {
+      throw submissionError(400, 'INVALID_CLIENT_CONTEXT', `client_context.${field} must be 1-64 chars [A-Za-z0-9_.:-].`);
+    }
+    context[field] = value[field];
+  }
+  return context;
 }
 
 function userText(content) {
@@ -63,6 +87,9 @@ async function findAcceptedSubmission(prisma, organizationId, requestId) {
   return rows?.[0] || null;
 }
 
+// Stage 1 (H2): client_context is annotative, not part of the idempotency key.
+// A replayed request_id returns the owned turn even if the annotation differs;
+// the first accepted annotation stands. The key itself is unchanged.
 function ensureSameSubmission(accepted, message, requestedConversationId) {
   if (userText(accepted.user_content) !== message) {
     throw submissionError(409, 'REQUEST_ID_REUSED', 'This request identifier was already used for a different question.');
@@ -79,7 +106,7 @@ function ensureSameSubmission(accepted, message, requestedConversationId) {
  * derived by the server from the request id, so a retry before the first meta
  * frame cannot create a second empty conversation.
  */
-async function acceptSubmission({ prisma, organizationId, userId, message, requestId, requestedConversationId = null, imageAssisted = false }) {
+async function acceptSubmission({ prisma, organizationId, userId, message, requestId, requestedConversationId = null, imageAssisted = false, clientContext = null }) {
   const existing = await findAcceptedSubmission(prisma, organizationId, requestId);
   if (existing) {
     ensureSameSubmission(existing, message, requestedConversationId);
@@ -109,16 +136,19 @@ async function acceptSubmission({ prisma, organizationId, userId, message, reque
       `;
     }
 
+    // Stage 1 (H2): scripted-traffic annotation rides in the existing metadata
+    // column. No schema change; ordinary merchant turns store NULL as before.
+    const clientMetadata = clientContext == null ? null : JSON.stringify({ client_context: clientContext });
     const inserted = await tx.$executeRaw`
       INSERT INTO conversation_messages (
         id, conversation_id, organization_id, user_id,
-        role, content, sequence_number, correlation_id, has_error
+        role, content, sequence_number, correlation_id, has_error, metadata
       )
       SELECT ${uuidv4()}::uuid, ${acceptedConversationId}::uuid, ${organizationId}::uuid, ${userId}::uuid,
              // Phase 5D: an image-assisted question is marked so a later retry
              // refuses to re-run it imageless (the bytes are never persisted).
              'user', ${JSON.stringify(imageAssisted ? { text: message, image_assisted: true } : { text: message })}::jsonb,
-             COALESCE(MAX(sequence_number), 0) + 1, ${requestId}::uuid, false
+             COALESCE(MAX(sequence_number), 0) + 1, ${requestId}::uuid, false, ${clientMetadata}::jsonb
       FROM conversation_messages
       WHERE conversation_id = ${acceptedConversationId}::uuid
       ON CONFLICT (organization_id, conversation_id, role, correlation_id) DO NOTHING

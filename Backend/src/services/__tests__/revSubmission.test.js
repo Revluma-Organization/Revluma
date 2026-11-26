@@ -199,3 +199,61 @@ for (const [name, row, failed, code] of [
   assert.equal(result.failed, failed);
   assert.equal(result.errorCode, code);
 });
+
+// ── Stage 1 (H2): scripted-traffic annotation ────────────────────────────────
+for (const [name, context] of [
+  ['eval source', { source: 'eval', run_id: 'burst-replay-01', harness: 'lab' }],
+  ['load source', { source: 'load' }],
+  ['run id punctuation', { source: 'eval', run_id: 'aB0._:-' }],
+]) test(`accepts ${name} client_context`, () => {
+  const result = validateSubmission({ message: 'Revenue?', client_context: context });
+  assert.deepEqual(result.clientContext, context);
+});
+
+test('clientContext is null when absent', () => {
+  assert.equal(validateSubmission({ message: 'Revenue?' }).clientContext, null);
+});
+
+for (const [name, context] of [
+  ['string context', 'eval'],
+  ['array context', ['eval']],
+  ['missing source', { run_id: 'x' }],
+  ['bad source', { source: 'merchant' }],
+  ['empty source', { source: '' }],
+  ['numeric source', { source: 42 }],
+  ['bad run_id chars', { source: 'eval', run_id: 'a b' }],
+  ['empty run_id', { source: 'eval', run_id: '' }],
+  ['long run_id', { source: 'eval', run_id: 'x'.repeat(65) }],
+  ['numeric run_id', { source: 'eval', run_id: 7 }],
+  ['bad harness', { source: 'eval', harness: 'a/b' }],
+]) test(`rejects ${name}`, () => {
+  assert.throws(() => validateSubmission({ message: 'Revenue?', client_context: context }),
+    error => error.code === 'INVALID_CLIENT_CONTEXT');
+});
+
+test('acceptance persists client_context into user-message metadata', async () => {
+  const calls = [];
+  const prisma = {
+    $queryRaw: () => [],
+    $executeRaw: (strings, ...values) => { calls.push({ sql: strings.join('?'), values }); return 1; },
+  };
+  const context = { source: 'eval', run_id: 'h2-verify-01', harness: 'lab' };
+  await acceptSubmission({ prisma: transactionCapable(prisma), organizationId: ORG, userId: USER,
+    message: 'Revenue?', requestId: REQ, clientContext: context });
+  assert.equal(calls.length, 2);
+  assert.match(calls[1].sql, /has_error, metadata/);
+  const stored = calls[1].values.find(value => typeof value === 'string' && value.includes('client_context'));
+  assert.deepEqual(JSON.parse(stored), { client_context: context });
+});
+
+test('acceptance stores NULL metadata for ordinary merchant turns', async () => {
+  const calls = [];
+  const prisma = {
+    $queryRaw: () => [],
+    $executeRaw: (strings, ...values) => { calls.push({ sql: strings.join('?'), values }); return 1; },
+  };
+  await acceptSubmission({ prisma: transactionCapable(prisma), organizationId: ORG, userId: USER,
+    message: 'Revenue?', requestId: REQ });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].values.filter(value => value === null).length, 1);
+});
