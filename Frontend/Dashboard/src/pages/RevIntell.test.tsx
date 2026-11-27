@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-rou
 import api, { ApiError } from '@/lib/api';
 import { RevStreamError, streamRevAnswer, type RevAnswerPayload, type RevStreamRequest } from '@/lib/revStream';
 import RevIntell from './RevIntell';
+import { historyGroupLabel } from '@/lib/revHistory';
 
 const theme = vi.hoisted(() => ({ value: 'dark' }));
 const answerView = vi.hoisted(() => vi.fn());
@@ -2257,16 +2258,17 @@ describe('Phase 5E evidence-first workspace', () => {
     await screen.findByRole('heading', { name: finding.title });
   }
 
-  it('links back to the Command Center preserving a sanitised return hint', async () => {
+  it('has no back link to the Command Center in the header', () => {
     renderPage(`/dashboard/rev-intell?return_to=${encodeURIComponent('/dashboard/overview?section=signals')}`);
-    fireEvent.click(screen.getByRole('link', { name: 'Back to Command Center' }));
-    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/overview');
-    expect(screen.getByLabelText('Current search')).toHaveTextContent('?section=signals');
+    expect(screen.queryByRole('link', { name: 'Back to Command Center' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Command Center')).not.toBeInTheDocument();
   });
 
-  it('falls back to the Command Center root without a return hint', () => {
+  it('keeps the history toggle in the header row beside New chat', () => {
     renderPage();
-    expect(screen.getByRole('link', { name: 'Back to Command Center' }).getAttribute('href')).toBe('/dashboard/overview');
+    const toggle = screen.getByRole('button', { name: 'Open conversation history' });
+    const newChat = screen.getByRole('button', { name: 'Start a new conversation' });
+    expect(toggle.parentElement).toBe(newChat.parentElement);
   });
 
   it('shows the active conversation title, or New conversation when none is active', async () => {
@@ -2434,5 +2436,21 @@ describe('turn chrome (ChatGPT-UI study §5, honest "Worked for")', () => {
     renderPage('/dashboard/rev-intell/A');
     await screen.findByText('Stored answer');
     expect(screen.queryByTestId('rev-work-summary')).not.toBeInTheDocument();
+  });
+});
+
+describe('historyGroupLabel', () => {
+  const now = new Date(2026, 10, 18, 15, 0);
+  it.each([
+    [new Date(2026, 10, 18, 0, 5), 'Today'],
+    [new Date(2026, 10, 17, 23, 59), 'Yesterday'],
+    [new Date(2026, 10, 13, 9, 0), 'Previous 7 days'],
+    [new Date(2026, 9, 25, 9, 0), 'Previous 30 days'],
+    [new Date(2026, 6, 1, 9, 0), 'Older'],
+  ])('groups %s as %s', (time, label) => {
+    expect(historyGroupLabel(time.toISOString(), now)).toBe(label);
+  });
+  it('files an unreadable timestamp under Older', () => {
+    expect(historyGroupLabel('not a date', now)).toBe('Older');
   });
 });

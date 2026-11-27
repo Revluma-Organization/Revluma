@@ -11,7 +11,31 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import revlumaIcon from "@/assets/brand/revluma-icon.png";
 import { RevOrbVideo } from "@/components/rev/RevOrb";
-import { shell } from "@/components/command-center/tokens";
+
+/**
+ * Sidebar design tokens: the landing and auth system (auth-theme.css) on the
+ * dashboard shell. Light is the warm #FBFAF8 canvas with ink #0C0A1D type and
+ * #E8E6E1 hairlines; dark is the same system on the ink canvas. The current
+ * page is an ink pill (white in dark), the landing CTA shape. Literal class
+ * strings so Tailwind's scanner and the tests can read them.
+ */
+const side = {
+  surface: "bg-[#FBFAF8] text-[#0C0A1D] border-[#E8E6E1] dark:bg-[#0C0A1D] dark:text-[#F4F3F8] dark:border-[#2C2946]",
+  text: "text-[#0C0A1D] dark:text-[#F4F3F8]",
+  muted: "text-[#5E5C6B] dark:text-[#B3B1C2]",
+  faint: "text-[#6B6977] dark:text-[#A6A4B8]",
+  icon: "text-[#6B6977] group-hover:text-[#0C0A1D] dark:text-[#A6A4B8] dark:group-hover:text-white",
+  item: "text-[#3F3D4E] hover:bg-[#F1EFEA] hover:text-[#0C0A1D] dark:text-[#D6D4E2] dark:hover:bg-[#1C1A33] dark:hover:text-white",
+  active: "bg-[#0C0A1D] text-white shadow-[0_10px_22px_-12px_rgba(12,10,29,0.55)] dark:bg-white dark:text-[#0C0A1D] dark:shadow-[0_10px_22px_-12px_rgba(0,0,0,0.8)]",
+  badge: "bg-[#EEEBFF] text-[#2B13CF] dark:bg-[#221D4D] dark:text-[#C4BDFF]",
+  badgeActive: "bg-white/15 text-white dark:bg-[#0C0A1D]/10 dark:text-[#0C0A1D]",
+  iconButton: "shrink-0 items-center justify-center rounded-full border border-[#E8E6E1] bg-white text-[#3F3D4E] transition-colors duration-200 hover:border-[#0C0A1D] hover:text-[#0C0A1D] dark:border-[#2C2946] dark:bg-[#15132A] dark:text-[#D6D4E2] dark:hover:border-[#B4ABFF] dark:hover:text-white flex",
+  card: "border-[#E8E6E1] bg-white shadow-[0_1px_2px_rgba(12,10,29,0.04),0_18px_36px_-26px_rgba(12,10,29,0.28)] dark:border-[#2C2946] dark:bg-[#15132A] dark:shadow-none",
+  pop: "border-[#E8E6E1] bg-white shadow-[0_18px_36px_-14px_rgba(12,10,29,0.28),0_4px_10px_-4px_rgba(12,10,29,0.1)] dark:border-[#2C2946] dark:bg-[#15132A] dark:shadow-[0_18px_36px_-14px_rgba(0,0,0,0.6)]",
+  rowHover: "hover:bg-[#F4F2EE] dark:hover:bg-[#1C1A33]",
+  divider: "border-[#E8E6E1] dark:border-[#2C2946]",
+  focus: "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2B13CF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#FBFAF8] dark:focus-visible:ring-[#B4ABFF] dark:focus-visible:ring-offset-[#0C0A1D]",
+} as const;
 
 function initials(name: string | null | undefined) {
   return name?.split(" ").filter(Boolean).map(part => part[0]).join("").slice(0, 2).toUpperCase() || "--";
@@ -136,7 +160,7 @@ export function Sidebar() {
   return <>
     <div
       aria-hidden
-      className={cn("fixed inset-0 z-40 bg-black/60 md:hidden", mobileSidebarOpen ? "block" : "hidden")}
+      className={cn("fixed inset-0 z-40 bg-[#0C0A1D]/40 backdrop-blur-[3px] md:hidden", mobileSidebarOpen ? "block" : "hidden")}
       onClick={() => setMobileSidebarOpen(false)}
     />
     <aside
@@ -148,34 +172,39 @@ export function Sidebar() {
       aria-label={isMobileDrawer ? "Navigation" : "Primary navigation"}
       className={cn(
         "fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col overflow-hidden border-r transition-[width,transform] duration-200 motion-reduce:transition-none md:relative md:translate-x-0",
-        shell.sidebar,
+        side.surface,
         sidebarCollapsed ? "md:w-[var(--sidebar-w-collapsed)]" : "md:w-[var(--sidebar-w)]",
         "w-[min(84vw,280px)]",
         mobileSidebarOpen ? "translate-x-0 max-md:visible" : "-translate-x-full max-md:invisible",
       )}
     >
-      <div className={cn("flex h-16 shrink-0 items-center justify-between border-b border-[#292d36] px-4", sidebarCollapsed && "md:px-3")}>
-        <div className="flex min-w-0 items-center gap-2.5">
-          <img src={revlumaIcon} alt="" className="h-8 w-8 shrink-0 object-contain" />
-          {!sidebarCollapsed && <span className="display truncate text-lg font-bold">Revluma</span>}
+      {/* Brand: the same ink pill as the landing and auth navbar (white round
+          mark, white wordmark), so the dashboard opens on the brand it was
+          signed into. Collapsed, only the round mark remains. */}
+      <div className={cn("flex h-[72px] shrink-0 items-center justify-between gap-2 px-3.5", sidebarCollapsed && "md:justify-center md:px-2")}>
+        <div className={cn("flex h-11 min-w-0 items-center gap-2.5 rounded-full bg-[#1C1C1C] p-[5px] shadow-[0_12px_24px_-14px_rgba(12,10,29,0.55)] outline outline-1 outline-white/[0.06]", sidebarCollapsed ? "md:pr-[5px]" : "pr-4")}>
+          <span className="grid aspect-square h-full shrink-0 place-items-center rounded-full bg-white">
+            <img src={revlumaIcon} alt="" className="h-[56%] w-[56%] object-contain" />
+          </span>
+          <span className={cn("truncate text-[15px] font-semibold tracking-[-0.01em] text-white", sidebarCollapsed && "md:hidden")}>Revluma</span>
         </div>
         <button
           type="button"
           onClick={() => setMobileSidebarOpen(false)}
-          className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[#c6ccd8] hover:bg-white/[0.07] hover:text-white md:hidden", shell.focus)}
+          className={cn(side.iconButton, "h-10 w-10 md:hidden", side.focus)}
           aria-label="Close sidebar"
-        ><X className="h-5 w-5" /></button>
+        ><X className="h-[18px] w-[18px]" /></button>
         <button
           type="button"
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className={cn("hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#c6ccd8] hover:bg-white/[0.07] hover:text-white md:flex", shell.focus)}
-          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >{sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}</button>
+          className={cn(side.iconButton, "hidden h-8 w-8 md:flex", sidebarCollapsed && "md:hidden", side.focus)}
+          aria-label="Collapse sidebar"
+        ><ChevronLeft className="h-4 w-4" /></button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Workspace">
-        {Object.entries(groups).map(([group, items]) => <div key={group}>
-          {!sidebarCollapsed && <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8992a3]">{group}</p>}
+      <nav className={cn("flex-1 overflow-y-auto px-3 pb-4 pt-2", sidebarCollapsed && "md:px-2")} aria-label="Workspace">
+        {Object.entries(groups).map(([group, items]) => <div key={group} className="rv-side-rise">
+          {!sidebarCollapsed && <p className={cn("mb-2 px-3.5 text-[11px] font-semibold uppercase tracking-[0.14em]", side.faint)}>{group}</p>}
           <ul className="space-y-1">{items.map(item => {
             const Icon = item.icon;
             const active = isNavItemActive(item, pathname, overviewSection, findingDeepLink);
@@ -185,29 +214,41 @@ export function Sidebar() {
               aria-current={active ? "page" : undefined}
               onClick={() => setMobileSidebarOpen(false)}
               className={cn(
-                "group flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm text-[#c6ccd8] transition-colors",
-                shell.sidebarHover, shell.focus,
-                sidebarCollapsed && "md:justify-center md:px-2",
-                active && shell.sidebarActive,
+                "group flex min-h-11 items-center gap-3 rounded-full px-3.5 text-[14px] font-medium tracking-[-0.005em] transition-[background-color,color,box-shadow] duration-200 motion-reduce:transition-none",
+                side.focus,
+                sidebarCollapsed && "md:justify-center md:px-0",
+                active ? side.active : side.item,
               )}
             >
               {item.useCustomIcon
-                ? <RevOrbVideo size={24} className="shrink-0" />
-                : <Icon aria-hidden="true" className={cn("h-[18px] w-[18px] shrink-0", active ? "text-white" : "text-[#aeb5c2] group-hover:text-white")} strokeWidth={1.8} />}
-              {!sidebarCollapsed && <><span className="min-w-0 flex-1 truncate">{item.label}</span>{item.badge && <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide", active ? "bg-white/15 text-white" : "bg-white/[0.08] text-[#c6ccd8]")}>{item.badge.text}</span>}</>}
+                ? (
+                  // The orb video blends with "screen", so it sits on its own
+                  // ink disc to stay visible on the white dark-mode active pill.
+                  <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center overflow-hidden rounded-full bg-[#0C0A1D]">
+                    <RevOrbVideo size={22} className="shrink-0" />
+                  </span>
+                )
+                : <Icon aria-hidden="true" className={cn("h-[18px] w-[18px] shrink-0", active ? "text-current" : side.icon)} strokeWidth={1.8} />}
+              {!sidebarCollapsed && <><span className="min-w-0 flex-1 truncate">{item.label}</span>{item.badge && <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]", active ? side.badgeActive : side.badge)}>{item.badge.text}</span>}</>}
             </Link></li>;
           })}</ul>
         </div>)}
       </nav>
 
-      <div className="shrink-0 border-t border-[#292d36] p-3">
-        <div className="relative" ref={userMenuRef}>
-          {userOpen && !sidebarCollapsed && <div id="sidebar-user-menu" role="menu" className="absolute bottom-[calc(100%+8px)] left-0 right-0 z-20 overflow-hidden rounded-lg border border-[#353a45] bg-[#1b1e24] py-1 shadow-xl">
+      <div className={cn("shrink-0 p-3", sidebarCollapsed && "md:px-2")}>
+        {sidebarCollapsed && <button
+          type="button"
+          onClick={() => setSidebarCollapsed(false)}
+          className={cn(side.iconButton, "mx-auto mb-2 hidden h-9 w-9 md:flex", side.focus)}
+          aria-label="Expand sidebar"
+        ><ChevronRight className="h-4 w-4" /></button>}
+        <div className={cn("relative rounded-[20px] border p-1.5", side.card, sidebarCollapsed && "md:border-transparent md:bg-transparent md:p-0 md:shadow-none")} ref={userMenuRef}>
+          {userOpen && !sidebarCollapsed && <div id="sidebar-user-menu" role="menu" className={cn("rv-side-pop absolute bottom-[calc(100%+8px)] left-0 right-0 z-20 overflow-hidden rounded-[18px] border p-1.5", side.pop)}>
             <AccountAction icon={Settings} label="Account settings" onClick={() => navigate("/dashboard/settings/profile")} />
             <AccountAction icon={CreditCard} label="Billing & plans" onClick={() => navigate("/dashboard/settings/billing")} />
             <AccountAction icon={UsersIcon} label="Team members" onClick={() => navigate("/dashboard/settings/team")} />
             <AccountAction icon={HelpCircle} label="Help & support" onClick={() => setUserOpen(false)} />
-            <div className="my-1 border-t border-[#353a45]" />
+            <div className={cn("mx-2 my-1 border-t", side.divider)} />
             <AccountAction icon={LogOut} label="Log out" onClick={() => void logout()} />
           </div>}
           <button
@@ -217,22 +258,28 @@ export function Sidebar() {
             aria-controls="sidebar-user-menu"
             aria-expanded={userOpen}
             onClick={() => setUserOpen(open => !open)}
-            className={cn("flex min-h-12 w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-white/[0.07]", shell.focus, sidebarCollapsed && "md:justify-center")}
+            className={cn("flex min-h-12 w-full items-center gap-3 rounded-[14px] p-1.5 text-left transition-colors duration-200", side.rowHover, side.focus, sidebarCollapsed && "md:justify-center")}
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/10 text-[11px] font-semibold text-white">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#2B13CF] text-[11px] font-semibold text-white">
               {user?.profile_picture_url ? <img src={user.profile_picture_url} alt="" className="h-full w-full object-cover" /> : initials(user?.full_name)}
             </span>
-            {!sidebarCollapsed && <><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-white">{displayName}</span><span className="mt-0.5 block truncate text-[10px] text-[#aeb5c2]">{displayEmail}</span></span><ChevronDown className={cn("h-3.5 w-3.5 text-[#aeb5c2] transition-transform", userOpen && "rotate-180")} /></>}
+            {!sidebarCollapsed && <><span className="min-w-0 flex-1"><span className={cn("block truncate text-[13px] font-semibold", side.text)}>{displayName}</span><span className={cn("mt-0.5 block truncate text-[11.5px]", side.muted)}>{displayEmail}</span></span><ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform duration-200 motion-reduce:transition-none", side.muted, userOpen && "rotate-180")} /></>}
           </button>
+          {!sidebarCollapsed && <button type="button" role="switch" aria-checked={theme === "dark"} onClick={toggleTheme}
+            className={cn("mt-1 flex min-h-10 w-full items-center gap-2.5 rounded-[14px] px-2.5 text-[12.5px] font-medium transition-colors duration-200", side.muted, side.rowHover, side.focus)}
+            aria-label={`Use ${theme === "light" ? "dark" : "light"} workspace theme`}>
+            {theme === "light" ? <Moon className="h-4 w-4" aria-hidden="true" /> : <Sun className="h-4 w-4" aria-hidden="true" />}
+            <span className="flex-1 text-left">Dark mode</span>
+            <span aria-hidden="true" className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors duration-200", theme === "dark" ? "bg-[#A99FFF]" : "bg-[#D6D3CC]")}>
+              <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-[left] duration-200 motion-reduce:transition-none", theme === "dark" ? "left-[18px]" : "left-0.5")} />
+            </span>
+          </button>}
         </div>
-        {!sidebarCollapsed && <button type="button" role="switch" aria-checked={theme === "dark"} onClick={toggleTheme} className={cn("mt-1 flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-xs text-[#aeb5c2] hover:bg-white/[0.07] hover:text-white", shell.focus)} aria-label={`Use ${theme === "light" ? "dark" : "light"} workspace theme`}>
-          {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}Use {theme === "light" ? "dark" : "light"} workspace theme
-        </button>}
       </div>
     </aside>
   </>;
 }
 
 function AccountAction({ icon: Icon, label, onClick }: { icon: React.ElementType; label: string; onClick: () => void }) {
-  return <button type="button" role="menuitem" onClick={onClick} className={cn("flex min-h-10 w-full items-center gap-2.5 px-3 text-left text-xs text-[#c6ccd8] hover:bg-white/[0.07] hover:text-white", shell.focus)}><Icon className="h-4 w-4" />{label}</button>;
+  return <button type="button" role="menuitem" onClick={onClick} className={cn("flex min-h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[13px] font-medium transition-colors duration-150", side.text, side.rowHover, side.focus)}><Icon className={cn("h-4 w-4", side.muted)} aria-hidden="true" />{label}</button>;
 }
