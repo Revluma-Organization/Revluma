@@ -119,7 +119,7 @@ describe("evidence ledger", () => {
     expect(within(ledger).getByText("Recorded order value")).toBeInTheDocument();
     expect(within(ledger).getByText("USD 1,250.00")).toBeInTheDocument();
     expect(within(ledger).getByText(/Shopify orders/)).toBeInTheDocument();
-    expect(within(ledger).getByText(/01 Oct 2026 → 31 Oct 2026/)).toBeInTheDocument();
+    expect(within(ledger).getByText(/01 Oct 2026 - 31 Oct 2026/)).toBeInTheDocument();
   });
 
   it("badges a record Verified only with clean validation, form and value", () => {
@@ -259,7 +259,7 @@ describe("next-step guidance", () => {
     const next = screen.getByRole("region", { name: "Next steps" });
     expect(within(next).getByText("Review refunds")).toBeInTheDocument();
     expect(within(next).getByText(/Refunds rose\. Measure: Refund rate/)).toBeInTheDocument();
-    expect(within(next).getByText(/nothing was changed or sent/)).toBeInTheDocument();
+    expect(within(next).getByText(/Nothing was changed or sent/)).toBeInTheDocument();
     // No executing control: the section holds no button that is not a follow-up question.
     expect(within(next).queryByRole("button")).not.toBeInTheDocument();
   });
@@ -336,5 +336,42 @@ describe("warnings and degraded states", () => {
     fireEvent.click(summary);
     expect(details.open).toBe(true);
     expect(screen.getByText(/Reviewing recorded revenue — completed/)).toBeInTheDocument();
+  });
+});
+
+describe("answer tail", () => {
+  it("opens the evidence drawer from the ledger heading and never repeats Evidence (N)", () => {
+    const onOpen = vi.fn();
+    render(<RevInvestigationView payload={payload()} evidenceOpen={false} onOpenEvidence={onOpen} />);
+    expect(screen.queryByRole("button", { name: /Evidence \(/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Evidence \(1\)/)).toHaveLength(1);
+    const ledger = screen.getByRole("region", { name: "Evidence" });
+    const open = within(ledger).getByRole("button", { name: "Open evidence panel" });
+    expect(open).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(open);
+    expect(onOpen).toHaveBeenCalledOnce();
+  });
+
+  it("groups provenance and method into one footer", () => {
+    render(<RevInvestigationView payload={payload({
+      investigation: investigation({ steps: [{ id: "s1", tool: "revenue_observations", label: "Reviewing recorded revenue", status: "completed" }] }),
+    })} onOpenEvidence={() => {}} />);
+    const footer = screen.getByRole("contentinfo", { name: "About this answer" });
+    expect(within(footer).getByText(/Based on recorded store data for 01 Oct 2026 - 31 Oct 2026/)).toBeInTheDocument();
+    expect(within(footer).getByText("How I checked")).toBeInTheDocument();
+  });
+
+  it("keeps the footer evidence button when the ledger has no drawer to open", () => {
+    render(<RevInvestigationView payload={payload()} />);
+    expect(screen.getByRole("button", { name: /Evidence \(1\)/ })).toBeDisabled();
+  });
+
+  it("writes recommendation guardrails without an em dash", () => {
+    render(<RevInvestigationView payload={payload({
+      recommendations: [{ label: "Review refunds", why: "Refunds rose.", measure: "Refund rate", executed: false }],
+    })} />);
+    const line = screen.getByText(/Recommendations only/);
+    expect(line).toHaveTextContent("Recommendations only. Nothing was changed or sent.");
+    expect(line.textContent).not.toContain("\u2014");
   });
 });

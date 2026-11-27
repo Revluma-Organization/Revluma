@@ -1,6 +1,6 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  ArrowUpRight, Calculator, Check, Database, FlaskConical, HelpCircle, TriangleAlert,
+  ArrowUpRight, Calculator, Check, ChevronRight, Database, FlaskConical, HelpCircle, TriangleAlert,
 } from "lucide-react";
 import RevMarkdown from "@/components/rev/RevMarkdown";
 import { CitationChip } from "@/components/rev/CitationChip";
@@ -73,8 +73,8 @@ function Badge({ fg, bg, label }: { fg: string; bg: string; label: string }) {
   );
 }
 
-function SectionHeading({ icon, title, count, muted }: {
-  icon: ReactNode; title: string; count?: number; muted: string;
+function SectionHeading({ icon, title, count, muted, action }: {
+  icon: ReactNode; title: string; count?: number; muted: string; action?: ReactNode;
 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -82,6 +82,7 @@ function SectionHeading({ icon, title, count, muted }: {
       <h3 style={{ margin: 0, fontSize: "0.68rem", fontWeight: 750, color: muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>
         {title}{typeof count === "number" ? ` (${count})` : ""}
       </h3>
+      {action ? <div style={{ marginLeft: "auto" }}>{action}</div> : null}
     </div>
   );
 }
@@ -309,6 +310,12 @@ export function RevInvestigationView({
   const hasNextSteps = recommendations.length > 0 || (followUps.length > 0 && !streaming);
   const empty = !hasSummary && !facts.length && !comparisonFacts.length && !hypotheses.length && !unknowns.length && !recommendations.length;
 
+  const ledgerShown = !quiet && evidenceItems.length > 0;
+  const showProvenance = quiet ? monetary : Boolean(investigation?.period?.start || monetary);
+  const showSources = citedEvidenceIds.length > 0 && (!quiet || monetary);
+  const showHowChecked = !quiet && (steps.length > 0 || evidenceItems.length > 0);
+  const showEvidenceButton = (!quiet || monetary) && !(ledgerShown && onOpenEvidence);
+
   const renderCitedEntry = (entry: { text: string; ids: string[] }) => (
     <>
       {entry.text}
@@ -401,7 +408,23 @@ export function RevInvestigationView({
           derived change) lives with the comparison facts below. */}
       {!quiet && !streaming && evidenceItems.length > 0 && (
         <section aria-label="Evidence" className="flex flex-col gap-2">
-          <SectionHeading icon={<Database size={13} color={muted} aria-hidden="true" />} title="Evidence" count={evidenceCount} muted={muted} />
+          <SectionHeading icon={<Database size={13} color={muted} aria-hidden="true" />} title="Evidence" count={evidenceCount} muted={muted}
+            action={onOpenEvidence ? (
+              <button
+                type="button"
+                onClick={() => onOpenEvidence()}
+                aria-expanded={evidenceOpen}
+                aria-label="Open evidence panel"
+                className="inline-flex min-h-9 items-center gap-1 rounded-md px-1.5 focus-visible:outline-2 focus-visible:outline-offset-2"
+                style={{
+                  fontSize: "0.72rem", fontWeight: 600, background: "transparent", border: "none", cursor: "pointer",
+                  color: dark ? "#b4a8ff" : "#1F06AC",
+                }}
+              >
+                View all
+                <ArrowUpRight size={12} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+            ) : undefined} />
           {currentItems.map((item, index) => (
             <EvidenceLedgerRow key={textValue(item?.id) || `current-${index}`} item={item} comparison={false}
               validated={validated} dark={dark} strong={strong} muted={muted} border={border}
@@ -479,7 +502,7 @@ export function RevInvestigationView({
       {!quiet && hasNextSteps && (
         <section aria-label="Next steps" className="flex flex-col gap-2" style={{ borderTop: `1px solid ${border}`, paddingTop: 12 }}>
           <SectionHeading icon={<Calculator size={13} color={muted} aria-hidden="true" />} title="Next steps" muted={muted} />
-          {recommendations.length > 0 && <p className="text-xs" style={{ color: muted, margin: 0 }}>Recommendations only — nothing was changed or sent.</p>}
+          {recommendations.length > 0 && <p className="text-xs" style={{ color: muted, margin: 0 }}>Recommendations only. Nothing was changed or sent.</p>}
           {recommendations.map((recommendation, index) => (
             <div key={index} className="flex gap-2">
               <Check size={13} color="#1F06AC" style={{ marginTop: 3, flexShrink: 0 }} aria-hidden="true" />
@@ -519,84 +542,6 @@ export function RevInvestigationView({
         </section>
       )}
 
-      {!streaming && (quiet ? monetary : Boolean(investigation?.period?.start || monetary)) && (
-        <p style={{ margin: 0, fontSize: "0.7rem", color: muted }}>
-          Based on recorded store data
-          {investigation?.period?.start ? ` for ${formatPeriod(investigation.period)}` : ""}
-          {monetary && currencies.length > 0 ? ` · ${currencies.join(", ")}` : ""}.
-        </p>
-      )}
-
-      {citedEvidenceIds.length > 0 && !streaming && (!quiet || monetary) && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1" aria-label="Evidence cited in this answer">
-          <span style={{ fontSize: "0.68rem", color: muted, fontWeight: 650 }}>Sources:</span>
-          {citedEvidenceIds.map((id) => {
-            const item = evidenceById.get(id);
-            if (!item) return null;
-            return (
-              <CitationChip
-                key={id}
-                number={citedEvidenceIds.indexOf(id) + 1}
-                item={item}
-                tone={dark ? "dark" : "light"}
-                variant="source"
-                onOpen={onOpenEvidence}
-              />
-            );
-          })}
-        </div>
-      )}
-
-      {!streaming && !quiet && (steps.length > 0 || evidenceItems.length > 0) && (
-        <details style={{ border: `1px solid ${border}`, borderRadius: 10 }}>
-          <summary style={{
-            cursor: "pointer", padding: "8px 11px", listStyle: "none",
-            display: "flex", alignItems: "center", gap: 6,
-            fontSize: "0.74rem", fontWeight: 650, color: muted,
-          }}>
-            <Database size={13} aria-hidden="true" />
-            How I checked
-          </summary>
-          <div style={{ padding: "2px 11px 10px", display: "flex", flexDirection: "column", gap: 9 }}>
-            {steps.length > 0 && (
-              <div>
-                <p style={{ ...DISCLOSURE_HEADING, color: muted }}>Checks that ran</p>
-                <ul style={{ margin: 0, paddingLeft: 16 }}>
-                  {steps.map((step, index) => (
-                    <li key={textValue(step?.id) || index} style={{ ...DISCLOSURE_LINE, color: muted }}>
-                      {textValue(step?.label) || textValue(step?.tool) || "Unnamed check"} — {stepStatusWord(step?.status)}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <div>
-              <p style={{ ...DISCLOSURE_HEADING, color: muted }}>Period and currency</p>
-              <p style={{ ...DISCLOSURE_LINE, color: muted }}>
-                {investigation?.period?.start ? formatPeriod(investigation.period) : "Period unavailable"}
-                {" · "}
-                {currencies.length > 0 ? currencies.join(", ") : "Currency unavailable"}
-              </p>
-              {investigation?.period?.compared_to?.start && (
-                <p style={{ ...DISCLOSURE_LINE, color: muted, marginTop: 2 }}>
-                  Compared with {formatPeriod(investigation.period.compared_to)}
-                  {textValue(investigation.period.compared_to.label) ? ` — ${investigation.period.compared_to.label}` : ""}
-                </p>
-              )}
-            </div>
-            {coverageDisclosureData && (
-              <div>
-                <p style={{ ...DISCLOSURE_HEADING, color: muted }}>Coverage and data state</p>
-                <p style={{ ...DISCLOSURE_LINE, color: muted }}>{coverageDisclosureData.summary}</p>
-                {coverageDisclosureData.limits.map(limit => (
-                  <p key={limit} style={{ ...DISCLOSURE_LINE, color: muted, marginTop: 2 }}>{limit}</p>
-                ))}
-              </div>
-            )}
-          </div>
-        </details>
-      )}
-
       {!quiet && partialSpecialists.length > 0 && (
         <div style={{
           display: "flex", gap: 8, alignItems: "flex-start",
@@ -625,28 +570,114 @@ export function RevInvestigationView({
         </ul>
       )}
 
-      {!streaming && (
-        <div className="flex flex-wrap items-center gap-3" style={{ paddingTop: 2 }}>
-          {(!quiet || monetary) && (
-          <button
-            type="button"
-            onClick={() => onOpenEvidence?.()}
-            disabled={!hasEvidence || !onOpenEvidence}
-            aria-expanded={evidenceOpen}
-            className="inline-flex min-h-11 items-center gap-1.5"
-            style={{
-              fontSize: "0.74rem", fontWeight: 600,
-              color: evidenceOpen ? (dark ? "#b4a8ff" : "#1F06AC") : muted,
-              background: "transparent", border: "none",
-              cursor: hasEvidence ? "pointer" : "not-allowed", padding: 0,
-              opacity: hasEvidence ? 1 : 0.5,
-            }}
-          >
-            <Database size={13} aria-hidden="true" />
-            {evidenceCount ? `Evidence (${evidenceCount})` : hasEvidence ? "Evidence and limitations" : "No evidence records"}
-          </button>
+      {/* Answer footer: provenance, cited sources, method and (only when the
+          ledger above is not shown) the evidence drawer, grouped in one quiet
+          block so the end of an answer stays light. The ledger heading owns
+          the drawer opener otherwise, so "Evidence (N)" never appears twice. */}
+      {!streaming && (showProvenance || showSources || showHowChecked || showEvidenceButton) && (
+        <footer className="flex flex-col gap-1" aria-label="About this answer">
+          {(showProvenance || showSources) && (
+            <div className="flex flex-col gap-1">
+              {showProvenance && (
+                <p style={{ margin: 0, fontSize: "0.7rem", color: muted }}>
+                  Based on recorded store data
+                  {investigation?.period?.start ? ` for ${formatPeriod(investigation.period)}` : ""}
+                  {monetary && currencies.length > 0 ? ` · ${currencies.join(", ")}` : ""}.
+                </p>
+              )}
+              {showSources && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1" aria-label="Evidence cited in this answer">
+                  <span style={{ fontSize: "0.68rem", color: muted, fontWeight: 650 }}>Sources:</span>
+                  {citedEvidenceIds.map((id) => {
+                    const item = evidenceById.get(id);
+                    if (!item) return null;
+                    return (
+                      <CitationChip
+                        key={id}
+                        number={citedEvidenceIds.indexOf(id) + 1}
+                        item={item}
+                        tone={dark ? "dark" : "light"}
+                        variant="source"
+                        onOpen={onOpenEvidence}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
-        </div>
+          {(showHowChecked || showEvidenceButton) && (
+            <div className="flex flex-wrap items-start gap-x-5">
+              {showEvidenceButton && (
+                <button
+                  type="button"
+                  onClick={() => onOpenEvidence?.()}
+                  disabled={!hasEvidence || !onOpenEvidence}
+                  aria-expanded={evidenceOpen}
+                  className="inline-flex min-h-11 items-center gap-1.5"
+                  style={{
+                    fontSize: "0.74rem", fontWeight: 600,
+                    color: evidenceOpen ? (dark ? "#b4a8ff" : "#1F06AC") : muted,
+                    background: "transparent", border: "none",
+                    cursor: hasEvidence ? "pointer" : "not-allowed", padding: 0,
+                    opacity: hasEvidence ? 1 : 0.5,
+                  }}
+                >
+                  <Database size={13} aria-hidden="true" />
+                  {evidenceCount ? `Evidence (${evidenceCount})` : hasEvidence ? "Evidence and limitations" : "No evidence records"}
+                </button>
+              )}
+              {showHowChecked && (
+                <details className="group min-w-0 [&[open]]:basis-full">
+                  <summary className="inline-flex min-h-9 items-center gap-1.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2" style={{
+                    cursor: "pointer", listStyle: "none",
+                    fontSize: "0.72rem", fontWeight: 600, color: muted,
+                  }}>
+                    <ChevronRight size={13} className="transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true" />
+                    How I checked
+                  </summary>
+                  <div style={{ padding: "2px 0 6px 19px", display: "flex", flexDirection: "column", gap: 9 }}>
+                    {steps.length > 0 && (
+                      <div>
+                        <p style={{ ...DISCLOSURE_HEADING, color: muted }}>Checks that ran</p>
+                        <ul style={{ margin: 0, paddingLeft: 16 }}>
+                          {steps.map((step, index) => (
+                            <li key={textValue(step?.id) || index} style={{ ...DISCLOSURE_LINE, color: muted }}>
+                              {textValue(step?.label) || textValue(step?.tool) || "Unnamed check"} — {stepStatusWord(step?.status)}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <div>
+                      <p style={{ ...DISCLOSURE_HEADING, color: muted }}>Period and currency</p>
+                      <p style={{ ...DISCLOSURE_LINE, color: muted }}>
+                        {investigation?.period?.start ? formatPeriod(investigation.period) : "Period unavailable"}
+                        {" · "}
+                        {currencies.length > 0 ? currencies.join(", ") : "Currency unavailable"}
+                      </p>
+                      {investigation?.period?.compared_to?.start && (
+                        <p style={{ ...DISCLOSURE_LINE, color: muted, marginTop: 2 }}>
+                          Compared with {formatPeriod(investigation.period.compared_to)}
+                          {textValue(investigation.period.compared_to.label) ? ` — ${investigation.period.compared_to.label}` : ""}
+                        </p>
+                      )}
+                    </div>
+                    {coverageDisclosureData && (
+                      <div>
+                        <p style={{ ...DISCLOSURE_HEADING, color: muted }}>Coverage and data state</p>
+                        <p style={{ ...DISCLOSURE_LINE, color: muted }}>{coverageDisclosureData.summary}</p>
+                        {coverageDisclosureData.limits.map(limit => (
+                          <p key={limit} style={{ ...DISCLOSURE_LINE, color: muted, marginTop: 2 }}>{limit}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
+        </footer>
       )}
     </article>
   );

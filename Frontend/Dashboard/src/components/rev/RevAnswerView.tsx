@@ -408,7 +408,7 @@ export function RevAnswerView({
           <p style={{ margin: 0, fontSize: "0.68rem", fontWeight: 750, color: muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>
             Recommended next steps
           </p>
-          <p className="text-xs" style={{ color: muted }}>Recommendations only — nothing was changed or sent.</p>
+          <p className="text-xs" style={{ color: muted }}>Recommendations only. Nothing was changed or sent.</p>
           {recommendations.map((recommendation, index) => (
             <div key={index} className="flex gap-2">
               <Check size={13} color="#1F06AC" style={{ marginTop: 3, flexShrink: 0 }} />

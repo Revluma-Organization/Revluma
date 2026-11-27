@@ -262,9 +262,9 @@ export function formatPeriod(period?: EvidencePeriod): string {
   const start = humanDate(period?.start);
   const end = humanDate(period?.end);
   if (start && end) {
-    return `${start} → ${end}${timezone ? ` (${timezone})` : " (timezone not supplied)"}`;
+    return `${start} - ${end}${timezone ? ` (${timezone})` : " (timezone not supplied)"}`;
   }
-  const bounds = `${formatTimestamp(period?.start)} → ${formatTimestamp(period?.end)}`;
+  const bounds = `${formatTimestamp(period?.start)} - ${formatTimestamp(period?.end)}`;
   if (timezone) return `${bounds} (${timezone})`;
   return bounds.includes("timezone not supplied") ? bounds : `${bounds} (timezone not supplied)`;
 }
