@@ -553,3 +553,8 @@
 .dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-\[\#8490A3\],
 .dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-\[\#8490A3\] { border-color: rgb(var(--rv-line-strong)); }
 .dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .hover\:bg-\[\#F5F7FA\]:hover { background-color: rgb(var(--rv-line-soft)); }
+
+/* Rev voice input: recording dot (RevDictationBar). */
+@keyframes rvRecPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.8); } }
+.rv-rec-dot { animation: rvRecPulse 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .rv-rec-dot { animation: none; } }
