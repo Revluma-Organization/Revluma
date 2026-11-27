@@ -2347,43 +2347,50 @@ describe('Phase 5E evidence-first workspace', () => {
     expect(screen.queryByTestId('rev-history-rail')).not.toBeInTheDocument();
   });
 
-  it('shows the persistent rail instead of the drawer toggle on wide viewports', async () => {
+  it('uses the same top-right drawer on wide viewports, with no side rail', async () => {
     mockViewport(true);
     renderPage();
-    const rail = screen.getByTestId('rev-history-rail');
-    expect(rail).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Open conversation history' })).not.toBeInTheDocument();
-    expect(await within(rail).findByRole('button', { name: title('A') })).toBeInTheDocument();
-    expect(within(rail).queryByRole('button', { name: 'Close conversation history' })).not.toBeInTheDocument();
+    await historyReady();
+    expect(screen.queryByTestId('rev-history-rail')).not.toBeInTheDocument();
+    expect(screen.queryByRole('complementary', { name: 'Conversation history' })).not.toBeInTheDocument();
+    expect(historyDialog()).not.toBeInTheDocument();
+    const toggle = screen.getByRole('button', { name: 'Open conversation history' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
+    const drawer = await screen.findByRole('dialog', { name: 'Conversation history' });
+    expect(await within(drawer).findByRole('button', { name: title('A') })).toBeInTheDocument();
   });
 
-  it('selects a conversation from the rail', async () => {
+  it('selects a conversation from the drawer on wide viewports', async () => {
     mockViewport(true);
     renderPage();
-    const rail = screen.getByTestId('rev-history-rail');
-    await within(rail).findByRole('button', { name: title('B') });
-    fireEvent.click(within(rail).getByRole('button', { name: title('B') }));
+    await historyReady();
+    openHistory();
+    const drawer = await screen.findByRole('dialog', { name: 'Conversation history' });
+    fireEvent.click(await within(drawer).findByRole('button', { name: title('B') }));
     await waitFor(() => expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/B'));
     expect(await screen.findByText('Message from B')).toBeInTheDocument();
   });
 
-  it('searches history from the rail', async () => {
+  it('searches history from the drawer on wide viewports', async () => {
     mockViewport(true);
     renderPage();
-    const rail = screen.getByTestId('rev-history-rail');
-    await within(rail).findByRole('button', { name: title('A') });
-    fireEvent.change(within(rail).getByRole('textbox', { name: 'Search conversations' }), { target: { value: 'refund' } });
+    await historyReady();
+    openHistory();
+    const drawer = await screen.findByRole('dialog', { name: 'Conversation history' });
+    await within(drawer).findByRole('button', { name: title('A') });
+    fireEvent.change(within(drawer).getByRole('textbox', { name: 'Search conversations' }), { target: { value: 'refund' } });
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations?q=refund'));
   });
 
-  it('closes the drawer when the viewport widens to the rail', async () => {
+  it('keeps the drawer open when the viewport widens', async () => {
     renderPage();
     await historyReady();
     openHistory();
     await screen.findByRole('dialog', { name: 'Conversation history' });
     await act(async () => setWide(true));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Conversation history' })).not.toBeInTheDocument());
-    expect(screen.getByTestId('rev-history-rail')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Conversation history' })).toBeInTheDocument();
+    expect(screen.queryByTestId('rev-history-rail')).not.toBeInTheDocument();
   });
 });
 

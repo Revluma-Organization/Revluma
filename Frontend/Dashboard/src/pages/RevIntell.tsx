@@ -30,7 +30,6 @@ import {
   ThumbsUp, ThumbsDown, Volume2, CheckCircle2, ArrowLeft,
 } from "lucide-react";
 import { revConversationRoute, safeWorkspaceRoute } from "@/lib/workspaceNavigation";
-import { useMediaQuery } from "@/lib/useMediaQuery";
 import { formatSourceLabel, getSeverityMeta } from "@/components/command-center/findingDisplay";
 import { explainWorkspaceError, isKnownWorkspaceCode, merchantMessage } from "@/lib/workspaceCommunication";
 import { workspaceDesign } from "@/lib/workspaceDesign";
@@ -957,9 +956,8 @@ export default function RevIntell() {
   const [searchParams] = useSearchParams();
   const findingId = searchParams.get("finding");
   const returnHint = searchParams.get("return_to");
-  // Phase 5E: the history rail is persistent at desktop widths; below 1024px
-  // the modal drawer (unchanged) remains the single history surface.
-  const wide = useMediaQuery("(min-width: 1024px)");
+  // Conversation history is the top-right drawer at every width; there is no
+  // persistent side rail.
 
   const [conversations,  setConversations]  = useState<Conversation[]>([]);
   const [activeId,       setActiveId]       = useState<string | null>(urlConvId || null);
@@ -1120,10 +1118,6 @@ export default function RevIntell() {
   useEffect(() => {
     if (!messagesPagePending.current && pinnedRef.current) bottomRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
   }, [messages, thinking, reducedMotion]);
-
-  useEffect(() => {
-    if (wide) setMenuOpen(false);
-  }, [wide]);
 
   // ── Load store context ────────────────────────────────────────────────────
   // The registered backend route is /stores (plural). A failed request is
@@ -2219,42 +2213,20 @@ export default function RevIntell() {
     <div className="rev-workspace relative flex overflow-hidden"
       style={{ height: "calc(100dvh - var(--topbar-h, 64px))", margin: "-20px -20px 0", background: bg }}>
 
-      {/* Phase 5E: persistent history rail at desktop widths. The same
-          conversation list as the narrow-viewport drawer (same selection,
-          search, rename, delete and paging behaviour) on the always-dark
-          sidebar surface; no close button because it is not a modal. */}
-      {wide && (
-        <aside aria-label="Conversation history" data-testid="rev-history-rail"
-          className="h-full w-72 shrink-0 border-r"
-          style={{ background: workspaceDesign.color.sidebar, borderColor: "rgba(255,255,255,0.08)" }}>
-          <ConversationHistoryList
-            conversations={conversations} activeId={activeId}
-            loading={historyLoading} error={historyError}
-            onRetry={() => void loadConversations()}
-            query={searchQuery} onQuery={changeSearch}
-            onNew={newChat} onSelect={openConversation}
-            onRename={(id, trigger) => { dialogReturnRef.current = trigger; renameConv(id); }}
-            onDelete={(id, trigger) => { dialogReturnRef.current = trigger; setDeleteConfirmId(id); }}
-            pagination={<LoadMore available={historyMore} loading={historyMoreLoading} error={historyMoreError} onLoad={() => void loadConversations(undefined, true)} label="Load more conversations" />}
-            isDark t1="#f1f5f9" t2="#94a3b8" border="rgba(255,255,255,0.08)" />
-        </aside>
-      )}
-
       <div className="flex flex-col flex-1 min-w-0 h-full">
 
-      {/* History toggle — narrow viewports only. At desktop widths the
-          persistent rail is the history surface and this button is absent, so
-          one history never has two competing controls. */}
-      {!wide && (
-        <div className="absolute top-4 right-4 z-30">
-          <button onClick={() => setMenuOpen(v => !v)}
-            aria-label={menuOpen ? "Close conversation history" : "Open conversation history"} aria-expanded={menuOpen}
-            className="flex items-center justify-center w-9 h-9 rounded-xl transition-all hover:opacity-80"
-            style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: t2 }}>
-            {menuOpen ? <X size={18} /> : <Menu size={18} />}
-          </button>
-        </div>
-      )}
+      {/* History toggle, top right at every width. Conversation history lives
+          only in the drawer this opens (no persistent side rail), so the
+          workspace keeps its full width and one history has one control. */}
+      <div className="absolute top-4 right-4 z-30">
+        <button onClick={() => setMenuOpen(v => !v)}
+          aria-label={menuOpen ? "Close conversation history" : "Open conversation history"} aria-expanded={menuOpen}
+          title="Conversation history"
+          className="flex items-center justify-center w-9 h-9 rounded-xl transition-all hover:opacity-80"
+          style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: t2 }}>
+          {menuOpen ? <X size={18} /> : <Menu size={18} />}
+        </button>
+      </div>
 
       <InvestigationHeader
         backHref={backHref}
@@ -2268,7 +2240,7 @@ export default function RevIntell() {
         onNewChat={newChat}
         onRetryFinding={() => void loadFinding(findingId ?? findingContext?.id ?? "")}
         isDark={isDark} card={card} border={bdr} t1={t1} t2={t2}
-        menuVisible={!wide}
+        menuVisible
       />
         {findingRetryDraft && <div role="status" aria-label="Question recovery" className="max-h-[25dvh] shrink-0 overflow-y-auto px-4 py-2 text-xs" style={{ color: t1 }}>
           <p>{findingRetryDraft.recoverInPlace
@@ -2672,12 +2644,10 @@ export default function RevIntell() {
       )}
 
       </div>
-      {/* The single history drawer, for touch and narrow viewports.
-          It must be a Radix ModalSurface, not a bare positioned div: the dialog
-          primitive is what aria-hides the workspace behind it. Without that the
-          desktop rail stays reachable while the drawer is open, and a merchant
-          offered a failing history sees two independent retry controls for the
-          same request. Escape and focus restoration come from the same layer,
+      {/* The single history drawer, at every viewport width, opened from the
+          top-right toggle. It must be a Radix ModalSurface, not a bare
+          positioned div: the dialog primitive is what aria-hides the workspace
+          behind it, so nothing behind the drawer stays reachable while open. Escape and focus restoration come from the same layer,
           which is what lets a rename/delete dialog open on top of the drawer and
           return focus to the row that launched it. */}
       {createPortal(
