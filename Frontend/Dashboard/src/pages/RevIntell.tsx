@@ -23,7 +23,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { createPortal } from "react-dom";
 import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Send, Plus, Menu, X, Copy,
+  Plus, Menu, X, Copy, Check, ArrowUp,
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
   Zap, RefreshCw, Mic, Phone, Pencil,
   Trash2, ImageIcon, AlertCircle, RefreshCcw, Square, Search,
@@ -99,6 +99,15 @@ interface Message {
   feedback?:   "up" | "down" | null;
   /** Persisted sequence number when known — the older-history paging cursor. */
   sequence?:   number;
+  /** Client clock when this live turn started (never set on rehydrated turns). */
+  startedAt?:  number;
+  /** Measured wall time from send to final answer, live turns only ("Worked for Ns"). */
+  durationMs?: number;
+}
+
+/** Elapsed ms since a live turn started; undefined when the start is unknown. */
+function elapsedSince(startedAt?: number): number | undefined {
+  return typeof startedAt === "number" ? Math.max(0, Date.now() - startedAt) : undefined;
 }
 
 interface Conversation {
@@ -386,8 +395,38 @@ function answerCopyText(message: Message): string {
   return blocks.join("\n\n");
 }
 
-function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evidenceOpen, actionsDisabled, onFeedback, speechSupported, speaking, onReadAloud, isDark, t1, t2 }: {
+function formatWorkDuration(ms: number): string {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+}
+
+/**
+ * One icon button in the answer action dock (ChatGPT-UI study §5). Icon-only
+ * with an accessible name and a native tooltip; 36px on fine pointers and the
+ * 44px touch floor on coarse ones (see the workspace style block).
+ */
+function DockButton({ label, onClick, disabled, active, pressed, isDark, t1, t2, children }: {
+  label: string; onClick: () => void; disabled?: boolean; active?: boolean; pressed?: boolean;
+  isDark: boolean; t1: string; t2: string; children: React.ReactNode;
+}) {
+  const accent = isDark ? "#b4a8ff" : "#1F06AC";
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} aria-label={label} title={label}
+      aria-pressed={pressed}
+      className="rev-dock-btn flex items-center justify-center rounded-lg transition-colors disabled:opacity-40"
+      style={{ color: active ? accent : t2, background: "transparent", fontFamily: "inherit" }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.color = t1; e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.06)" : "rgba(16,24,40,0.05)"; }}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.color = t2; e.currentTarget.style.background = "transparent"; }}>
+      {children}
+    </button>
+  );
+}
+
+function Bubble({ msg, latest = false, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evidenceOpen, actionsDisabled, onFeedback, speechSupported, speaking, onReadAloud, isDark, t1, t2 }: {
   msg: Message; onCopy: (t: string) => void;
+  /** The newest Rev turn keeps its dock visible; older ones reveal on hover/focus (fine pointers only). */
+  latest?: boolean;
   onRetry: () => void; onSend?: (text: string) => void;
   retryLabel?: string;
   actionsDisabled?: boolean;
@@ -398,21 +437,46 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
   isDark: boolean; t1: string; t2: string;
 }) {
   const isRev = msg.role === "rev";
+  const [copiedHere, setCopiedHere] = useState(false);
+  const copyTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (copyTimer.current !== null) window.clearTimeout(copyTimer.current); }, []);
 
+  // User turn: a tonal bubble, right-aligned (ChatGPT-UI study §3). Tone, not
+  // a saturated gradient, so the answer stays the visual focus.
   if (!isRev) return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-      className="flex justify-end mb-5">
-      <div className="max-w-[85%] sm:max-w-[72%] px-4 py-3 rounded-2xl rounded-tr-md text-[0.9rem] leading-relaxed text-white whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
-        style={{ background: "linear-gradient(135deg,#1F06AC,#17057F)" }}>
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
+      className="rev-turn rev-turn-user flex justify-end mb-6">
+      <div data-rev-user-message className="max-w-[85%] sm:max-w-[70%] px-4 py-2.5 rounded-3xl text-[0.94rem] leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+        style={{ background: isDark ? "rgba(255,255,255,0.08)" : "#ECE9FB", color: t1 }}>
         {typeof msg.content === "string" ? msg.content : ""}
       </div>
     </motion.div>
   );
 
+  const stepCount = recordList<InvestigationStep>(msg.payload?.investigation?.steps ?? msg.steps).length;
+  const copyAnswer = () => {
+    onCopy(answerCopyText(msg));
+    setCopiedHere(true);
+    if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopiedHere(false), 2000);
+  };
+
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-      className="flex gap-3 mb-7 group">
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      data-latest={latest ? "true" : "false"}
+      className="rev-turn rev-turn-rev flex gap-3 mb-8 group">
       <div className="flex-1 min-w-0">
+        {/* "Thought for Ns", honestly: measured on this device from send to
+            final answer, shown only for live turns that ran checks. */}
+        {!msg.isStreaming && !msg.hasError && !msg.cancelled && typeof msg.durationMs === "number" && stepCount > 0 && (
+          <p className="mb-2 flex items-center gap-1.5 text-[0.74rem]" style={{ color: t2 }} data-testid="rev-work-summary">
+            <CheckCircle2 size={13} aria-hidden="true" />
+            Worked for {formatWorkDuration(msg.durationMs)} · {stepCount} {stepCount === 1 ? "check" : "checks"}
+          </p>
+        )}
+
         {msg.isStreaming && <RevOrbLoader accessibleLabel="Rev is preparing a response" />}
 
         {msg.isStreaming && !msg.payload && msg.steps && msg.steps.length > 0 && (
@@ -494,30 +558,15 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
         )}
 
         {!msg.isStreaming && !msg.hasError && !msg.cancelled && (
-          <div className="flex flex-wrap items-center gap-0.5 mt-3 opacity-100 transition-opacity">
-            {[
-              { icon: Copy,       label: "Copy",  fn: () => onCopy(answerCopyText(msg)) },
-            ].map(({ icon: Icon, label, fn }) => (
-              <button key={label} onClick={fn} disabled={fn === onRetry && actionsDisabled}
-                className="flex min-h-11 items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] transition-colors disabled:opacity-50"
-                style={{ color: t2, fontFamily: "inherit" }}
-                onMouseEnter={e => (e.currentTarget.style.color = t1)}
-                onMouseLeave={e => (e.currentTarget.style.color = t2)}>
-                <Icon size={11} />{label}
-              </button>
-            ))}
+          <div className="rev-dock flex flex-wrap items-center gap-0.5 mt-2 -ml-2" role="group" aria-label="Answer actions">
+            <DockButton label="Copy" onClick={copyAnswer} isDark={isDark} t1={t1} t2={t2} active={copiedHere}>
+              {copiedHere ? <Check size={15} /> : <Copy size={15} />}
+            </DockButton>
             {isRev && speechSupported && (
-              <button
-                onClick={() => onReadAloud(msg)}
-                aria-label={speaking ? "Stop reading aloud" : "Read aloud"}
-                title={speaking ? "Stop reading aloud" : "Read aloud"}
-                className="flex min-h-11 items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] transition-colors"
-                style={{ color: speaking ? (isDark ? "#b4a8ff" : "#1F06AC") : t2, fontFamily: "inherit" }}
-                onMouseEnter={e => (e.currentTarget.style.color = t1)}
-                onMouseLeave={e => (e.currentTarget.style.color = speaking ? (isDark ? "#b4a8ff" : "#1F06AC") : t2)}>
-                {speaking ? <Square size={10} /> : <Volume2 size={11} />}
-                {speaking ? "Stop" : "Read aloud"}
-              </button>
+              <DockButton label={speaking ? "Stop reading aloud" : "Read aloud"} onClick={() => onReadAloud(msg)}
+                active={speaking} isDark={isDark} t1={t1} t2={t2}>
+                {speaking ? <Square size={13} /> : <Volume2 size={15} />}
+              </DockButton>
             )}
             {isRev && msg.payload?.message_id && ([
               { rating: "up" as const, icon: ThumbsUp, label: "Helpful" },
@@ -525,32 +574,15 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
             ].map(({ rating, icon: Icon, label }) => {
               const active = msg.feedback === rating;
               return (
-                <button
-                  key={rating}
-                  onClick={() => onFeedback(msg, rating)}
-                  disabled={actionsDisabled}
-                  aria-label={label}
-                  aria-pressed={active}
-                  title={label}
-                  className="flex min-h-11 items-center px-2 py-1 rounded-md text-[0.7rem] transition-colors disabled:opacity-50"
-                  style={{ color: active ? (isDark ? "#b4a8ff" : "#1F06AC") : t2 }}
-                  onMouseEnter={e => { if (!active) e.currentTarget.style.color = t1; }}
-                  onMouseLeave={e => { if (!active) e.currentTarget.style.color = t2; }}>
-                  <Icon size={11} fill={active ? "currentColor" : "none"} />
-                </button>
+                <DockButton key={rating} label={label} onClick={() => onFeedback(msg, rating)}
+                  disabled={actionsDisabled} active={active} pressed={active} isDark={isDark} t1={t1} t2={t2}>
+                  <Icon size={15} fill={active ? "currentColor" : "none"} />
+                </DockButton>
               );
             }))}
-            {[
-              { icon: RotateCcw,  label: retryLabel ?? "Retry", fn: onRetry },
-            ].map(({ icon: Icon, label, fn }) => (
-              <button key={label} onClick={fn} disabled={fn === onRetry && actionsDisabled}
-                className="flex min-h-11 items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] transition-colors disabled:opacity-50"
-                style={{ color: t2, fontFamily: "inherit" }}
-                onMouseEnter={e => (e.currentTarget.style.color = t1)}
-                onMouseLeave={e => (e.currentTarget.style.color = t2)}>
-                <Icon size={11} />{label}
-              </button>
-            ))}
+            <DockButton label={retryLabel ?? "Retry"} onClick={onRetry} disabled={actionsDisabled} isDark={isDark} t1={t1} t2={t2}>
+              <RotateCcw size={15} />
+            </DockButton>
           </div>
         )}
       </div>
@@ -594,20 +626,31 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disab
   // bound a question is still valid, so no "shorten" warning is shown there.
   const over = value.length > maxLength;
   const nearCap = value.length > maxLength - 120;
+  // Pill composer (ChatGPT-UI study §7): one line at rest, grows with the
+  // question up to ~8 lines, then scrolls. Height follows content, never a
+  // fixed two-row box.
+  useLayoutEffect(() => {
+    const field = inputRef.current;
+    if (!field) return;
+    field.style.height = "auto";
+    field.style.height = `${Math.min(field.scrollHeight || 0, 208)}px`;
+  }, [value, inputRef]);
   return (
-    <div className="rounded-2xl shadow-sm overflow-visible focus-within:ring-2 focus-within:ring-[#1F06AC]/20" style={{ background: card, border: `1px solid ${over ? "#dc2626" : border}` }}>
+    <div className="rev-composer rounded-[26px] overflow-visible transition-shadow focus-within:ring-2 focus-within:ring-[#1F06AC]/20"
+      style={{ background: card, border: `1px solid ${over ? "#dc2626" : border}`,
+        boxShadow: isDark ? "0 10px 30px rgba(0,0,0,0.35)" : "0 1px 2px rgba(16,24,40,0.04), 0 10px 28px -12px rgba(16,24,40,0.14)" }}>
       <textarea ref={inputRef} value={value} onChange={onChange} onKeyDown={onKeyDown}
-        placeholder={placeholder} aria-label="Message Rev" rows={2} disabled={disabled}
+        placeholder={placeholder} aria-label="Message Rev" rows={1} disabled={disabled}
         maxLength={maxLength}
-        className="w-full bg-transparent text-[0.9rem] outline-none focus-visible:!outline-none resize-none px-5 pt-4 pb-2 max-h-36 [scrollbar-width:none] leading-relaxed"
-        style={{ color: t1, minHeight: 26 }} />
+        className="block w-full bg-transparent text-[0.95rem] outline-none focus-visible:!outline-none resize-none px-5 pt-4 pb-1 max-h-52 [scrollbar-width:thin] leading-relaxed"
+        style={{ color: t1, minHeight: 28 }} />
       {nearCap && (
         <p className="m-0 px-5 pb-1 text-[0.68rem] tabular-nums" aria-live="polite"
           style={{ color: over ? "#dc2626" : t2 }}>
           {value.length} / {maxLength}{over ? " — shorten to send" : ""}
         </p>
       )}
-      <div className="flex items-center justify-between px-3 pb-3">
+      <div className="flex items-center justify-between px-2.5 pb-2.5">
         <AttachMenu onFile={onFile} t1={t1} />
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <button title="Voice messages unavailable in this release" aria-label="Voice messages unavailable in this release" disabled
@@ -621,18 +664,19 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disab
           {thinking && onStop ? (
             <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
               onClick={onStop} aria-label="Stop generating" title="Stop generating"
-              className="w-11 h-11 rounded-xl flex items-center justify-center transition-all ml-1"
-              style={{ background: isDark ? "#26262b" : "#111827", color: "#fff" }}>
-              <Square size={11} fill="currentColor" />
+              className="w-11 h-11 rounded-full flex items-center justify-center transition-all ml-1"
+              style={{ background: isDark ? "#F2F4F7" : "#101828", color: isDark ? "#101828" : "#fff" }}>
+              <Square size={12} fill="currentColor" />
             </motion.button>
           ) : (
             <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
               onClick={onSend} disabled={!value.trim() || thinking || disabled || sendDisabled}
-              aria-label="Send message"
-              className="h-11 w-11 rounded-xl flex items-center justify-center transition-all ml-1"
-              style={{ background: value.trim() && !thinking ? "#1F06AC" : (isDark ? "#1f1f1f" : "#e5e7eb"),
-                color: value.trim() && !thinking ? "white" : t2 }}>
-              <Send size={14} />
+              aria-label="Send message" title="Send message"
+              className="h-11 w-11 rounded-full flex items-center justify-center transition-all ml-1"
+              style={{ background: value.trim() && !thinking ? "#1F06AC" : (isDark ? "rgba(255,255,255,0.08)" : "#EEF0F4"),
+                color: value.trim() && !thinking ? "white" : t2,
+                boxShadow: value.trim() && !thinking ? "0 6px 16px -6px rgba(31,6,172,0.55)" : "none" }}>
+              <ArrowUp size={18} strokeWidth={2.2} />
             </motion.button>
           )}
         </div>
@@ -1568,7 +1612,7 @@ export default function RevIntell() {
     if (inputRef.current) inputRef.current.style.height = "auto";
     const sid = `r${Date.now()}-${turn}`;
     setMessages(prev => {
-      const placeholder: Message = { id: sid, role: "rev", content: "", timestamp: new Date(), isStreaming: true, steps: [], persistence: "unknown", imageAssisted: Boolean(imageAttachment) };
+      const placeholder: Message = { id: sid, role: "rev", content: "", timestamp: new Date(), isStreaming: true, steps: [], persistence: "unknown", imageAssisted: Boolean(imageAttachment), startedAt: Date.now() };
       const question: Message = { id: `u${Date.now()}-${turn}`, role: "user", content: trimmed, timestamp: new Date(), imageAssisted: Boolean(imageAttachment) };
       const index = findingRetryDraft?.recoverInPlace ? prev.findIndex(message => message.id === findingRetryDraft.messageId) : -1;
       if (index === prev.length - 1 && index > 0 && prev[index].persistence === "not-persisted") {
@@ -1631,7 +1675,7 @@ export default function RevIntell() {
           adoptConversation(data.conversation_id);
           void loadConversations();
           const { content, payload } = normaliseTurn(data);
-          patch(message => ({ ...message, isStreaming: false, content, payload, persistence: "persisted" }));
+          patch(message => ({ ...message, isStreaming: false, content, payload, persistence: "persisted", durationMs: elapsedSince(message.startedAt) }));
         }
       } catch (err) {
         const code = responseErrorCode(err);
@@ -1710,6 +1754,7 @@ export default function RevIntell() {
               persistence: "persisted",
               content,
               payload: normalised,
+              durationMs: elapsedSince(message.startedAt),
               steps: payload.investigation?.steps?.length ? payload.investigation.steps : message.steps,
             }));
             announce("Your answer is ready.");
@@ -1794,7 +1839,7 @@ export default function RevIntell() {
       ? {
         ...message, isStreaming: true, hasError: false, errorCode: undefined,
         retryable: undefined, retryAfterSeconds: undefined, cancelled: false,
-        content: "", steps: [], payload: undefined,
+        content: "", steps: [], payload: undefined, startedAt: Date.now(), durationMs: undefined,
       }
       : message));
     try {
@@ -1821,6 +1866,7 @@ export default function RevIntell() {
       setMessages(prev => prev.map(message => message.id === bubbleId ? {
         ...message, isStreaming: false, persistence: "persisted", content, payload,
         steps: data.investigation?.steps?.length ? data.investigation.steps : message.steps,
+        durationMs: elapsedSince(message.startedAt),
       } : message));
       announce("Your answer is ready.");
     } catch (err) {
@@ -1979,8 +2025,7 @@ export default function RevIntell() {
   const resize = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     inputEditedRef.current = true;
     setInput(e.target.value);
-    e.target.style.height = "auto";
-    e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px";
+    // Height follows content inside InputToolbar (pill composer auto-grow).
   };
   const copy = async (text: string) => {
     const request = ++copyRequestRef.current;
@@ -2142,6 +2187,8 @@ export default function RevIntell() {
   };
 
   const hasMessages = messages.length > 0;
+  // The newest Rev turn keeps its action dock visible (older ones reveal on hover).
+  const latestRevId = useMemo(() => [...messages].reverse().find(message => message.role === "rev")?.id ?? null, [messages]);
   const starters = useMemo(() => buildStarters(storeContext), [storeContext]);
   // Phase 5E header: the title is the active conversation's own title from
   // the history list (never generated), and "ongoing" is the real in-flight
@@ -2157,6 +2204,17 @@ export default function RevIntell() {
     <style>{`
       .rev-workspace :is(button,input):focus-visible, [data-rev-modal] :is(button,input):focus-visible { outline: 2px solid ${workspaceDesign.color.focus}; outline-offset: 3px; }
       @media (prefers-reduced-motion: reduce) { .rev-workspace *, [data-rev-modal], [data-rev-modal] * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+      .rev-dock-btn { width: 36px; height: 36px; }
+      @media (pointer: coarse) { .rev-dock-btn { width: 44px; height: 44px; } }
+      /* ChatGPT-UI study §5 + adoption R2: the newest answer always shows its
+         dock; older answers reveal it on hover or keyboard focus, and only on
+         fine pointers, so touch users never lose the actions. */
+      @media (hover: hover) and (pointer: fine) {
+        .rev-turn-rev[data-latest="false"] .rev-dock { opacity: 0; transition: opacity 150ms ease; }
+        .rev-turn-rev[data-latest="false"]:hover .rev-dock,
+        .rev-turn-rev[data-latest="false"]:focus-within .rev-dock { opacity: 1; }
+      }
+      .rev-composer-dock { background: linear-gradient(to bottom, transparent, ${bg} 38%); }
     `}</style>
     <div className="rev-workspace relative flex overflow-hidden"
       style={{ height: "calc(100dvh - var(--topbar-h, 64px))", margin: "-20px -20px 0", background: bg }}>
@@ -2270,24 +2328,24 @@ export default function RevIntell() {
 
         {/* Welcome screen */}
         {!hasMessages && !convLoading && !convNotFound && !activeId && (
-          <div className="flex flex-col items-center justify-start min-h-full px-6 pt-10 lg:pt-16 pb-6 max-w-2xl mx-auto w-full">
+          <div className="flex flex-col items-center justify-center min-h-full px-5 sm:px-6 pt-12 lg:pt-10 pb-10 max-w-3xl mx-auto w-full">
             <motion.div initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5 }} className="mb-6">
-              <OrbHero size={90} />
+              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }} className="mb-5">
+              <OrbHero size={76} />
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 }} className="text-center mb-8">
-              <h2 className="text-[1.55rem] font-bold mb-1" style={{ color: isDark ? "#b4a8ff" : "#1F06AC" }}>
+              transition={{ delay: 0.12, duration: 0.3 }} className="text-center mb-7">
+              <h2 className="text-[0.95rem] font-semibold mb-2 tracking-wide" style={{ color: isDark ? "#b4a8ff" : "#1F06AC" }}>
                 Hello, {firstName}
               </h2>
-              <h3 className="text-[1.75rem] font-extrabold tracking-tight mb-3" style={{ color: t1 }}>
+              <h3 className="text-[1.6rem] sm:text-[1.95rem] font-bold tracking-[-0.02em] leading-tight mb-3 [text-wrap:balance]" style={{ color: t1 }}>
                 {storeContext.loadError
                   ? "I couldn't verify your store connection"
                   : storeContext.connected
                     ? `What do you want to know about ${storeLabel(storeContext)}?`
                     : "How can I help your revenue today?"}
               </h3>
-              <p className="text-[0.88rem] max-w-md mx-auto leading-relaxed" style={{ color: t2 }}>
+              <p className="text-[0.9rem] max-w-md mx-auto leading-relaxed [text-wrap:pretty]" style={{ color: t2 }}>
                 I explain your available store data, investigate findings,
                 and suggest next steps for you to review.
               </p>
@@ -2523,18 +2581,23 @@ export default function RevIntell() {
               <InputToolbar {...inputProps} placeholder="Ask me anything about your business..." />
             </motion.div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full">
+            <div className="grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-3 gap-2.5 w-full">
               {STARTERS.map((s, i) => (
                 <motion.button key={s.label}
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 + i * 0.05 }}
+                  transition={{ delay: 0.28 + i * 0.04, duration: 0.24, ease: "easeOut" }}
                   onClick={() => send(s.sub)}
                   disabled={findingLoading || Boolean(findingError)}
-                  className="flex flex-col items-start p-4 rounded-xl text-left transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]"
-                  style={{ background: card, border: `1px solid ${bdr}` }}>
-                  <s.icon size={18} className="mb-2.5" style={{ color: s.color }} />
-                  <p className="text-[0.78rem] font-bold mb-1" style={{ color: t1 }}>{s.label}</p>
-                  <p className="text-[0.7rem] leading-snug" style={{ color: t2 }}>{s.sub}</p>
+                  className="group flex items-start gap-3 p-3.5 rounded-2xl text-left transition-[transform,box-shadow,border-color] duration-150 hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-50"
+                  style={{ background: card, border: `1px solid ${bdr}`, boxShadow: isDark ? "none" : "0 1px 2px rgba(16,24,40,0.04)" }}>
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+                    style={{ background: isDark ? "rgba(180,168,255,0.1)" : "rgba(31,6,172,0.06)" }}>
+                    <s.icon size={16} style={{ color: isDark ? "#b4a8ff" : s.color }} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[0.78rem] font-semibold mb-0.5" style={{ color: t1 }}>{s.label}</span>
+                    <span className="block text-[0.72rem] leading-snug" style={{ color: t2 }}>{s.sub}</span>
+                  </span>
                 </motion.button>
               ))}
             </div>
@@ -2543,11 +2606,12 @@ export default function RevIntell() {
 
         {/* Message thread */}
         {hasMessages && !convLoading && !convNotFound && !convError && (
-          <div className="w-full max-w-2xl mx-auto px-4 pt-14 pb-4 lg:pt-6">
+          <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 pt-14 pb-6 lg:pt-8">
             {messagesMore && <p role="status" className="mt-3 text-xs" style={{ color: t2 }}>Showing the most recent messages.</p>}
             <LoadMore available={messagesMore} loading={messagesMoreLoading} error={messagesMoreError} onLoad={() => activeId && void loadConversation(activeId, true)} label="Load older messages" />
             {messages.map(msg => (
               <Bubble key={msg.id} msg={msg} onCopy={copy}
+                latest={msg.id === latestRevId}
                 actionsDisabled={thinking}
                 onRetry={() => void handleRetry(msg)} onSend={send}
                 retryLabel={msg.hasError || msg.cancelled ? "Try again" : "Ask again"}
@@ -2583,8 +2647,8 @@ export default function RevIntell() {
 
       {/* Sticky input — active conversation */}
       {(hasMessages || activeId) && !convLoading && !convNotFound && !convError && (
-        <div className="shrink-0 px-4 pb-4 pt-2 border-t" style={{ borderColor: bdr, background: bg }}>
-          <div className="max-w-2xl mx-auto">
+        <div className="rev-composer-dock relative z-10 shrink-0 px-4 sm:px-6 pb-3 pt-3 -mt-6">
+          <div className="max-w-3xl mx-auto">
             {/* Image attachment preview */}
             {imageAttachment && (
               <div className="flex items-center gap-3 mb-2 px-1">
@@ -2600,8 +2664,8 @@ export default function RevIntell() {
               </div>
             )}
             <InputToolbar {...inputProps} placeholder="Ask Rev anything..." disabled={thinking || findingLoading || Boolean(findingError)} />
-            <p className="text-center text-[0.63rem] mt-2" style={{ color: t4 }}>
-              Rev Intelligence · Powered by your store data · Responses grounded in evidence
+            <p className="text-center text-[0.66rem] mt-2" style={{ color: t4 }}>
+              Rev reads your store data and never changes it. Check key numbers in Evidence.
             </p>
           </div>
         </div>

@@ -1677,10 +1677,10 @@ describe('Task 224 — Rev Intelligence conversation experience (305–311)', ()
   // draft-preserving submission (acceptDraft clears the input only once the server
   // persists) keeps the question in the input too after a pre-persistence failure,
   // so a plain text match would see the bubble AND the input. The user bubble's
-  // gradient class is unique to the thread bubble (the input is a <textarea>), so
+  // data-rev-user-message hook is unique to the thread bubble (the input is a <textarea>), so
   // this counts thread copies only — the right signal for "preserved / not duplicated".
   const threadQuestionCount = (text: string) =>
-    screen.getAllByText(text, { selector: '[class*="rounded-tr-md"]', exact: true }).length;
+    screen.getAllByText(text, { selector: '[data-rev-user-message]', exact: true }).length;
 
   // Task 226 made the shared workspace language (cleanError → explainWorkspaceError)
   // the single source of truth for a failure's wording; these are its exact strings.
@@ -2384,5 +2384,48 @@ describe('Phase 5E evidence-first workspace', () => {
     await act(async () => setWide(true));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Conversation history' })).not.toBeInTheDocument());
     expect(screen.getByTestId('rev-history-rail')).toBeInTheDocument();
+  });
+});
+
+describe('turn chrome (ChatGPT-UI study §5, honest "Worked for")', () => {
+  const investigated = (text: string): RevAnswerPayload => ({
+    ...answer('Created', text), message_id: 'm-1',
+    investigation: {
+      id: 'inv-1', question: 'How did revenue change?', intent: 'revenue', status: 'complete',
+      period: { start: '2026-10-01', end: '2026-10-31' },
+      steps: [
+        { id: 's1', tool: 'orders', label: 'Read orders', status: 'completed' },
+        { id: 's2', tool: 'refunds', label: 'Read refunds', status: 'completed' },
+      ],
+      follow_ups: [],
+    },
+  });
+
+  it('shows a measured work summary on a live investigated turn and keeps the newest dock visible', async () => {
+    noHistoryToResume();
+    renderPage();
+    send('How did revenue change?');
+    await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      streams[0].request.handlers.onMeta?.({ conversation_id: 'Created' });
+      streams[0].request.handlers.onFinal?.(investigated('Revenue rose.'));
+      streams[0].result.resolve({ conversationId: 'Created', completed: true });
+    });
+    expect(await screen.findByTestId('rev-work-summary')).toHaveTextContent(/^Worked for \d+s · 2 checks$/);
+    const dock = screen.getByRole('group', { name: 'Answer actions' });
+    expect(dock.closest('[data-latest]')).toHaveAttribute('data-latest', 'true');
+    for (const name of ['Copy', 'Helpful', 'Not helpful', 'Ask again']) {
+      expect(within(dock).getByRole('button', { name })).toBeInTheDocument();
+    }
+  });
+
+  it('never invents a duration for a rehydrated turn', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [
+      { id: 'u', role: 'user', content: { text: 'Stored question' }, created_at: '2026-11-02T12:00:00Z' },
+      { id: 'r', role: 'rev', content: investigated('Stored answer'), created_at: '2026-11-02T12:00:01Z' },
+    ] })));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText('Stored answer');
+    expect(screen.queryByTestId('rev-work-summary')).not.toBeInTheDocument();
   });
 });

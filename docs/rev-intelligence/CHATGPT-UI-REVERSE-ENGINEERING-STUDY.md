@@ -193,6 +193,90 @@ Safety, consistency and native feel fall out of the same constraint.
 
 ---
 
+## 10. REA pass (2026-11-18): reverse engineering a ChatGPT-class client
+
+**Why a proxy.** chatgpt.com serves only a login shell to unauthenticated
+requests, so its chat bundles cannot be fetched from this environment. The
+reverse-engineer-anything (REA) skill was therefore run against **Open WebUI
+0.13.5** (the most widely deployed open-source ChatGPT-style client, SvelteKit,
+from its PyPI wheel), and the public performance.dev teardown of chatgpt.com
+(Dennis Brotzky, 2026-07-02, source 1) supplied the ChatGPT-specific stack facts.
+
+**Evidence trail (rea-agents 6.10.1, Node 24).**
+
+| Step | Command | Result | Evidence |
+|---|---|---|---|
+| 1 | `analyze-javascript-application` on the 4 largest chat chunks | 869,236 AST nodes, 5,233 findings, 0 parse failures, coverage complete within view | `ev_559395398dab42bd9d97dd58d652477ce35c19a9db02b7fc7b2501b8f43be4b3` |
+| 2 | `trace-application-feature` seeds "Thought for", "Follow up", "Regenerate" | `no-match` (minified Svelte keeps UI strings in i18n chunks, not in the graph); first attempt needed `NODE_OPTIONS=--max-old-space-size` to authenticate the 129 MB bundle | `ev_45870bb6dadbea3d7f0096a6e26210b63d7d5917a0c49f620d16ca249ebf4c24` |
+| 3 | `analyze-javascript-application` on the two message chunks that own "Follow up" / "Regenerate" | 62,858 AST nodes, 489 findings | `ev_0028924e0dcf3a49e994e66d14b44ab0bdb601621a9c39010f7c01e905c5fd17` |
+| 4 | Semantic discovery on step 3 | call-site trace seeds returned; graph status `partial` (REA states this is not evidence of absence) | (same parent) |
+
+REA's endpoint and storage inventory confirmed the chat data model: one
+`/chats/{id}/messages/{id}` resource per turn, analytics and memories as
+separate surfaces, and only UI preferences in local storage (`locale`,
+dismissed banners); conversation state is never cached client-side. Because the
+minified graph could not resolve component-level structure, the component
+reading below comes from the matching open-source Svelte files
+(`ResponseMessage.svelte`, `UserMessage.svelte`, `FollowUps.svelte`,
+`StatusHistory.svelte`), which the shipped chunks were compiled from.
+
+**Findings that changed the Rev build.**
+
+1. **User turn** is `rounded-3xl`, `max-w-[90%]`, `px-4 py-1.5`, a neutral
+   tonal fill (`bg-base-50` / dark `bg-base-850`), right-aligned. No gradient,
+   no tail corner. *Rev:* the saturated brand gradient bubble became a tonal
+   `#ECE9FB` / `rgba(255,255,255,0.08)` pill so the answer stays the focus.
+2. **Assistant turn** is full width and unboxed, `pl-1`. No card, no label.
+   *Rev:* the visible "SUMMARY" heading above every investigation answer was
+   removed (kept as an `sr-only` heading for assistive tech).
+3. **Action dock** is a row of `size-7` icon buttons (`rounded-lg`,
+   `hover:bg-black/5`) with tooltips, visible on the **last** message and
+   `hover-reveal` on older ones. *Rev:* icon-only dock with accessible names,
+   36px on fine pointers and 44px on coarse pointers; latest answer always
+   visible; older answers reveal on hover **or keyboard focus**, and only under
+   `(hover: hover) and (pointer: fine)`, so touch users never lose it (this
+   narrows, rather than reverses, adoption decision R2).
+4. **Status history** collapses to the latest status line with a vertical
+   dot-and-rule timeline on expand. *Rev already matches* (InvestigationTimeline
+   compact line during streaming, "How I checked" after).
+5. **Follow-ups** render as plain text rows separated by hairlines, not pills.
+   *Rev keeps* its chip row (2 - 4 chips, 44px targets) because merchants tap
+   on mobile; text-row styling is noted as an option.
+6. **Composer** is a large-radius surface that grows with content. *Rev:* pill
+   composer (`rounded-[26px]`), one line at rest, auto-grows to about 8 lines,
+   round arrow-up send and round stop, soft elevation, fades over the thread
+   instead of a hard top border.
+7. **Thinking duration.** ChatGPT shows "Thought for Ns". *Rev:* "Worked for
+   Ns · N checks", measured on the device from send to the `final` event, only
+   for live turns that ran checks. Rehydrated turns show nothing rather than an
+   invented duration (honest-progress rule P4).
+
+**Commerce component catalog (adoption R5, now built).** ChatGPT's intelligent
+UI lets the model emit whitelisted components rendered with client tokens. Rev
+keeps the catalog-plus-tokens idea but binds every visual to data the turn
+already holds, so no new backend contract was needed:
+
+- **KPI cards** (`RevMetricCards`, `lib/revVisuals.deriveMetricCards`) are
+  built only from `evidence.items` / `comparison_items`. A card shows the
+  ledger value, the measured change against a matching previous-period record
+  (same metric, unit and currency), and paired Now / Before bars. Shown only
+  for 3+ usable numbers or any measured comparison; never while streaming;
+  never in quiet modes. Direction uses arrows and words, never good/bad colour.
+  Trust labels are never upgraded (partial stays "Partial data").
+- **Table charts** (`RevTableChart`, `tableChartSpec`) are a Table / Chart
+  switch on tables Rev already printed: 2 - 15 rows, a unique text label
+  column, fully numeric value columns. Periods become an area chart in source
+  order; categories become a horizontal bar chart sorted descending with direct
+  value labels. A one-sentence text alternative is always visible. recharts is
+  lazy-loaded only when a chart is opened.
+
+ui-ux-pro-max guidance applied: `chart` domain (bar for ranked categories at
+15 or fewer, sorted descending, direct labels, table fallback; line/area for
+time), `ux` domain (loading feedback with accessible busy status, confirmation
+on copy), `style` domain AI-native UI (minimal chrome, single accent, context
+cards), `react` stack (memo only where measured, stable keys). Its generated
+palette and fonts were rejected in favour of the Revluma tokens.
+
 ## Sources
 
 1. performance.dev — *Reverse Engineering ChatGPT Web: How OpenAI Built for a Billion
@@ -237,3 +321,5 @@ Safety, consistency and native feel fall out of the same constraint.
     https://ranki.io/blog/chatgpt-citations-how-to-get-mentioned
 21. r/ChatGPT — design A/B churn observed by users —
     https://www.reddit.com/r/ChatGPT/comments/1cv7z5u/why_does_chatgpt_keep_changing_its_design/
+22. Open WebUI 0.13.5 (PyPI wheel; source github.com/open-webui/open-webui) -
+    REA proxy artifact for section 10
