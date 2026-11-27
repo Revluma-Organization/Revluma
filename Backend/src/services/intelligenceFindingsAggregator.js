@@ -707,10 +707,19 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
       const checkoutSince = new Date(now.getTime() - checkoutWindowDays * DAY);
       const recentCarts = await prisma.abandoned_carts.findMany({
         where: { store_id: store.id, abandoned_at: { gte: checkoutSince } },
-        select: { status: true, cart_value: true, currency: true, abandoned_at: true },
+        select: { status: true, cart_value: true, currency: true, abandoned_at: true, source_resource: true, source_state: true, recovered_at: true, completed_at: true },
       });
-      const openCarts = recentCarts.filter(c => String(c.status || '').toLowerCase() === 'abandoned');
-      const completedCarts = recentCarts.filter(c => String(c.status || '').toLowerCase() === 'recovered');
+      // Canonical abandoned: source_resource='abandonedCheckouts' AND source_state='available'
+      // AND NOT completed (no recovered_at, no completed_at). Aligns with
+      // python/src/intelligence/checkout_evidence.py canonical classification.
+      // Raw status='abandoned' alone is insufficient — many rows have unknown lifecycle.
+      const openCarts = recentCarts.filter(c =>
+        c.source_resource === 'abandonedCheckouts' &&
+        c.source_state === 'available' &&
+        !c.recovered_at &&
+        !c.completed_at
+      );
+      const completedCarts = recentCarts.filter(c => c.recovered_at || c.completed_at);
       openAbandonedCount = openCarts.length;
       const openCurrencies = sameCurrency(openCarts.filter(c => c.currency));
       const cartCurrency = openCurrencies.length === 1
