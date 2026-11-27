@@ -31,6 +31,7 @@ const revSequence = require('../services/revSequence');
 const { parsePageCursor, nextPageCursor } = require('../services/revConversationPaging');
 const revMetrics = require('../services/revOperationalMetrics');
 const { draftConversationTitle, isAutomaticTitle, sanitizeModelTitle } = require('../services/revConversationTitle');
+const { isFaithfulPunctuation, sanitizePunctuated, MAX_DICTATION_CHARS } = require('../services/dictationPunctuation');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1117,6 +1118,31 @@ exports.generateConversationTitle = async (req, res, next) => {
       logger.info('rev_title_model_unavailable', { conversationId: id, errorCode: generated.error?.code || 'INVALID_TITLE' });
     }
     return res.status(200).json({ success: true, data: { id, title, source: modelTitle ? 'model' : 'draft' } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── POST /api/v1/rev/dictation/punctuate ─────────────────────────────────────
+// Voice input: add punctuation to dictated words without changing them. The
+// dashboard keeps its on-device formatting on any non-200 here.
+exports.punctuateDictation = async (req, res, next) => {
+  try {
+    const text = typeof req.body?.text === 'string' ? req.body.text.replace(/\s+/g, ' ').trim() : '';
+    if (!text || text.length > MAX_DICTATION_CHARS) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Text must be 1 - ${MAX_DICTATION_CHARS} characters.` } });
+    }
+    const result = await mlService.punctuateDictation({ text, correlationId: req.get?.('X-Correlation-ID') });
+    if (!result.success) {
+      logger.info('rev_punctuate_unavailable', { errorCode: result.error?.code || 'UNKNOWN' });
+      return res.status(503).json({ success: false, error: { code: 'PUNCTUATION_UNAVAILABLE', message: 'Punctuation is unavailable right now.' } });
+    }
+    const punctuated = sanitizePunctuated(result.data.text);
+    if (!punctuated || punctuated.length > text.length * 1.3 + 40 || !isFaithfulPunctuation(text, punctuated)) {
+      logger.info('rev_punctuate_rejected', { reason: 'unfaithful' });
+      return res.status(422).json({ success: false, error: { code: 'PUNCTUATION_REJECTED', message: 'Punctuation result was not usable.' } });
+    }
+    return res.status(200).json({ success: true, data: { text: punctuated } });
   } catch (error) {
     next(error);
   }

@@ -1125,23 +1125,30 @@ describe('Phase 5.4 interaction and honest capabilities', () => {
     });
     afterEach(() => { delete (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition; });
 
-    it('writes spoken words into the composer live and keeps them when done', async () => {
+    it('writes spoken words into the composer live, punctuated, and polishes them when done', async () => {
+      vi.mocked(api.post).mockImplementation(async (path: string) => (path === '/rev/dictation/punctuate'
+        ? { ok: true, status: 200, data: { success: true, data: { text: "Hello, what's going on? Which products are selling best?" } } }
+        : { ok: true, status: 200, data: {} }) as never);
       renderPage();
       const box = await screen.findByRole('textbox', { name: 'Message Rev' });
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start voice input' })); });
       expect(screen.getByRole('group', { name: 'Voice input' })).toBeInTheDocument();
       expect(box).toHaveAttribute('readonly');
       expect(box).toHaveAttribute('placeholder', 'Listening…');
-      act(() => recognition().emit([['which products', false]]));
-      expect(box).toHaveValue('Which products');
-      act(() => recognition().emit([['which products are selling', true], [' best', false]]));
-      expect(box).toHaveValue('Which products are selling best');
-      fireEvent.click(screen.getByRole('button', { name: 'Stop voice input and keep text' }));
+      act(() => recognition().emit([['hello um what', false]]));
+      expect(box).toHaveValue('Hello, what');
+      act(() => recognition().emit([["hello um what's going on which products are selling best", true]]));
+      // On-device formatting while speaking: filler gone, comma, question mark.
+      expect(box).toHaveValue("Hello, what's going on which products are selling best?");
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Stop voice input and keep text' })); });
       expect(screen.queryByRole('group', { name: 'Voice input' })).not.toBeInTheDocument();
-      expect(box).toHaveValue('Which products are selling best');
+      expect(api.post).toHaveBeenCalledWith('/rev/dictation/punctuate',
+        { text: "Hello, what's going on which products are selling best?" }, expect.objectContaining({ timeoutMs: 10000 }));
+      // The verified model polish adds the sentence break.
+      await waitFor(() => expect(box).toHaveValue("Hello, what's going on? Which products are selling best?"));
       expect(box).not.toHaveAttribute('readonly');
       expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
-      expect(api.post).not.toHaveBeenCalled(); expect(streamRevAnswer).not.toHaveBeenCalled();
+      expect(streamRevAnswer).not.toHaveBeenCalled();
     });
 
     it('cancels with Escape and restores what was typed before', async () => {
@@ -1162,8 +1169,22 @@ describe('Phase 5.4 interaction and honest capabilities', () => {
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start voice input' })); });
       act(() => recognition().emit([['what changed this week', true]]));
       fireEvent.keyDown(box, { key: 'Enter' });
-      await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledWith(expect.objectContaining({ message: 'What changed this week' })));
+      await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledWith(expect.objectContaining({ message: 'What changed this week?' })));
+      // Sent as shown: no punctuation round trip.
+      expect(vi.mocked(api.post).mock.calls.some(([path]) => path === '/rev/dictation/punctuate')).toBe(false);
       expect(screen.queryByRole('group', { name: 'Voice input' })).not.toBeInTheDocument();
+    });
+
+    it('keeps the on-device formatting when the polish is unavailable', async () => {
+      vi.mocked(api.post).mockRejectedValue(new ApiError(503, 'Unavailable', { error: { code: 'PUNCTUATION_UNAVAILABLE' } }));
+      renderPage();
+      const box = await screen.findByRole('textbox', { name: 'Message Rev' });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start voice input' })); });
+      act(() => recognition().emit([['how are sales doing', true]]));
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Stop voice input and keep text' })); });
+      await waitFor(() => expect(screen.queryByText('Adding punctuation…')).not.toBeInTheDocument());
+      expect(box).toHaveValue('How are sales doing?');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
     it('shows a clear error when the microphone is blocked', async () => {

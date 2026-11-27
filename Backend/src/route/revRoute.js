@@ -12,6 +12,7 @@
  * POST /api/v1/memory                — write a merchant memory
  * GET  /api/v1/rev/health            — Python service health check
  * POST /api/v1/rev/conversation/:id/title/generate — model-written title after the first answer
+ * POST /api/v1/rev/dictation/punctuate — punctuate voice-input words without changing them
  */
 
 const express    = require('express');
@@ -74,6 +75,24 @@ const feedbackLimiter = rateLimit({
   skip: () => process.env.NODE_ENV === 'test',
 });
 
+// ── Rate limiter: dictation punctuation ──────────────────────────────────────
+// One call per finished voice input; 30 per minute per IP is generous for
+// people and keeps the model pass from being used as a free text API.
+const dictationLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: {
+    success: false,
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many voice inputs. Please wait a moment.',
+    },
+  },
+  standardHeaders: true,
+  legacyHeaders:   false,
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 // Internal metrics scraper. Controller requires the server-to-server internal key.
@@ -114,6 +133,9 @@ router.patch('/conversation/:id/title',   authenticateToken,               revCo
 router.post('/conversation/:id/title/generate', authenticateToken, chatLimiter, revController.generateConversationTitle);
 
 // Thumbs up/down on a persisted Rev answer (upsert; rating null clears)
+// Voice input punctuation (formatting only; words are verified unchanged)
+router.post('/dictation/punctuate',       authenticateToken, dictationLimiter, revController.punctuateDictation);
+
 router.post('/message-feedback',          authenticateToken, feedbackLimiter, revController.submitMessageFeedback);
 
 // Evidence-gated intelligence findings — organization scoped
