@@ -93,6 +93,32 @@ const dictationLimiter = rateLimit({
   skip: () => process.env.NODE_ENV === 'test',
 });
 
+// Live voice calls: starting a call mints a Gemini token (cost), so starts are
+// tight; heartbeats arrive every 15 seconds during a call.
+const voiceStartLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 12,
+  message: {
+    success: false,
+    error: { code: 'RATE_LIMITED', message: 'Too many calls started. Please wait a few minutes.' },
+  },
+  standardHeaders: true,
+  legacyHeaders:   false,
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
+const voiceSessionLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 40,
+  message: {
+    success: false,
+    error: { code: 'RATE_LIMITED', message: 'Too many call updates. Please wait a moment.' },
+  },
+  standardHeaders: true,
+  legacyHeaders:   false,
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 // Internal metrics scraper. Controller requires the server-to-server internal key.
@@ -135,6 +161,12 @@ router.post('/conversation/:id/title/generate', authenticateToken, chatLimiter, 
 // Thumbs up/down on a persisted Rev answer (upsert; rating null clears)
 // Voice input punctuation (formatting only; words are verified unchanged)
 router.post('/dictation/punctuate',       authenticateToken, dictationLimiter, revController.punctuateDictation);
+
+// Live voice calls with Rev (audio goes browser <-> Gemini; Node only meters)
+router.get('/live/allowance',             authenticateToken, voiceSessionLimiter, revController.getVoiceAllowance);
+router.post('/live/session',              authenticateToken, voiceStartLimiter,   revController.startVoiceSession);
+router.post('/live/session/:id/heartbeat', authenticateToken, voiceSessionLimiter, revController.voiceSessionHeartbeat);
+router.post('/live/session/:id/end',      authenticateToken, voiceSessionLimiter, revController.endVoiceSession);
 
 router.post('/message-feedback',          authenticateToken, feedbackLimiter, revController.submitMessageFeedback);
 

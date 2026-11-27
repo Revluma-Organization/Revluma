@@ -10,6 +10,44 @@ const theme = vi.hoisted(() => ({ value: 'dark' }));
 const answerView = vi.hoisted(() => vi.fn());
 const requestTitle = vi.hoisted(() => vi.fn<(id: string) => Promise<string | null>>());
 vi.mock('@/lib/revTitle', () => ({ requestConversationTitle: requestTitle }));
+// Live voice calls: jsdom has no AudioWorklet or real WebSocket audio. The
+// audio engine and the Gemini socket are faked; `live.supported` toggles the
+// browser capability per test (off by default, like jsdom).
+const live = vi.hoisted(() => ({
+  supported: false,
+  clients: [] as Array<{ options: { handlers: Record<string, (...args: unknown[]) => void>; resumeHandle?: string | null };
+    sent: Array<{ id: string; name: string; response: Record<string, unknown>; scheduling: string }>; closed: boolean }>,
+}));
+vi.mock('@/lib/revLiveAudio', () => {
+  class FakeAudio {
+    levels = { input: 0, output: 0 };
+    speaking = false;
+    prime() {}
+    async start() {}
+    setMuted() {}
+    play() {}
+    flush() {}
+    drained() { return Promise.resolve(); }
+    sampleOutput() { return 0; }
+    close() {}
+  }
+  class MicError extends Error { kind = 'failed'; }
+  return { LiveAudio: FakeAudio, MicError, liveAudioSupported: () => live.supported };
+});
+vi.mock('@/lib/revLiveClient', () => {
+  class FakeClient {
+    sent: Array<{ id: string; name: string; response: Record<string, unknown>; scheduling: string }> = [];
+    closed = false;
+    open = true;
+    constructor(public options: { handlers: Record<string, (...args: unknown[]) => void> }) { live.clients.push(this as never); }
+    connect() {}
+    sendAudio() {}
+    sendAudioStreamEnd() {}
+    sendToolResponse(id: string, name: string, response: Record<string, unknown>, scheduling: string) { this.sent.push({ id, name, response, scheduling }); }
+    close() { this.closed = true; }
+  }
+  return { LiveClient: FakeClient };
+});
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { full_name: 'Test Owner' } }) }));
 vi.mock('@/store', () => ({ useThemeStore: (select: (state: { theme: string }) => unknown) => select({ theme: theme.value }) }));
 vi.mock('@/lib/api', () => {
@@ -1097,7 +1135,11 @@ describe('Phase 5.4 interaction and honest capabilities', () => {
     expect(mic).toHaveAttribute('aria-disabled', 'true');
     await act(async () => { fireEvent.click(mic); });
     expect(await screen.findByText(/Voice input isn't supported in this browser. Try Chrome, Edge or Safari./)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Audio calls unavailable in this release' })).toBeDisabled();
+    // Live voice calls need AudioWorklet + WebSocket: also discoverable, and explained on click.
+    const callButton = screen.getByRole('button', { name: "Voice calls aren't supported in this browser" });
+    expect(callButton).toHaveAttribute('aria-disabled', 'true');
+    await act(async () => { fireEvent.click(callButton); });
+    expect(await screen.findByText(/Voice calls aren't supported in this browser. Try the latest Chrome, Edge or Safari./)).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled(); expect(streamRevAnswer).not.toHaveBeenCalled();
   });
   describe('voice input (live dictation)', () => {
@@ -2660,5 +2702,123 @@ describe('historyGroupLabel', () => {
   });
   it('files an unreadable timestamp under Older', () => {
     expect(historyGroupLabel('not a date', now)).toBe('Older');
+  });
+});
+
+describe('live voice call with Rev', () => {
+  const session = {
+    session_id: '55555555-5555-4555-8555-555555555555', token: 'auth_tokens/fixture',
+    ws_url: 'wss://generativelanguage.googleapis.com/ws/fixture', model: 'models/gemini-3.8-live',
+    max_seconds: 1800, remaining_seconds: 1800, heartbeat_interval_ms: 15000,
+  };
+  beforeEach(() => {
+    live.supported = true; live.clients = [];
+    noHistoryToResume();
+    vi.mocked(api.post).mockImplementation(async (path: string) => {
+      if (path === '/rev/live/session') return { ok: true, status: 201, data: { success: true, data: session } } as never;
+      if (path.startsWith('/rev/live/session/')) return { ok: true, status: 200, data: { success: true, data: { status: 'ended' } } } as never;
+      throw new Error(`Unexpected POST ${path}`);
+    });
+  });
+  afterEach(() => { live.supported = false; });
+
+  async function startCall() {
+    renderPage();
+    const button = await screen.findByRole('button', { name: 'Start a voice call with Rev' });
+    await act(async () => { fireEvent.click(button); });
+    await waitFor(() => expect(live.clients).toHaveLength(1));
+    expect(api.post).toHaveBeenCalledWith('/rev/live/session', {}, expect.anything());
+    const client = live.clients[0];
+    await act(async () => { client.options.handlers.onReady?.(); });
+    return client;
+  }
+
+  it('turns the composer into a call bar with a live transcript, and hangs up', async () => {
+    const client = await startCall();
+    const bar = await screen.findByRole('group', { name: 'Voice call with Rev' });
+    expect(within(bar).getByText('Listening')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Ask (me|Rev)/)).not.toBeInTheDocument();
+    await act(async () => {
+      client.options.handlers.onInputTranscript?.('Hey Rev, how are');
+      client.options.handlers.onInputTranscript?.(' you doing?');
+      client.options.handlers.onOutputTranscript?.('Doing well, thanks');
+      client.options.handlers.onOutputTranscript?.(' for asking.');
+      client.options.handlers.onTurnComplete?.();
+    });
+    const userLine = document.querySelector('[data-rev-transcript="user"]');
+    expect(userLine).toHaveTextContent('Hey Rev, how are you doing?');
+    expect(document.querySelector('[data-rev-transcript="rev"]')).toHaveTextContent('Doing well, thanks for asking.');
+    // Interrupting Rev marks its line as cut off.
+    await act(async () => {
+      client.options.handlers.onOutputTranscript?.('So the thing about');
+      client.options.handlers.onInterrupted?.();
+    });
+    expect(screen.getByText('(interrupted)')).toBeInTheDocument();
+
+    fireEvent.click(within(bar).getByRole('button', { name: 'Mute microphone' }));
+    expect(within(bar).getByRole('button', { name: 'Unmute microphone' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(bar).getByText("You're muted")).toBeInTheDocument();
+
+    await act(async () => { fireEvent.click(within(bar).getByRole('button', { name: 'End call' })); });
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/rev/live/session/${session.session_id}/end`,
+      expect.objectContaining({ reason: 'hangup' }), expect.anything()));
+    expect(client.closed).toBe(true);
+    expect(await screen.findByPlaceholderText(/Ask (me|Rev)/)).toBeInTheDocument();
+    // The transcript stays in the thread after the call.
+    expect(document.querySelector('[data-rev-transcript="user"]')).toHaveTextContent('Hey Rev, how are you doing?');
+    expect(streamRevAnswer).not.toHaveBeenCalled();
+  });
+
+  it('delegates store questions to Rev, shows the answer in chat and hands it back to the voice', async () => {
+    const client = await startCall();
+    await act(async () => {
+      client.options.handlers.onToolCall?.([{ id: 'call-1', name: 'ask_rev', args: { question: 'How did sales do last week?' } }]);
+    });
+    await waitFor(() => expect(streams).toHaveLength(1));
+    expect(streams[0].request).toEqual(expect.objectContaining({ message: 'How did sales do last week?', inputMode: 'voice' }));
+    expect(screen.getByText('Asked by voice:')).toBeInTheDocument();
+    // Who has the floor follows the audio loop (animation frames).
+    await waitFor(() => expect(within(screen.getByRole('group', { name: 'Voice call with Rev' })).getByText('Checking your store…')).toBeInTheDocument());
+    await act(async () => {
+      streams[0].request.handlers.onMeta?.({ conversation_id: 'VoiceThread' });
+      streams[0].request.handlers.onFinal?.(answer('VoiceThread', 'Revenue was $12,400, up 8% week over week.'));
+      streams[0].result.resolve({ conversationId: 'VoiceThread', completed: true });
+    });
+    await waitFor(() => expect(client.sent).toHaveLength(1));
+    expect(client.sent[0]).toEqual(expect.objectContaining({ id: 'call-1', name: 'ask_rev', scheduling: 'WHEN_IDLE' }));
+    expect(client.sent[0].response).toEqual(expect.objectContaining({ status: 'answered', answer: expect.stringContaining('$12,400') }));
+    expect(screen.getByText('Revenue was $12,400, up 8% week over week.')).toBeInTheDocument();
+    // The conversation the call created keeps the call going.
+    expect(screen.getByRole('group', { name: 'Voice call with Rev' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/VoiceThread');
+  });
+
+  it('switches to the full screen view and back, and hangs up when Rev says goodbye', async () => {
+    const client = await startCall();
+    fireEvent.click(screen.getByRole('button', { name: 'Full screen call view' }));
+    const stage = await screen.findByRole('dialog', { name: 'Voice call with Rev' });
+    expect(stage.querySelector('[data-rev-live-orb]')).not.toBeNull();
+    await act(async () => { client.options.handlers.onOutputTranscript?.('Sure, here is what I found.'); });
+    expect(within(stage).getByText('Sure, here is what I found.')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Voice call with Rev' })).not.toBeInTheDocument());
+    expect(screen.getByRole('group', { name: 'Voice call with Rev' })).toBeInTheDocument();
+    await act(async () => { client.options.handlers.onToolCall?.([{ id: 'bye', name: 'end_call', args: {} }]); });
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/rev/live/session/${session.session_id}/end`,
+      expect.objectContaining({ reason: 'assistant' }), expect.anything()));
+    expect(client.sent[0]).toEqual(expect.objectContaining({ name: 'end_call', scheduling: 'SILENT' }));
+    expect(await screen.findByPlaceholderText(/Ask (me|Rev)/)).toBeInTheDocument();
+  });
+
+  it('explains when the daily voice limit is used up', async () => {
+    vi.mocked(api.post).mockImplementation(async () => {
+      throw new ApiError(429, 'limit', { success: false, error: { code: 'VOICE_LIMIT_REACHED' } });
+    });
+    renderPage();
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: 'Start a voice call with Rev' })); });
+    expect(await screen.findByRole('alert')).toHaveTextContent("You've used today's voice time with Rev. It resets at midnight UTC.");
+    expect(live.clients).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss call message' }));
+    expect(screen.queryByText(/today's voice time/)).not.toBeInTheDocument();
   });
 });

@@ -298,6 +298,8 @@ export interface RevStreamRequest {
   conversationId?: string | null;
   findingId?: string | null;
   reuseUserMessage?: boolean;
+  /** "voice" when Rev's voice asked this during a live call (annotation only). */
+  inputMode?: "voice";
   /** Stable across retries of this logical submission. */
   requestId?: string;
   signal?: AbortSignal;
@@ -381,7 +383,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Cancellation is signalled through `signal` (the Stop button aborts it).
  */
 export async function streamRevAnswer({
-  message, conversationId, findingId, reuseUserMessage, requestId, signal, handlers,
+  message, conversationId, findingId, reuseUserMessage, inputMode, requestId, signal, handlers,
   timeoutMs = 130000, inactivityTimeoutMs = 45000,
 }: RevStreamRequest): Promise<{ conversationId: string | null; completed: boolean }> {
   const submissionId = requestId ?? crypto.randomUUID();
@@ -417,6 +419,7 @@ export async function streamRevAnswer({
         ...(conversationId ? { conversation_id: conversationId } : {}),
         ...(findingId ? { finding_id: findingId } : {}),
         ...(reuseUserMessage ? { reuse_user_message: true } : {}),
+        ...(inputMode === "voice" ? { input_mode: "voice" } : {}),
       }),
     });
   } catch (error) {

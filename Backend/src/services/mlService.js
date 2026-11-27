@@ -1460,6 +1460,7 @@ async function checkPythonHealth() {
 const INVESTIGATION_CONTRACT = 'rev-investigation-v1';
 const TITLE_TIMEOUT_MS = parseInt(process.env.ML_TITLE_TIMEOUT_MS || '9000', 10);
 const PUNCTUATE_TIMEOUT_MS = parseInt(process.env.ML_PUNCTUATE_TIMEOUT_MS || '9000', 10);
+const LIVE_TOKEN_TIMEOUT_MS = parseInt(process.env.ML_LIVE_TOKEN_TIMEOUT_MS || '12000', 10);
 const STREAM_TIMEOUT_MS = parseInt(process.env.ML_STREAM_TIMEOUT_MS || String(TIMEOUT_POLICY_MS.overallInvestigation), 10);
 
 function authorizedContextStoreIds(contextPayload) {
@@ -2079,6 +2080,45 @@ async function punctuateDictation({ text, correlationId } = {}) {
   return { success: true, data: { text: punctuated } };
 }
 
+// Mint a short-lived Gemini Live token for a Rev voice call (python
+// /rev/live/token). The token is locked to Rev's voice setup server side, so
+// the browser can open the call but cannot change its instructions or tools.
+async function mintLiveToken({
+  maxSeconds, merchantName = null, storeName = null, conversationExcerpt = '', correlationId,
+} = {}) {
+  const seconds = Math.max(1, Math.min(3600, Math.floor(Number(maxSeconds) || 0)));
+  const result = await pythonRequest({
+    path: '/rev/live/token',
+    body: {
+      max_seconds: seconds,
+      merchant_name: merchantName ? String(merchantName).slice(0, 120) : null,
+      store_name: storeName ? String(storeName).slice(0, 120) : null,
+      conversation_excerpt: String(conversationExcerpt || '').slice(0, 6000),
+    },
+    correlationId: getCorrelationId(correlationId),
+    timeout: LIVE_TOKEN_TIMEOUT_MS,
+  });
+  if (!result.success) return result;
+  const d = result.data || {};
+  const ok = typeof d.token === 'string' && d.token.startsWith('auth_tokens/')
+    && typeof d.ws_url === 'string' && d.ws_url.startsWith('wss://')
+    && typeof d.model === 'string';
+  if (!ok) {
+    return { success: false, error: { code: ML_ERRORS.INVALID_RESPONSE, message: 'Voice token unavailable.' } };
+  }
+  return {
+    success: true,
+    data: {
+      token: d.token,
+      ws_url: d.ws_url,
+      model: d.model,
+      voice: typeof d.voice === 'string' ? d.voice : null,
+      expires_at: d.expires_at || null,
+      new_session_expires_at: d.new_session_expires_at || null,
+    },
+  };
+}
+
 async function getToolCatalog({ correlationId } = {}) {
   const result = await pythonRequest({
     method: 'GET', path: '/rev/tools', correlationId: getCorrelationId(correlationId),
@@ -2102,6 +2142,7 @@ module.exports = {
     getToolCatalog,
     generateConversationTitle,
     punctuateDictation,
+    mintLiveToken,
     rfmSync,
     computeFeatures,
     predictAbandonment,

@@ -253,6 +253,7 @@ exports.chat = async (req, res, next) => {
         message, requestId: correlationId, requestedConversationId: conversationId,
         imageAssisted: Boolean(imageBase64),
         clientContext: validated.clientContext,
+        inputMode: validated.inputMode,
       });
       activeConvId = acceptance.conversationId;
       if (acceptance.duplicate) {
@@ -700,6 +701,7 @@ exports.getConversation = async (req, res, next) => {
           cm.id, cm.role, cm.content, cm.sequence_number,
           cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
           cm.created_at, cm.metadata->'client_context' AS client_context,
+          cm.metadata->>'input_mode' AS input_mode,
           fb.rating AS feedback_rating
         FROM conversation_messages cm
         JOIN conversations cv ON cv.id = cm.conversation_id
@@ -716,6 +718,7 @@ exports.getConversation = async (req, res, next) => {
           cm.id, cm.role, cm.content, cm.sequence_number,
           cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
           cm.created_at, cm.metadata->'client_context' AS client_context,
+          cm.metadata->>'input_mode' AS input_mode,
           fb.rating AS feedback_rating
         FROM conversation_messages cm
         JOIN conversations cv ON cv.id = cm.conversation_id
@@ -733,6 +736,7 @@ exports.getConversation = async (req, res, next) => {
           cm.id, cm.role, cm.content, cm.sequence_number,
           cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
           cm.created_at, cm.metadata->'client_context' AS client_context,
+          cm.metadata->>'input_mode' AS input_mode,
           fb.rating AS feedback_rating
         FROM conversation_messages cm
         JOIN conversations cv ON cv.id = cm.conversation_id
@@ -1145,6 +1149,195 @@ exports.punctuateDictation = async (req, res, next) => {
     return res.status(200).json({ success: true, data: { text: punctuated } });
   } catch (error) {
     next(error);
+  }
+};
+
+// ── Live voice calls (Gemini Live) ───────────────────────────────────────────
+// Node authorises the call, enforces the organization's daily voice allowance
+// and mints a short-lived, setup-locked token through python. Audio flows
+// browser <-> Gemini directly; it is never proxied or stored here. Store
+// questions asked during a call go through the normal /rev/stream pipeline
+// (input_mode 'voice'), so they are grounded, persisted and shown in chat.
+
+const revVoice = require('../services/revVoiceSessions');
+const VOICE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function _voiceErrorResponse(res, error) {
+  if (error && typeof error.code === 'string' && error.code.startsWith('VOICE_') && error.statusCode) {
+    return res.status(error.statusCode).json({
+      success: false,
+      error: { code: error.code, message: error.publicMessage || error.message },
+      ...(error.allowance ? { allowance: error.allowance } : {}),
+    });
+  }
+  return null;
+}
+
+function _voiceCounters(body) {
+  return {
+    turnCount: Number(body?.turn_count) || 0,
+    askCount: Number(body?.ask_count) || 0,
+    conversationId: typeof body?.conversation_id === 'string' && VOICE_UUID.test(body.conversation_id)
+      ? body.conversation_id.toLowerCase() : null,
+  };
+}
+
+async function _voiceExcerpt(conversationId, organizationId) {
+  if (!conversationId) return '';
+  const rows = await prisma.$queryRaw`
+    SELECT * FROM (
+      SELECT cm.role, cm.content, cm.has_error, cm.sequence_number
+      FROM conversation_messages cm
+      WHERE cm.conversation_id = ${conversationId}::uuid
+        AND cm.organization_id = ${organizationId}::uuid
+      ORDER BY cm.sequence_number DESC
+      LIMIT 12
+    ) recent ORDER BY sequence_number ASC
+  `;
+  return revVoice.buildVoiceExcerpt((rows || []).map((row) => ({
+    ...row,
+    content: row.role === 'rev' ? safePersistedNarrative(row.content) : row.content,
+  })));
+}
+
+// GET /api/v1/rev/live/allowance
+exports.getVoiceAllowance = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    await revVoice.reapStaleSessions(prisma, { organizationId: org.id });
+    const allowance = await revVoice.getAllowance(prisma, org.id);
+    return res.status(200).json({ success: true, data: allowance });
+  } catch (error) {
+    if (_voiceErrorResponse(res, error)) return undefined;
+    return next(error);
+  }
+};
+
+// POST /api/v1/rev/live/session  { conversation_id? }
+exports.startVoiceSession = async (req, res, next) => {
+  let reserved = null;
+  let org = null;
+  try {
+    org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    const rawConversationId = req.body?.conversation_id ?? null;
+    if (rawConversationId != null && (typeof rawConversationId !== 'string' || !VOICE_UUID.test(rawConversationId))) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'conversation_id must be a UUID.' } });
+    }
+    const conversationId = rawConversationId ? rawConversationId.toLowerCase() : null;
+    if (conversationId) await verifyConversationOwnership(conversationId, org.id);
+
+    reserved = await revVoice.startSession(prisma, {
+      organizationId: org.id, userId: req.user.id, conversationId,
+      model: process.env.REV_LIVE_MODEL || 'gemini-3.8-live',
+    });
+
+    const [user, excerpt] = await Promise.all([
+      prisma.users.findUnique({ where: { id: req.user.id }, select: { full_name: true } }).catch(() => null),
+      _voiceExcerpt(conversationId, org.id).catch(() => ''),
+    ]);
+    const firstName = typeof user?.full_name === 'string' ? user.full_name.trim().split(/\s+/)[0] : null;
+
+    const minted = await mlService.mintLiveToken({
+      maxSeconds: reserved.maxSeconds,
+      merchantName: firstName || null,
+      storeName: org.company_name || null,
+      conversationExcerpt: excerpt,
+      correlationId: req.get?.('X-Correlation-ID'),
+    });
+    if (!minted.success) {
+      await revVoice.endSession(prisma, {
+        sessionId: reserved.sessionId, organizationId: org.id, userId: req.user.id, reason: 'unavailable',
+      }).catch(() => {});
+      logger.warn('rev_voice_token_unavailable', { orgId: org.id, errorCode: minted.error?.code || 'UNKNOWN' });
+      return res.status(503).json({
+        success: false,
+        error: { code: 'VOICE_UNAVAILABLE', message: 'Voice calls with Rev are unavailable right now. Please try again shortly.' },
+      });
+    }
+    if (minted.data.model) {
+      await prisma.$executeRaw`
+        UPDATE rev_voice_sessions SET model = ${String(minted.data.model).slice(0, 80)}
+        WHERE id = ${reserved.sessionId}::uuid
+      `.catch(() => {});
+    }
+
+    logger.info('rev_voice_session_started', {
+      orgId: org.id, userId: req.user.id, sessionId: reserved.sessionId, maxSeconds: reserved.maxSeconds,
+    });
+    return res.status(201).json({
+      success: true,
+      data: {
+        session_id: reserved.sessionId,
+        token: minted.data.token,
+        ws_url: minted.data.ws_url,
+        model: minted.data.model,
+        voice: minted.data.voice,
+        expires_at: minted.data.expires_at,
+        new_session_expires_at: minted.data.new_session_expires_at,
+        max_seconds: reserved.maxSeconds,
+        remaining_seconds: reserved.allowance.remaining_seconds,
+        heartbeat_interval_ms: revVoice.HEARTBEAT_INTERVAL_MS,
+        conversation_id: conversationId,
+        started_at: reserved.startedAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    if (reserved && org) {
+      await revVoice.endSession(prisma, {
+        sessionId: reserved.sessionId, organizationId: org.id, userId: req.user.id, reason: 'error',
+      }).catch(() => {});
+    }
+    if (_voiceErrorResponse(res, error)) return undefined;
+    return next(error);
+  }
+};
+
+function _voiceSessionId(req, res) {
+  const id = typeof req.params?.id === 'string' ? req.params.id.trim().toLowerCase() : '';
+  if (!VOICE_UUID.test(id)) {
+    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid voice call id.' } });
+    return null;
+  }
+  return id;
+}
+
+// POST /api/v1/rev/live/session/:id/heartbeat  { turn_count, ask_count, conversation_id? }
+exports.voiceSessionHeartbeat = async (req, res, next) => {
+  try {
+    const sessionId = _voiceSessionId(req, res);
+    if (!sessionId) return undefined;
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    const view = await revVoice.heartbeat(prisma, {
+      sessionId, organizationId: org.id, userId: req.user.id, ..._voiceCounters(req.body),
+    });
+    return res.status(200).json({ success: true, data: view });
+  } catch (error) {
+    if (_voiceErrorResponse(res, error)) return undefined;
+    return next(error);
+  }
+};
+
+// POST /api/v1/rev/live/session/:id/end  { reason, turn_count, ask_count, conversation_id? }
+// The dashboard also sends this with fetch keepalive when the tab closes.
+exports.endVoiceSession = async (req, res, next) => {
+  try {
+    const sessionId = _voiceSessionId(req, res);
+    if (!sessionId) return undefined;
+    let body = req.body;
+    if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    const view = await revVoice.endSession(prisma, {
+      sessionId, organizationId: org.id, userId: req.user.id,
+      reason: typeof body?.reason === 'string' ? body.reason : 'hangup',
+      ..._voiceCounters(body),
+    });
+    logger.info('rev_voice_session_ended', {
+      orgId: org.id, sessionId, reason: view.end_reason, secondsUsed: view.seconds_used,
+    });
+    return res.status(200).json({ success: true, data: view });
+  } catch (error) {
+    if (_voiceErrorResponse(res, error)) return undefined;
+    return next(error);
   }
 };
 
@@ -1895,6 +2088,7 @@ exports.chatStream = async (req, res, next) => {
         message: validated.message, requestId: correlationId,
         requestedConversationId,
         clientContext: validated.clientContext,
+        inputMode: validated.inputMode,
       });
       activeConvId = acceptance.conversationId;
       if (acceptance.duplicate) {

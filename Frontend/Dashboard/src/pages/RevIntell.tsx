@@ -25,7 +25,7 @@ import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom"
 import {
   Plus, X, Copy, Check, ArrowUp,
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
-  Zap, RefreshCw, Mic, Phone, Pencil,
+  Zap, RefreshCw, Mic, AudioLines, Pencil,
   Trash2, ImageIcon, AlertCircle, RefreshCcw, Square, Search,
   ThumbsUp, ThumbsDown, Volume2, CheckCircle2, History, ShieldCheck,
 } from "lucide-react";
@@ -41,6 +41,9 @@ import { RevComposerAttachment, RevSentImage } from "@/components/rev/RevImageAt
 import { RevDictationBar } from "@/components/rev/RevDictationBar";
 import { useDictation, DICTATION_ERROR_MESSAGES } from "@/lib/useDictation";
 import { polishDictation } from "@/lib/dictationPolish";
+import { useRevLiveCall, type RevLiveCall } from "@/lib/useRevLiveCall";
+import { mergeTimeline, type VoiceAskOutcome } from "@/lib/revLiveCall";
+import { RevLiveCallBar, RevLiveCallStage, RevLiveTranscriptLine } from "@/components/rev/RevLiveCall";
 import { requestConversationTitle } from "@/lib/revTitle";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
@@ -112,6 +115,8 @@ interface Message {
   startedAt?:  number;
   /** Measured wall time from send to final answer, live turns only ("Worked for Ns"). */
   durationMs?: number;
+  /** Asked out loud during a live voice call (Rev's voice delegated it here). */
+  voice?: boolean;
 }
 
 /** Elapsed ms since a live turn started; undefined when the start is unknown. */
@@ -135,6 +140,7 @@ interface PersistedConversationMessage {
   error_code?: string | null;
   feedback_rating?: string | null;
   sequence_number?: number;
+  input_mode?: string | null;
 }
 
 interface FindingDetails {
@@ -452,6 +458,21 @@ function Bubble({ msg, latest = false, onCopy, onRetry, retryLabel, onSend, onOp
 
   // User turn: a tonal bubble, right-aligned (ChatGPT-UI study §3). Tone, not
   // a saturated gradient, so the answer stays the visual focus.
+  // A question Rev's voice passed to the investigation during a call: a quiet
+  // marker (the spoken words are in the call transcript) above the answer.
+  if (!isRev && msg.voice) return (
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
+      className="rev-turn rev-turn-user flex justify-end mb-4">
+      <div data-rev-user-message="" data-rev-voice-question=""
+        className="flex max-w-[85%] items-start gap-2 rounded-2xl px-3.5 py-2 text-[0.8rem] leading-snug break-words [overflow-wrap:anywhere] sm:max-w-[70%]"
+        style={{ border: `1px solid ${isDark ? "#262626" : "#E4E1F7"}`, color: t2 }}>
+        <AudioLines size={13} className="mt-[2px] shrink-0" aria-hidden="true" style={{ color: isDark ? "#B4A8FF" : "#2B13CF" }} />
+        <span><span className="font-semibold" style={{ color: t1 }}>Asked by voice: </span>{typeof msg.content === "string" ? msg.content : ""}</span>
+      </div>
+    </motion.div>
+  );
+
   if (!isRev) return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18, ease: "easeOut" }}
@@ -623,8 +644,31 @@ function AttachMenu({ onFile, t1 }: {
 
 // ── Input toolbar ─────────────────────────────────────────────────────────────
 
+// After a call: why it ended (limit, another tab, dropped) or why it could
+// not start (microphone blocked, unsupported, unavailable). Dismissible.
+function RevCallNotice({ call, isDark, t2 }: { call: RevLiveCall; isDark: boolean; t2: string }) {
+  const text = call.inCall ? null : call.error ?? call.notice;
+  if (!text) return null;
+  const isError = Boolean(call.error);
+  return (
+    <div role={isError ? "alert" : "status"} data-rev-call-notice=""
+      className="mb-2 flex items-start gap-2 rounded-2xl px-3.5 py-2.5 text-[0.8rem] leading-snug"
+      style={{ background: isError ? "rgba(220,38,38,0.06)" : (isDark ? "rgba(255,255,255,0.04)" : "#F4F2FD"),
+        border: `1px solid ${isError ? "rgba(220,38,38,0.2)" : (isDark ? "#262626" : "#E4E1F7")}`,
+        color: isError ? (isDark ? "#fca5a5" : "#b91c1c") : t2 }}>
+      {isError ? <AlertCircle size={14} className="mt-[1px] shrink-0" aria-hidden="true" />
+        : <AudioLines size={14} className="mt-[1px] shrink-0" aria-hidden="true" />}
+      <span className="min-w-0 flex-1">{text}</span>
+      <button type="button" onClick={call.dismiss} aria-label="Dismiss call message"
+        className="-my-1 -mr-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6F66FF] dark:hover:bg-white/10">
+        <X size={13} />
+      </button>
+    </div>
+  );
+}
+
 function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, onDictate, placeholder, disabled, sendDisabled,
-  onSend, onFile, onStop, thinking, attachment, onRemoveAttachment, card, border, t1, t2, isDark, maxLength = MAX_QUESTION_LENGTH }: {
+  onSend, onFile, onStop, thinking, attachment, onRemoveAttachment, onCall, callSupported = true, card, border, t1, t2, isDark, maxLength = MAX_QUESTION_LENGTH }: {
   inputRef: React.RefObject<HTMLTextAreaElement>;
   value: string; onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
   onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
@@ -636,6 +680,8 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, onDictate
   placeholder: string; disabled?: boolean; sendDisabled?: boolean; maxLength?: number;
   onSend: () => void; onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onStop?: () => void; thinking: boolean;
+  /** Start a live voice call with Rev. */
+  onCall?: () => void; callSupported?: boolean;
   card: string; border: string; t1: string; t2: string; isDark: boolean;
 }) {
   // `over` is strictly beyond the bound (the textarea maxLength normally makes
@@ -758,10 +804,22 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, onDictate
               <Mic size={17} />
             </button>
           )}
-          <button title="Audio calls unavailable in this release" aria-label="Audio calls unavailable in this release" disabled
-            className="p-1.5 rounded-lg transition-colors opacity-60 hover:opacity-100" style={{ color: t2 }}>
-            <Phone size={15} />
-          </button>
+          {/* Live voice call (ChatGPT Voice): talk with Rev, hands free. */}
+          {onCall && (callSupported ? (
+            <button type="button" onClick={onCall} disabled={Boolean(disabled) || thinking}
+              aria-label="Start a voice call with Rev" title="Voice call"
+              className="h-11 w-11 flex items-center justify-center rounded-full transition-colors hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6F66FF]"
+              style={{ color: t1 }}>
+              <AudioLines size={18} />
+            </button>
+          ) : (
+            <button type="button" onClick={onCall} aria-disabled="true"
+              aria-label="Voice calls aren't supported in this browser" title="Voice calls aren't supported in this browser"
+              className="h-11 w-11 flex items-center justify-center rounded-full opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6F66FF]"
+              style={{ color: t2 }}>
+              <AudioLines size={18} />
+            </button>
+          ))}
           {thinking && onStop ? (
             <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
               onClick={onStop} aria-label="Stop generating" title="Stop generating"
@@ -1202,6 +1260,9 @@ export default function RevIntell() {
   // so the URL-sync effect below doesn't redundantly re-fetch and clobber the
   // (already correct) optimistic messages with a fresh server round trip.
   const justCreatedIdRef = useRef<string | null>(null);
+  // The last conversation a turn created (kept after the adoption effect
+  // consumes justCreatedIdRef): a live call survives its own new thread.
+  const turnCreatedIdRef = useRef<string | null>(null);
   const justCreatedFindingRef = useRef<string | null>(null);
   // REV-RESUME-001 gates: an explicit "New conversation" choice opts the bare
   // route out of continuity until the next send/selection; the resumed flag
@@ -1477,6 +1538,7 @@ export default function RevIntell() {
           persistence: "persisted",
           sequence: typeof m.sequence_number === "number" ? m.sequence_number : undefined,
           imageAssisted: m.role === "user" && userContent === true ? true : undefined,
+          voice: m.role === "user" && m.input_mode === "voice" ? true : undefined,
           feedback: m.feedback_rating === "up" || m.feedback_rating === "down" ? m.feedback_rating : undefined,
           // Rehydrated Rev turns stay ratable even when the persisted content
           // predates message_id in payloads: the thread row IS the message.
@@ -1739,10 +1801,18 @@ export default function RevIntell() {
   // investigation happen; the final frame is the persisted, validated turn.
   // Image turns fall back to the non-streaming endpoint, which is the only
   // path that carries attachments — never silently drop an attachment.
-  const send = useCallback(async (text: string) => {
+  // `inputMode: "voice"`: Rev's voice delegated this question during a live
+  // call. It runs the same grounded pipeline and lands in the thread, but
+  // never touches the composer draft or attachment, and resolves with the
+  // written answer so the voice can explain it.
+  const send = useCallback(async (text: string, options?: { inputMode?: "voice" }): Promise<VoiceAskOutcome | null> => {
+    const voice = options?.inputMode === "voice";
     const trimmedLen = text.trim().length;
-    if (!trimmedLen || trimmedLen > MAX_QUESTION_LENGTH || turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError || (findingId !== null && !findingContext)) return;
-    if ((findingRetryDraft?.requiresImage || findingRetryDraft?.attachmentUnknown) && !imageAttachment) return;
+    if (!trimmedLen || trimmedLen > MAX_QUESTION_LENGTH || turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError || (findingId !== null && !findingContext)) {
+      return voice ? { ok: false, reason: turnPendingRef.current ? "busy" : "blocked" } : null;
+    }
+    if (!voice && (findingRetryDraft?.requiresImage || findingRetryDraft?.attachmentUnknown) && !imageAttachment) return null;
+    let voiceOutcome: VoiceAskOutcome | null = null;
     const turn = ++turnRequestRef.current;
     turnPendingRef.current = true;
     pinnedRef.current = true;
@@ -1763,12 +1833,13 @@ export default function RevIntell() {
       if (startedNewConversation) setNamingId(id);
       conversationRequestRef.current += 1;
       justCreatedIdRef.current = id;
+      turnCreatedIdRef.current = id;
       justCreatedFindingRef.current = turnFindingId ?? null;
       setActiveId(id);
       navigate(revConversationRoute(id, turnFindingId ?? null, returnHint), { replace: true });
     };
     const trimmed = text.trim();
-    const previousSubmission = draftSubmissionRef.current;
+    const previousSubmission = voice ? null : draftSubmissionRef.current;
     const submissionId = previousSubmission
       && previousSubmission.message === trimmed
       && previousSubmission.conversationId === activeId
@@ -1776,21 +1847,23 @@ export default function RevIntell() {
       ? previousSubmission.id : crypto.randomUUID();
     // Retained only while acceptance is unknown. An explicit edit, accepted
     // response, or intentional new turn gets its own idempotency scope.
-    draftSubmissionRef.current = {
-      id: submissionId, message: trimmed, conversationId: activeId, findingId: turnFindingId,
-    };
-
-    inputEditedRef.current = true;
-    // Acceptance is authoritative. The draft and attachment remain available
-    // until the server has persisted the question (meta for SSE, a successful
-    // JSON envelope for image turns), including across retry/navigation races.
-    setFindingRetryDraft(null);
-    if (inputRef.current) inputRef.current.style.height = "auto";
+    if (!voice) {
+      draftSubmissionRef.current = {
+        id: submissionId, message: trimmed, conversationId: activeId, findingId: turnFindingId,
+      };
+      inputEditedRef.current = true;
+      // Acceptance is authoritative. The draft and attachment remain available
+      // until the server has persisted the question (meta for SSE, a successful
+      // JSON envelope for image turns), including across retry/navigation races.
+      setFindingRetryDraft(null);
+      if (inputRef.current) inputRef.current.style.height = "auto";
+    }
+    const turnImage = voice ? null : imageAttachment;
     const sid = `r${Date.now()}-${turn}`;
     setMessages(prev => {
-      const placeholder: Message = { id: sid, role: "rev", content: "", timestamp: new Date(), isStreaming: true, steps: [], persistence: "unknown", imageAssisted: Boolean(imageAttachment), startedAt: Date.now() };
-      const question: Message = { id: `u${Date.now()}-${turn}`, role: "user", content: trimmed, timestamp: new Date(), imageAssisted: Boolean(imageAttachment), imagePreview: imageAttachment?.preview };
-      const index = findingRetryDraft?.recoverInPlace ? prev.findIndex(message => message.id === findingRetryDraft.messageId) : -1;
+      const placeholder: Message = { id: sid, role: "rev", content: "", timestamp: new Date(), isStreaming: true, steps: [], persistence: "unknown", imageAssisted: Boolean(turnImage), startedAt: Date.now() };
+      const question: Message = { id: `u${Date.now()}-${turn}`, role: "user", content: trimmed, timestamp: new Date(), imageAssisted: Boolean(turnImage), imagePreview: turnImage?.preview, voice: voice || undefined };
+      const index = !voice && findingRetryDraft?.recoverInPlace ? prev.findIndex(message => message.id === findingRetryDraft.messageId) : -1;
       if (index === prev.length - 1 && index > 0 && prev[index].persistence === "not-persisted") {
         return prev.map((message, position) => position === index ? placeholder
           : position === index - 1 && message.role === "user" ? { ...message, content: trimmed } : message);
@@ -1812,9 +1885,9 @@ export default function RevIntell() {
       });
     };
 
-    const capturedImage = imageAttachment;
+    const capturedImage = turnImage;
     const acceptDraft = () => {
-      if (!isCurrent()) return;
+      if (!isCurrent() || voice) return;
       draftSubmissionRef.current = null;
       setInput("");
       if (inputRef.current) inputRef.current.style.height = "auto";
@@ -1830,7 +1903,7 @@ export default function RevIntell() {
         body.image_media_type = capturedImage.mediaType;
 
         const res = await api.post<RevTurnPayload>("/rev/chat", body);
-        if (!isCurrent()) return;
+        if (!isCurrent()) return null;
         const data = res.data;
         if (!data?.success) {
           const persisted = typeof data?.conversation_id === "string";
@@ -1871,7 +1944,7 @@ export default function RevIntell() {
         }
         if (startedNewConversation && turnConversationId) void nameConversation(turnConversationId);
       }
-      return;
+      return null;
     }
 
     const controller = new AbortController();
@@ -1885,6 +1958,7 @@ export default function RevIntell() {
         requestId: submissionId,
         conversationId: activeId,
         findingId: turnFindingId,
+        inputMode: voice ? "voice" : undefined,
         signal: controller.signal,
         handlers: {
           onMeta: ({ conversation_id }) => {
@@ -1915,6 +1989,7 @@ export default function RevIntell() {
               const code = (payload as RevAnswerPayload & { error?: { code?: string } }).error?.code;
               findingRejected(code);
               const failure = classifyRevResponseError(code);
+              voiceOutcome = { ok: false, reason: "failed", message: cleanError(code) };
               patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code,
                 retryable: failure.retryable, retryAfterSeconds: failure.retryAfterSeconds, content: cleanError(code),
                 // Phase 5D: evidence frames received before the failure are
@@ -1925,6 +2000,10 @@ export default function RevIntell() {
             acceptDraft();
             adoptConversation(payload.conversation_id);
             const { content, payload: normalised } = normaliseTurn(payload);
+            if (voice) {
+              const answer = answerCopyText({ id: sid, role: "rev", content, payload: normalised, timestamp: new Date() });
+              voiceOutcome = answer.trim() ? { ok: true, answer } : { ok: false, reason: "failed" };
+            }
             patch(message => ({
               ...message,
               isStreaming: false,
@@ -1939,7 +2018,7 @@ export default function RevIntell() {
         },
       });
 
-      if (!isCurrent()) return;
+      if (!isCurrent()) return voice ? { ok: false, reason: "cancelled" } : null;
       if (!finalRejected) adoptConversation(result.conversationId);
       patch(message => {
         if (message.hasError) return { ...message, isStreaming: false };
@@ -1955,6 +2034,7 @@ export default function RevIntell() {
       void loadConversations();
     } catch (err) {
       if (controller.signal.aborted) {
+        voiceOutcome = { ok: false, reason: "cancelled" };
         patch(message => ({ ...message, isStreaming: false, cancelled: true }));
       } else {
         const code = responseErrorCode(err) ?? "";
@@ -1969,6 +2049,7 @@ export default function RevIntell() {
         }
         const failure = classifyRevFailure(err, code);
         const msg = revTurnMessage(code, err);
+        voiceOutcome = { ok: false, reason: "failed", message: msg };
         patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code,
           retryable: failure.retryable, retryAfterSeconds: failure.retryAfterSeconds, content: msg,
           persistence: message.persistence !== "persisted" && FINDING_ERRORS.includes(code) ? "not-persisted" : message.persistence }));
@@ -1984,7 +2065,33 @@ export default function RevIntell() {
         }
       }
     }
+    return voice ? (voiceOutcome ?? { ok: false, reason: "failed" }) : null;
   }, [activeId, convLoading, convError, convNotFound, findingId, findingContext, findingLoading, findingError, findingRetryDraft, navigate, imageAttachment, loadConversations, returnHint, nameConversation]);
+
+  // ── Live voice call (ChatGPT Voice-style) ─────────────────────────────────
+  // Rev's voice handles the conversation; store questions it delegates run
+  // through `send` as normal grounded turns, so their answers and evidence
+  // land in this thread while the voice explains them.
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  const askByVoice = useCallback(async (question: string): Promise<VoiceAskOutcome> => {
+    const outcome = await sendRef.current(question, { inputMode: "voice" });
+    return outcome ?? { ok: false, reason: "failed" };
+  }, []);
+  const call = useRevLiveCall({ conversationId: activeId, onAsk: askByVoice });
+  const { inCall: callActive, end: endCall, clearTranscript: clearCallTranscript } = call;
+  // Opening another conversation (or a new one) hangs up and clears the call
+  // transcript. The conversation a call creates with its first spoken
+  // question keeps the call going.
+  const callConversationRef = useRef<string | null>(activeId);
+  useEffect(() => {
+    const previous = callConversationRef.current;
+    callConversationRef.current = activeId;
+    if (previous === activeId) return;
+    if (previous === null && activeId !== null && activeId === turnCreatedIdRef.current) return;
+    if (callActive) endCall("hangup");
+    clearCallTranscript();
+  }, [activeId, callActive, endCall, clearCallTranscript]);
 
   // ── Stop generation ───────────────────────────────────────────────────────
   const stopGeneration = useCallback(() => {
@@ -2375,6 +2482,7 @@ export default function RevIntell() {
     inputRef, value: input, onChange: resize, onKeyDown: handleKey, onPaste: handlePaste,
     onDictate: (text: string) => { inputEditedRef.current = true; setInput(text); },
     onSend: () => send(input), onFile: handleFile,
+    onCall: () => { void call.start(); }, callSupported: call.supported,
     attachment: imageAttachment, onRemoveAttachment: removeAttachment,
     thinking,
     disabled: findingLoading || Boolean(findingError),
@@ -2384,6 +2492,9 @@ export default function RevIntell() {
   };
 
   const hasMessages = messages.length > 0;
+  // A live call shows the thread (with its transcript) even before any message.
+  const showThread = hasMessages || call.transcript.length > 0 || call.inCall;
+  const timeline = useMemo(() => mergeTimeline(messages, call.transcript), [messages, call.transcript]);
   // The newest Rev turn keeps its action dock visible (older ones reveal on hover).
   const latestRevId = useMemo(() => [...messages].reverse().find(message => message.role === "rev")?.id ?? null, [messages]);
   const starters = useMemo(() => buildStarters(storeContext), [storeContext]);
@@ -2502,12 +2613,12 @@ export default function RevIntell() {
           </div>
         </div>}
 
-        {activeId && !hasMessages && !convLoading && !convNotFound && !convError && (
+        {activeId && !showThread && !convLoading && !convNotFound && !convError && (
           <p role="status" className="px-6 py-8 text-center text-sm" style={{ color: t2 }}>No messages in this conversation yet.</p>
         )}
 
         {/* Welcome screen */}
-        {!hasMessages && !convLoading && !convNotFound && !activeId && (
+        {!showThread && !convLoading && !convNotFound && !activeId && (
           <div className="flex flex-col items-center justify-center min-h-full px-5 sm:px-6 pt-12 lg:pt-10 pb-10 max-w-3xl mx-auto w-full">
             <motion.div initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }} className="mb-5">
@@ -2745,6 +2856,7 @@ export default function RevIntell() {
 
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25 }} className="w-full mb-7">
+              <RevCallNotice call={call} isDark={isDark} t2={t2} />
               <InputToolbar {...inputProps} placeholder="Ask me anything about your business..." />
             </motion.div>
 
@@ -2772,11 +2884,25 @@ export default function RevIntell() {
         )}
 
         {/* Message thread */}
-        {hasMessages && !convLoading && !convNotFound && !convError && (
+        {showThread && !convLoading && !convNotFound && !convError && (
           <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 pt-14 pb-6 lg:pt-8">
             {messagesMore && <p role="status" className="mt-3 text-xs" style={{ color: t2 }}>Showing the most recent messages.</p>}
             <LoadMore available={messagesMore} loading={messagesMoreLoading} error={messagesMoreError} onLoad={() => activeId && void loadConversation(activeId, true)} label="Load older messages" />
-            {messages.map(msg => (
+            {!hasMessages && call.transcript.length === 0 && (
+              <div className="flex flex-col items-center gap-3 py-16 text-center" data-rev-live-empty="">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full"
+                  style={{ background: isDark ? "rgba(180,168,255,0.1)" : "rgba(43,19,207,0.06)" }}>
+                  <AudioLines size={20} aria-hidden="true" style={{ color: isDark ? "#B4A8FF" : "#2B13CF" }} />
+                </span>
+                <p className="m-0 text-[0.95rem] font-semibold" style={{ color: t1 }}>Talk to Rev</p>
+                <p className="m-0 max-w-sm text-[0.84rem] leading-relaxed" style={{ color: t2 }}>
+                  Ask out loud about sales, orders, products or customers. Rev answers by voice and puts the full answer here.
+                </p>
+              </div>
+            )}
+            {timeline.map(item => item.kind === "transcript" ? (
+              <RevLiveTranscriptLine key={item.key} entry={item.entry} isDark={isDark} t1={t1} t2={t2} />
+            ) : ((msg: Message) => (
               <Bubble key={msg.id} msg={msg} onCopy={copy}
                 latest={msg.id === latestRevId}
                 actionsDisabled={thinking}
@@ -2789,7 +2915,7 @@ export default function RevIntell() {
                 speaking={speakingId === msg.id}
                 onReadAloud={toggleReadAloud}
                 isDark={isDark} t1={t1} t2={t2} />
-            ))}
+            ))(item.message))}
             {danglingUserTurn && (
               <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
                 padding: "10px 12px", borderRadius: 12, marginTop: 12,
@@ -2813,10 +2939,13 @@ export default function RevIntell() {
       </div>
 
       {/* Sticky input — active conversation */}
-      {(hasMessages || activeId) && !convLoading && !convNotFound && !convError && (
+      {(showThread || activeId) && !convLoading && !convNotFound && !convError && (
         <div className="rev-composer-dock relative z-10 shrink-0 px-4 sm:px-6 pb-3 pt-3 -mt-6">
           <div className="max-w-3xl mx-auto">
-            <InputToolbar {...inputProps} placeholder="Ask Rev anything..." disabled={thinking || findingLoading || Boolean(findingError)} />
+            <RevCallNotice call={call} isDark={isDark} t2={t2} />
+            {call.inCall
+              ? <RevLiveCallBar call={call} isDark={isDark} card={card} border={bdr} t1={t1} t2={t2} />
+              : <InputToolbar {...inputProps} placeholder="Ask Rev anything..." disabled={thinking || findingLoading || Boolean(findingError)} />}
             <p className="text-center text-[0.66rem] mt-2" style={{ color: t4 }}>
               Rev reads your store data and never changes it. Check key numbers in Evidence.
             </p>
@@ -2825,6 +2954,9 @@ export default function RevIntell() {
       )}
 
       </div>
+      <AnimatePresence>
+        {call.inCall && call.view === "full" && <RevLiveCallStage key="rev-live-stage" call={call} isDark={isDark} />}
+      </AnimatePresence>
       {/* The single history drawer, at every viewport width, opened from the
           top-right toggle. It must be a Radix ModalSurface, not a bare
           positioned div: the dialog primitive is what aria-hides the workspace

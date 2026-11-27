@@ -326,3 +326,34 @@ test('a persistent unique violation is retried bounded times then surfaces', asy
   );
   assert.equal(attempts, 3);
 });
+
+// ── Live voice calls: spoken questions are annotated, never re-routed ───────
+test('input_mode voice is accepted; text and absent mean typed', () => {
+  assert.equal(validateSubmission({ message: 'Revenue?', input_mode: 'voice' }).inputMode, 'voice');
+  assert.equal(validateSubmission({ message: 'Revenue?', input_mode: 'text' }).inputMode, null);
+  assert.equal(validateSubmission({ message: 'Revenue?' }).inputMode, null);
+});
+
+for (const bad of ['VOICE', 'eval', '', 3, ['voice'], { mode: 'voice' }]) {
+  test(`rejects input_mode ${JSON.stringify(bad)}`, () => {
+    assert.throws(() => validateSubmission({ message: 'Revenue?', input_mode: bad }),
+      error => error.code === 'INVALID_INPUT_MODE' && error.statusCode === 400);
+  });
+}
+
+test('voice questions persist input_mode alongside any client_context', async () => {
+  for (const [clientContext, expected] of [
+    [null, { input_mode: 'voice' }],
+    [{ source: 'eval' }, { client_context: { source: 'eval' }, input_mode: 'voice' }],
+  ]) {
+    const calls = [];
+    const prisma = {
+      $queryRaw: () => [],
+      $executeRaw: (strings, ...values) => { calls.push({ sql: strings.join('?'), values }); return 1; },
+    };
+    await acceptSubmission({ prisma: transactionCapable(prisma), organizationId: ORG, userId: USER,
+      message: 'Revenue?', requestId: REQ, clientContext, inputMode: 'voice' });
+    const stored = calls[1].values.find(value => typeof value === 'string' && value.includes('input_mode'));
+    assert.deepEqual(JSON.parse(stored), expected);
+  }
+});
