@@ -159,8 +159,8 @@ const Profile: FC = () => {
           <motion.h1 layout className={`text-2xl font-bold tracking-tight display ${DESIGN_TOKENS.primaryText}`}>Account</motion.h1>
           <motion.p layout className={`text-[0.85rem] mt-1 ${DESIGN_TOKENS.secondaryText}`}>Manage your personal profile and account settings.</motion.p>
         </div>
-        <MotionButton whileTap={{ scale: 0.98 }} variant="ghost" size="icon" onClick={() => window.history.back()} className="rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors">
-          <X className="h-5 w-5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white" />
+        <MotionButton whileTap={{ scale: 0.98 }} variant="ghost" size="icon" onClick={() => window.history.back()} className="rounded-full hover:bg-slate-200 dark:hover:bg-neutral-800 transition-colors">
+          <X className="h-5 w-5 text-slate-500 hover:text-slate-900 dark:text-neutral-400 dark:hover:text-white" />
         </MotionButton>
       </motion.div>
 
@@ -168,8 +168,8 @@ const Profile: FC = () => {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-glass/[0.015] to-transparent" />
 
         {/* Profile Picture Section */}
-        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
-          <motion.h3 layout className="font-semibold text-[0.85rem] text-slate-800 dark:text-slate-200 mb-4">Profile Picture</motion.h3>
+        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-neutral-800">
+          <motion.h3 layout className="font-semibold text-[0.85rem] text-slate-800 dark:text-neutral-200 mb-4">Profile Picture</motion.h3>
           <motion.div layout className="flex flex-col sm:flex-row sm:items-center gap-6">
             <motion.div layout className="h-16 w-16 rounded-full bg-bg-3 overflow-hidden flex items-center justify-center border border-border shrink-0">
               {avatarPreview ? (
@@ -187,17 +187,17 @@ const Profile: FC = () => {
                   <Upload className="h-3.5 w-3.5" />
                   Upload Image
                 </MotionButton>
-                <MotionButton whileTap={{ scale: 0.98 }} onClick={() => setAvatarPreview(null)} variant="outline" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs h-8 px-4 font-medium transition-colors">
+                <MotionButton whileTap={{ scale: 0.98 }} onClick={() => setAvatarPreview(null)} variant="outline" className="rounded-lg border border-slate-300 dark:border-neutral-700 bg-transparent text-slate-700 dark:text-neutral-300 hover:bg-slate-100 dark:hover:bg-neutral-800 text-xs h-8 px-4 font-medium transition-colors">
                   Remove
                 </MotionButton>
               </div>
-              <p className="text-[0.75rem] text-slate-600 dark:text-slate-400 font-medium">Accepted formats: PNG, JPEG, GIF (Max 10MB)</p>
+              <p className="text-[0.75rem] text-slate-600 dark:text-neutral-400 font-medium">Accepted formats: PNG, JPEG, GIF (Max 10MB)</p>
             </motion.div>
           </motion.div>
         </StaggeredItem>
 
         {/* Name Section */}
-        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
+        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-neutral-800">
           <motion.div layout className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
             <div className="space-y-2">
               <Label htmlFor="firstName" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>First Name</Label>
@@ -206,7 +206,7 @@ const Profile: FC = () => {
                 value={firstName} 
                 onChange={(e) => setFirstName(e.target.value)} 
                 readOnly={!isEditingNames}
-                className={`h-9 transition-all ${DESIGN_TOKENS.input} ${!isEditingNames ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-slate-900/50' : ''}`} 
+                className={`h-9 transition-all ${DESIGN_TOKENS.input} ${!isEditingNames ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-neutral-900/50' : ''}`} 
               />
             </div>
             <div className="space-y-2">
@@ -216,13 +216,13 @@ const Profile: FC = () => {
                 value={lastName} 
                 onChange={(e) => setLastName(e.target.value)} 
                 readOnly={!isEditingNames}
-                className={`h-9 transition-all ${DESIGN_TOKENS.input} ${!isEditingNames ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-slate-900/50' : ''}`} 
+                className={`h-9 transition-all ${DESIGN_TOKENS.input} ${!isEditingNames ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-neutral-900/50' : ''}`} 
               />
             </div>
           </motion.div>
           <motion.div layout className="flex justify-end">
             {!isEditingNames ? (
-              <MotionButton whileTap={{ scale: 0.98 }} onClick={() => setIsEditingNames(true)} variant="outline" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs h-9 px-6 font-medium transition-colors">
+              <MotionButton whileTap={{ scale: 0.98 }} onClick={() => setIsEditingNames(true)} variant="outline" className="rounded-lg border border-slate-300 dark:border-neutral-700 bg-transparent text-slate-700 dark:text-neutral-300 hover:bg-slate-100 dark:hover:bg-neutral-800 text-xs h-9 px-6 font-medium transition-colors">
                 Edit
               </MotionButton>
             ) : (
@@ -234,18 +234,18 @@ const Profile: FC = () => {
         </StaggeredItem>
 
         {/* Email Section */}
-        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
+        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-neutral-800">
           <motion.div layout className="space-y-2">
             <Label htmlFor="email" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>Email</Label>
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <Input id="email" defaultValue={user?.email || ""} readOnly disabled className={`max-w-md h-9 font-medium opacity-70 cursor-not-allowed ${DESIGN_TOKENS.input}`} />
             </div>
-            <p className="text-[0.75rem] text-slate-600 dark:text-slate-400 font-medium pt-1">Used to log in to your account</p>
+            <p className="text-[0.75rem] text-slate-600 dark:text-neutral-400 font-medium pt-1">Used to log in to your account</p>
           </motion.div>
         </StaggeredItem>
 
         {/* Role & Organization Section */}
-        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
+        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-neutral-800">
           <motion.div layout className="space-y-3">
             <Label className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>Role</Label>
             <div className="flex items-center gap-3">
@@ -263,12 +263,12 @@ const Profile: FC = () => {
                 {userRole || "member"}
               </Badge>
               {memberships && memberships.length > 0 && (
-                <p className="text-[0.75rem] text-slate-500 dark:text-slate-400 font-medium">
+                <p className="text-[0.75rem] text-slate-500 dark:text-neutral-400 font-medium">
                   {memberships[0].organizations.company_name}
                 </p>
               )}
             </div>
-            <p className="text-[0.75rem] text-slate-600 dark:text-slate-400 font-medium">
+            <p className="text-[0.75rem] text-slate-600 dark:text-neutral-400 font-medium">
               {userRole === "owner"
                 ? "You are the organization owner with full control."
                 : userRole === "admin"
@@ -279,10 +279,10 @@ const Profile: FC = () => {
         </StaggeredItem>
 
         {/* Password Section */}
-        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
+        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-neutral-800">
           <motion.div layout className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
-              <h3 className="font-semibold text-[0.85rem] text-slate-800 dark:text-slate-200">Password</h3>
+              <h3 className="font-semibold text-[0.85rem] text-slate-800 dark:text-neutral-200">Password</h3>
             </div>
             {!showChangePassword && (
               <MotionButton whileTap={{ scale: 0.98 }} onClick={() => setShowChangePassword(true)} variant="outline" className="border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs h-9 px-4 font-medium transition-colors shrink-0">
@@ -302,7 +302,7 @@ const Profile: FC = () => {
           <motion.div layout className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-[0.85rem] text-slate-800 dark:text-slate-200">
+                <h3 className="font-semibold text-[0.85rem] text-slate-800 dark:text-neutral-200">
                   Two-Factor Authentication (2FA)
                 </h3>
                 <Badge
@@ -316,7 +316,7 @@ const Profile: FC = () => {
                   {is2FAEnabled ? "Enabled" : "Disabled"}
                 </Badge>
               </div>
-              <p className="text-[0.75rem] text-slate-600 dark:text-slate-400">
+              <p className="text-[0.75rem] text-slate-600 dark:text-neutral-400">
                 Protect your Revluma account with an additional layer of security using an authenticator app.
               </p>
             </div>
@@ -353,13 +353,13 @@ const Profile: FC = () => {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 16 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className="relative w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-6 text-slate-900 dark:text-slate-100 shadow-2xl sm:p-8"
+              className="relative w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-6 text-slate-900 dark:text-neutral-100 shadow-2xl sm:p-8"
             >
               <button
                 type="button"
                 onClick={() => setIs2FAModalOpen(false)}
                 disabled={isVerifying2FA}
-                className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white disabled:opacity-50"
+                className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-neutral-800 dark:hover:text-white disabled:opacity-50"
                 aria-label="Close modal"
               >
                 <X className="h-5 w-5" />
@@ -372,35 +372,35 @@ const Profile: FC = () => {
                 <h3 className="mt-5 text-xl font-bold text-slate-900 dark:text-white">
                   Setup Two-Factor Authentication
                 </h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-neutral-400">
                   Scan the QR code below using your authenticator app (e.g. Google Authenticator, 1Password, or Authy).
                 </p>
               </div>
 
               {/* Placeholder QR Code */}
               <div className="my-6 flex flex-col items-center justify-center gap-3">
-                <div className="flex h-40 w-40 items-center justify-center rounded-2xl border border-slate-200 dark:border-slate-700 bg-white p-3 shadow-sm">
+                <div className="flex h-40 w-40 items-center justify-center rounded-2xl border border-slate-200 dark:border-neutral-700 bg-white p-3 shadow-sm">
                   {qrCodeUrl ? (
                     <img src={qrCodeUrl} alt="2FA QR Code" className="h-full w-full rounded-lg object-contain" />
                   ) : (
-                    <div className="h-full w-full animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
+                    <div className="h-full w-full animate-pulse rounded-lg bg-slate-100 dark:bg-neutral-800" />
                   )}
                 </div>
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-2">
+                <p className="text-xs font-medium text-slate-500 dark:text-neutral-400 mt-2">
                   Can't scan? Use the secret key:
                 </p>
               </div>
 
               {/* Secret Key Copy Block - Wrapped to 2 lines! */}
-              <div className="mb-6 flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 p-3">
+              <div className="mb-6 flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-neutral-800 bg-slate-50 dark:bg-neutral-900/80 p-3">
                 <div className="flex items-center justify-between px-1">
-                  <span className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <span className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400">
                     Secret Key
                   </span>
                   <button
                     type="button"
                     onClick={handleCopySecret}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-all"
+                    className="inline-flex items-center gap-1.5 rounded-md bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-neutral-300 shadow-sm border border-slate-200 dark:border-neutral-700 hover:bg-slate-100 dark:hover:bg-neutral-700 hover:text-slate-900 dark:hover:text-white transition-all"
                   >
                     {copiedSecret ? (
                       <>
@@ -416,7 +416,7 @@ const Profile: FC = () => {
                   </button>
                 </div>
                 {/* break-all forces long strings to wrap automatically */}
-                <div className="select-all break-all rounded-lg bg-white dark:bg-slate-950 p-2.5 text-center font-mono text-sm font-medium tracking-[0.15em] text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-slate-800/60">
+                <div className="select-all break-all rounded-lg bg-white dark:bg-neutral-950 p-2.5 text-center font-mono text-sm font-medium tracking-[0.15em] text-slate-800 dark:text-neutral-200 border border-slate-200/60 dark:border-neutral-800/60">
                   {setupSecret || "FY2D65JTIBNUORKUOR5UQSK5JVOXIPCHMQXGQVX"}
                 </div>
               </div>
@@ -424,7 +424,7 @@ const Profile: FC = () => {
               {/* 6-Digit OTP Form */}
               <form onSubmit={handleVerify2FA} className="space-y-5">
                 <div className="space-y-2">
-                  <Label htmlFor="otp-code" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="otp-code" className="text-xs font-semibold text-slate-700 dark:text-neutral-300">
                     Verification Code
                   </Label>
                   <Input
@@ -435,7 +435,7 @@ const Profile: FC = () => {
                     placeholder="123456"
                     value={otpCode}
                     onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                    className="h-12 text-center font-mono text-lg tracking-[0.35em] border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900/80 dark:text-white placeholder:tracking-normal placeholder:text-slate-400 dark:placeholder:text-slate-600 focus-visible:border-[#007FFF] dark:focus-visible:border-sky-500 shadow-sm transition-all"
+                    className="h-12 text-center font-mono text-lg tracking-[0.35em] border-slate-300 bg-white text-slate-900 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white placeholder:tracking-normal placeholder:text-slate-400 dark:placeholder:text-neutral-600 focus-visible:border-[#007FFF] dark:focus-visible:border-sky-500 shadow-sm transition-all"
                     disabled={isVerifying2FA}
                   />
                 </div>
@@ -446,7 +446,7 @@ const Profile: FC = () => {
                     variant="outline"
                     onClick={() => setIs2FAModalOpen(false)}
                     disabled={isVerifying2FA}
-                    className="h-11 flex-1 border-slate-200 dark:border-slate-700 bg-white dark:bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 dark:hover:text-white shadow-sm transition-all"
+                    className="h-11 flex-1 border-slate-200 dark:border-neutral-700 bg-white dark:bg-transparent text-slate-700 dark:text-neutral-300 hover:bg-slate-50 dark:hover:bg-neutral-800 dark:hover:text-white shadow-sm transition-all"
                   >
                     Cancel
                   </Button>

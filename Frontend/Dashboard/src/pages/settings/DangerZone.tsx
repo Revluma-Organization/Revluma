@@ -135,7 +135,7 @@ export const DangerZone: FC = () => {
   };
 
     return (
-    <div className="w-full max-w-5xl space-y-8 bg-transparent text-slate-900 dark:text-slate-100 pb-10">
+    <div className="w-full max-w-5xl space-y-8 bg-transparent text-slate-900 dark:text-neutral-100 pb-10">
       <div className="mx-auto max-w-4xl space-y-8">
         {/* Page Header */}
         <div className="border-b border-red-200 dark:border-red-500/40 pb-6">
@@ -147,7 +147,7 @@ export const DangerZone: FC = () => {
               <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
                 Danger Zone
               </h1>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
                 Manage irreversible actions, workspace ownership transfers, and permanent data deletion.
               </p>
             </div>
@@ -159,7 +159,7 @@ export const DangerZone: FC = () => {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
-          className="rounded-2xl border border-red-200 dark:border-red-500/50 bg-white dark:bg-slate-900/50 p-6 shadow-sm dark:shadow-lg dark:shadow-red-950/20 transition-all duration-300 hover:border-red-300 dark:hover:border-red-500 sm:p-8"
+          className="rounded-2xl border border-red-200 dark:border-red-500/50 bg-white dark:bg-neutral-900/50 p-6 shadow-sm dark:shadow-lg dark:shadow-red-950/20 transition-all duration-300 hover:border-red-300 dark:hover:border-red-500 sm:p-8"
         >
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-start">
             <div className="space-y-2 md:max-w-xl">
@@ -169,7 +169,7 @@ export const DangerZone: FC = () => {
                   Transfer Ownership
                 </h2>
               </div>
-              <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+              <p className="text-sm leading-relaxed text-slate-600 dark:text-neutral-400">
                 Transferring workspace ownership will grant full administrative and billing rights to another user. You will lose owner-level privileges immediately once the transfer is accepted.
               </p>
             </div>
@@ -188,7 +188,7 @@ export const DangerZone: FC = () => {
                   value={transferEmail}
                   onChange={(e) => setTransferEmail(e.target.value)}
                   placeholder="new.owner@company.com"
-                  className="h-10 w-full border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/80 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus-visible:ring-red-500/50 shadow-sm"
+                  className="h-10 w-full border-slate-300 dark:border-neutral-700 bg-white dark:bg-neutral-950/80 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-neutral-500 focus-visible:ring-red-500/50 shadow-sm"
                   disabled={isTransferring}
                 />
               </div>
@@ -239,7 +239,7 @@ export const DangerZone: FC = () => {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.1 }}
-          className="rounded-2xl border border-red-200 dark:border-red-500/50 bg-white dark:bg-slate-900/50 p-6 shadow-sm dark:shadow-lg dark:shadow-red-950/20 transition-all duration-300 hover:border-red-300 dark:hover:border-red-500 sm:p-8"
+          className="rounded-2xl border border-red-200 dark:border-red-500/50 bg-white dark:bg-neutral-900/50 p-6 shadow-sm dark:shadow-lg dark:shadow-red-950/20 transition-all duration-300 hover:border-red-300 dark:hover:border-red-500 sm:p-8"
         >
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
             <div className="space-y-2 md:max-w-xl">
@@ -249,7 +249,7 @@ export const DangerZone: FC = () => {
                   Delete Workspace
                 </h2>
               </div>
-              <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+              <p className="text-sm leading-relaxed text-slate-600 dark:text-neutral-400">
                 Once you delete a workspace, there is no going back. All customer profiles, cart recovery workflows, integrations, analytics data, and historical logs will be permanently erased immediately.
               </p>
             </div>
@@ -292,14 +292,14 @@ export const DangerZone: FC = () => {
                 stiffness: 300,
                 damping: 28,
               }}
-              className="relative w-full max-w-md overflow-hidden rounded-3xl border border-red-200 dark:border-red-500/60 bg-white dark:bg-slate-950 p-6 text-slate-900 dark:text-slate-100 shadow-2xl sm:p-8"
+              className="relative w-full max-w-md overflow-hidden rounded-3xl border border-red-200 dark:border-red-500/60 bg-white dark:bg-neutral-950 p-6 text-slate-900 dark:text-neutral-100 shadow-2xl sm:p-8"
             >
               {/* Close Icon Button */}
               <button
                 type="button"
                 onClick={handleCloseDeleteModal}
                 disabled={isDeleting}
-                className="absolute right-4 top-4 rounded-full p-2 text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white disabled:opacity-50"
+                className="absolute right-4 top-4 rounded-full p-2 text-slate-500 dark:text-neutral-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-neutral-800 dark:hover:text-white disabled:opacity-50"
                 aria-label="Close modal"
               >
                 <X className="h-5 w-5" />
@@ -312,7 +312,7 @@ export const DangerZone: FC = () => {
                 <h3 className="mt-5 text-xl font-bold text-slate-900 dark:text-white">
                   Permanently Delete Workspace?
                 </h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-neutral-400">
                   This action is permanent and cannot be undone. All data associated with this workspace will be destroyed.
                 </p>
               </div>
@@ -333,7 +333,7 @@ export const DangerZone: FC = () => {
                   <div className="space-y-2">
                     <Label
                       htmlFor="delete-confirm-input"
-                      className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                      className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-400"
                     >
                       Type <span className="font-bold text-red-600 dark:text-red-400">DELETE</span> to confirm
                     </Label>
@@ -345,7 +345,7 @@ export const DangerZone: FC = () => {
                       placeholder="DELETE"
                       disabled={isDeleting}
                       autoComplete="off"
-                      className="h-12 w-full border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-center font-mono text-lg font-bold tracking-widest text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600 focus-visible:border-red-500 focus-visible:ring-red-500/40 shadow-sm"
+                      className="h-12 w-full border-slate-300 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-900 text-center font-mono text-lg font-bold tracking-widest text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-neutral-600 focus-visible:border-red-500 focus-visible:ring-red-500/40 shadow-sm"
                     />
                   </div>
 
@@ -355,7 +355,7 @@ export const DangerZone: FC = () => {
                       variant="outline"
                       onClick={handleCloseDeleteModal}
                       disabled={isDeleting}
-                      className="h-11 flex-1 border-slate-300 dark:border-slate-700 bg-white dark:bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 dark:hover:text-white shadow-sm"
+                      className="h-11 flex-1 border-slate-300 dark:border-neutral-700 bg-white dark:bg-transparent text-slate-700 dark:text-neutral-300 hover:bg-slate-50 dark:hover:bg-neutral-800 dark:hover:text-white shadow-sm"
                     >
                       Cancel
                     </Button>

@@ -1,6 +1,14 @@
 import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
-import { palette } from "./src/components/command-center/tokens";
+import plugin from "tailwindcss/plugin";
+import { gradientVars, palette, paletteDark, paletteVars, roleVar } from "./src/components/command-center/tokens";
+
+// Palette utilities resolve through CSS variables (light on :root, dark on
+// .dark), so `text-ink`, `bg-brand-soft/50`, `hover:bg-subtle` … follow the
+// workspace theme. Values still come only from `palette` / `paletteDark`.
+const role = (group: string, key = "DEFAULT") => `rgb(var(${roleVar(group, key)}) / <alpha-value>)`;
+const roles = <T extends Record<string, string>>(group: string, values: T) =>
+  Object.fromEntries(Object.keys(values).map((key) => [key, role(group, key)])) as Record<keyof T, string>;
 
 export default {
   darkMode: ["class"],
@@ -75,33 +83,34 @@ export default {
         purple: "hsl(var(--purple))",
         // Revluma Master tokens (design-system/revluma/MASTER.md).
         // Values come from `palette` by import — never duplicate a hex here.
-        brand: palette.brand,
-        ink: palette.ink,
-        line: palette.line,
-        success: palette.success,
-        danger: palette.danger,
-        warning: palette.warning,
-        info: palette.info,
+        brand: roles("brand", palette.brand),
+        ink: roles("ink", palette.ink),
+        line: roles("line", palette.line),
+        success: roles("success", palette.success),
+        danger: roles("danger", palette.danger),
+        warning: roles("warning", palette.warning),
+        info: roles("info", palette.info),
         band: {
-          DEFAULT: palette.band.text,
-          body: palette.band.body,
-          faint: palette.band.faint,
-          accent: palette.band.accent,
+          DEFAULT: role("band", "text"),
+          body: role("band", "body"),
+          faint: role("band", "faint"),
+          accent: role("band", "accent"),
         },
         severity: {
-          critical: palette.severity.critical.base,
-          high: palette.severity.high.base,
-          medium: palette.severity.medium.base,
-          low: palette.severity.low.base,
+          critical: role("severity", "critical"),
+          high: role("severity", "high"),
+          medium: role("severity", "medium"),
+          low: role("severity", "low"),
         },
-        deck: { ghost: palette.deck.ghost },
-        workspace: palette.surface.workspace,
-        subtle: palette.surface.subtle,
-        wash: palette.surface.wash,
-        veil: palette.surface.veil,
-        skeleton: palette.surface.skeleton,
-        scrim: palette.band.bg,
-        connected: palette.connected,
+        deck: { ghost: role("deck", "ghost") },
+        workspace: role("surface", "workspace"),
+        subtle: role("surface", "subtle"),
+        wash: role("surface", "wash"),
+        veil: role("surface", "veil"),
+        skeleton: role("surface", "skeleton"),
+        panel: role("surface", "panel"),
+        scrim: role("band", "bg"),
+        connected: role("connected"),
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -124,5 +133,13 @@ export default {
       },
     },
   },
-  plugins: [tailwindcssAnimate],
+  plugins: [
+    tailwindcssAnimate,
+    plugin(({ addBase }) => {
+      addBase({
+        ":root": { ...paletteVars(), ...gradientVars.light },
+        ".dark": { ...paletteVars(paletteDark), ...gradientVars.dark },
+      });
+    }),
+  ],
 } satisfies Config;

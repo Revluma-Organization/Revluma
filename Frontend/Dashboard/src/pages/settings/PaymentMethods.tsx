@@ -90,9 +90,9 @@ export const PaymentMethods: FC = () => {
   };
 
   return (
-    <div className="w-full max-w-5xl space-y-8 rounded-2xl bg-white p-6 text-slate-900 shadow-xl border border-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:p-8 md:p-10 transition-colors duration-200">
+    <div className="w-full max-w-5xl space-y-8 rounded-2xl bg-white p-6 text-slate-900 shadow-xl border border-slate-200 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 sm:p-8 md:p-10 transition-colors duration-200">
       {/* Page Header */}
-      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-6 dark:border-slate-800 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-6 dark:border-neutral-800 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-100 text-sky-600 ring-1 ring-sky-500/20 dark:bg-sky-500/10 dark:text-sky-400 dark:ring-sky-500/20">
             <CreditCard className="h-6 w-6" />
@@ -101,7 +101,7 @@ export const PaymentMethods: FC = () => {
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
               Payment Methods
             </h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
               Manage your billing information and saved cards.
             </p>
           </div>
@@ -134,7 +134,7 @@ export const PaymentMethods: FC = () => {
             <button
               type="button"
               onClick={() => setFeedbackMessage(null)}
-              className="rounded p-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white"
+              className="rounded p-1 text-slate-500 hover:text-slate-700 dark:text-neutral-400 dark:hover:text-white"
               aria-label="Dismiss notification"
             >
               <X className="h-4 w-4" />
@@ -144,7 +144,7 @@ export const PaymentMethods: FC = () => {
       </AnimatePresence>
 
       {/* Secure Tokenization Banner */}
-      <div className="flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-50 p-4 text-xs text-emerald-700 dark:bg-emerald-500/5 dark:text-slate-300 sm:text-sm">
+      <div className="flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-50 p-4 text-xs text-emerald-700 dark:bg-emerald-500/5 dark:text-neutral-300 sm:text-sm">
         <div className="flex items-center gap-3">
           <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
           <p>
@@ -153,7 +153,7 @@ export const PaymentMethods: FC = () => {
             We never store raw card numbers on our servers.
           </p>
         </div>
-        <Lock className="hidden h-4 w-4 shrink-0 text-emerald-600/50 dark:text-slate-500 sm:block" />
+        <Lock className="hidden h-4 w-4 shrink-0 text-emerald-600/50 dark:text-neutral-500 sm:block" />
       </div>
 
       {/* Saved Cards List */}
@@ -168,21 +168,21 @@ export const PaymentMethods: FC = () => {
         </div>
 
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 py-16 dark:border-slate-800 dark:bg-slate-900/40">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 py-16 dark:border-neutral-800 dark:bg-neutral-900/40">
             <Loader2 className="h-8 w-8 animate-spin text-sky-600 dark:text-sky-400" />
-            <p className="mt-3 text-sm font-medium text-slate-500 dark:text-slate-400">
+            <p className="mt-3 text-sm font-medium text-slate-500 dark:text-neutral-400">
               Fetching saved payment methods...
             </p>
           </div>
         ) : cards.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 py-12 text-center dark:border-slate-800 dark:bg-slate-900/30">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 py-12 text-center dark:border-neutral-800 dark:bg-neutral-900/30">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-slate-500 dark:bg-neutral-800/80 dark:text-neutral-400">
               <CreditCard className="h-6 w-6" />
             </div>
             <h3 className="mt-4 text-base font-semibold text-slate-900 dark:text-white">
               No saved payment methods
             </h3>
-            <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
+            <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-neutral-400">
               Add a payment card to ensure uninterrupted access to Revluma storefront automation features.
             </p>
             <Button
@@ -207,18 +207,18 @@ export const PaymentMethods: FC = () => {
                   transition={{ duration: 0.25 }}
                   className={`flex flex-col justify-between gap-4 rounded-2xl border p-5 shadow-sm transition-all duration-300 sm:flex-row sm:items-center ${
                     card.isDefault
-                      ? "border-sky-500/50 bg-sky-50 dark:bg-slate-900/80 dark:shadow-sky-500/10"
-                      : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800/80 dark:bg-slate-900/50 dark:hover:border-slate-700/80 dark:hover:bg-slate-900/70"
+                      ? "border-sky-500/50 bg-sky-50 dark:bg-neutral-900/80 dark:shadow-sky-500/10"
+                      : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-neutral-800/80 dark:bg-neutral-900/50 dark:hover:border-neutral-700/80 dark:hover:bg-neutral-900/70"
                   }`}
                 >
                   {/* Left Card Info */}
                   <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-16 shrink-0 flex-col justify-between rounded-xl border border-slate-200 bg-gradient-to-br from-slate-100 to-slate-200 p-2 shadow-inner dark:border-slate-700/80 dark:from-slate-800 dark:to-slate-950">
+                    <div className="flex h-12 w-16 shrink-0 flex-col justify-between rounded-xl border border-slate-200 bg-gradient-to-br from-slate-100 to-slate-200 p-2 shadow-inner dark:border-neutral-700/80 dark:from-neutral-800 dark:to-neutral-950">
                       <div className="flex items-center justify-between">
                         <span className="h-1.5 w-2.5 rounded-sm bg-amber-400/80" />
-                        <CreditCard className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+                        <CreditCard className="h-3.5 w-3.5 text-slate-500 dark:text-neutral-400" />
                       </div>
-                      <span className="font-mono text-[0.65rem] font-bold text-slate-700 dark:text-slate-200">
+                      <span className="font-mono text-[0.65rem] font-bold text-slate-700 dark:text-neutral-200">
                         •••• {card.last4}
                       </span>
                     </div>
@@ -235,7 +235,7 @@ export const PaymentMethods: FC = () => {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-neutral-400">
                         <span>
                           Expires {card.expMonth}/{card.expYear}
                         </span>
@@ -255,7 +255,7 @@ export const PaymentMethods: FC = () => {
                         variant="outline"
                         size="sm"
                         onClick={() => handleMakeDefault(card.id)}
-                        className="border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:border-sky-500/50 hover:bg-sky-50 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-sky-500/10 dark:hover:text-sky-300"
+                        className="border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:border-sky-500/50 hover:bg-sky-50 hover:text-sky-700 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-300 dark:hover:bg-sky-500/10 dark:hover:text-sky-300"
                       >
                         <Star className="mr-1.5 h-3.5 w-3.5" />
                         <span>Make Default</span>
@@ -272,7 +272,7 @@ export const PaymentMethods: FC = () => {
                       variant="outline"
                       size="icon"
                       onClick={() => handleRemoveCard(card.id)}
-                      className="h-9 w-9 border-slate-200 bg-white text-slate-400 hover:border-red-500/30 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                      className="h-9 w-9 border-slate-200 bg-white text-slate-400 hover:border-red-500/30 hover:bg-red-50 hover:text-red-600 dark:border-neutral-700 dark:bg-neutral-950 dark:hover:bg-red-500/10 dark:hover:text-red-300"
                       aria-label={`Remove ${card.brand} ending in ${card.last4}`}
                     >
                       <Trash2 className="h-4 w-4" />

@@ -148,6 +148,7 @@ export const palette = {
     wash: "#F4F6FA",
     veil: "#F5F7FF",
     skeleton: "#EEF0F6",
+    panel: "#FFFFFF",
   },
   connected: "#5E8E3E",
   gradient: {
@@ -156,3 +157,177 @@ export const palette = {
     orb: "radial-gradient(circle at 30% 24%, #FFFFFF 0%, #FFFFFF 48%, #F5F4F9 84%, #ECEBF3 100%)",
   },
 } as const;
+
+/**
+ * The colour roles that switch with the workspace theme. Tailwind's palette
+ * utilities (`text-ink`, `bg-brand-soft`, `border-line`, …) read these as CSS
+ * variables, so one class works in light and dark and every variant (hover,
+ * opacity modifiers) follows the theme with no per-component `dark:` classes.
+ */
+type ThemeRoles = {
+  brand: Record<keyof typeof palette.brand, string>;
+  ink: Record<keyof typeof palette.ink, string>;
+  line: Record<keyof typeof palette.line, string>;
+  success: Record<keyof typeof palette.success, string>;
+  danger: Record<keyof typeof palette.danger, string>;
+  warning: Record<keyof typeof palette.warning, string>;
+  info: Record<keyof typeof palette.info, string>;
+  band: { text: string; body: string; faint: string; accent: string; bg: string };
+  severity: Record<keyof typeof palette.severity, string>;
+  severitySoft: Record<keyof typeof palette.severity, string>;
+  severityBorder: Record<keyof typeof palette.severity, string>;
+  deck: Record<keyof typeof palette.deck, string>;
+  surface: Record<keyof typeof palette.surface, string>;
+  connected: string;
+};
+
+const lightRoles: ThemeRoles = {
+  brand: palette.brand,
+  ink: palette.ink,
+  line: palette.line,
+  success: palette.success,
+  danger: palette.danger,
+  warning: palette.warning,
+  info: palette.info,
+  band: palette.band,
+  severity: {
+    critical: palette.severity.critical.base,
+    high: palette.severity.high.base,
+    medium: palette.severity.medium.base,
+    low: palette.severity.low.base,
+  },
+  severitySoft: {
+    critical: palette.severity.critical.softBg,
+    high: palette.severity.high.softBg,
+    medium: palette.severity.medium.softBg,
+    low: palette.severity.low.softBg,
+  },
+  severityBorder: {
+    critical: palette.severity.critical.border,
+    high: palette.severity.high.border,
+    medium: palette.severity.medium.border,
+    low: palette.severity.low.border,
+  },
+  deck: palette.deck,
+  surface: palette.surface,
+  connected: palette.connected,
+};
+
+/**
+ * Dark workspace: neutral pure black, never navy. Canvas #000, panels #0D0D0D,
+ * hairlines #262626. Brand and status hues are lifted so text keeps WCAG AA
+ * contrast on black; their washes are deep, low-chroma tints.
+ */
+export const paletteDark: ThemeRoles = {
+  brand: {
+    DEFAULT: "#6F66FF",
+    strong: "#5A51F2",
+    deep: "#A9A3FF",
+    deeper: "#B9B3FF",
+    bright: "#7D75FF",
+    band: "#8E87FF",
+    soft: "#16142B",
+    mist: "#18162F",
+    pale: "#201D3D",
+    line: "#2D2A52",
+    lineStrong: "#3A3666",
+  },
+  ink: {
+    DEFAULT: "#F5F5F5",
+    soft: "#D4D4D4",
+    muted: "#A3A3A3",
+    tertiary: "#A1A1A1",
+    steel: "#ABABAB",
+    faint: "#7A7A7A",
+    ghost: "#404040",
+  },
+  line: {
+    DEFAULT: "#262626",
+    soft: "#1F1F1F",
+    strong: "#333333",
+  },
+  success: {
+    DEFAULT: "#4ADE80",
+    bright: "#22C55E",
+    soft: "#0A1D12",
+    line: "#14532D",
+  },
+  danger: {
+    DEFAULT: "#F87171",
+    strong: "#EF4444",
+    deep: "#FCA5A5",
+    deeper: "#FECACA",
+    limited: "#F87171",
+    soft: "#240C0C",
+    line: "#5F1D1D",
+  },
+  warning: {
+    DEFAULT: "#FBBF24",
+    strong: "#F59E0B",
+    soft: "#1F1806",
+    line: "#5A420F",
+    lineStrong: "#6B4F12",
+  },
+  info: {
+    DEFAULT: "#8AAEFF",
+    bright: "#7DA2FF",
+    soft: "#0C1424",
+    line: "#1E3766",
+  },
+  // The dark gradient band keeps its colours; only the overlay scrim
+  // (band.bg) turns neutral black so dialogs never dim to navy.
+  band: { ...palette.band, bg: "#000000" },
+  severity: lightRoles.severity,
+  severitySoft: { critical: "#1F0B0B", high: "#1F1108", medium: "#1D1607", low: "#11132A" },
+  severityBorder: { critical: "#5C2220", high: "#5A3416", medium: "#574116", low: "#2D2A52" },
+  deck: {
+    ghost: "#525252",
+    criticalGlyph: "#F26B6F",
+    mediumGlyph: "#E5A126",
+    glyphMuted: "#5C5C5C",
+    dotEmpty: "#3A3A3A",
+  },
+  surface: {
+    workspace: "#000000",
+    subtle: "#0A0A0A",
+    wash: "#0D0D0D",
+    veil: "#0F0F12",
+    skeleton: "#1A1A1A",
+    panel: "#0D0D0D",
+  },
+  connected: "#86C063",
+};
+
+/** "#RRGGBB" to the "r g b" channel triple Tailwind's <alpha-value> expects. */
+export function hexChannels(hex: string): string {
+  const value = hex.replace("#", "");
+  const full = value.length === 3 ? value.split("").map((c) => c + c).join("") : value;
+  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16)).join(" ");
+}
+
+/** CSS custom property name for a palette role, e.g. ("ink","muted") -> "--rv-ink-muted". */
+export function roleVar(group: string, key = "DEFAULT"): string {
+  return key === "DEFAULT" ? `--rv-${group}` : `--rv-${group}-${key}`;
+}
+
+/** Every theme role as a CSS custom property declaration map. */
+export function paletteVars(roles: ThemeRoles = lightRoles): Record<string, string> {
+  const vars: Record<string, string> = {};
+  const groups = ["brand", "ink", "line", "success", "danger", "warning", "info", "band", "severity", "severitySoft", "severityBorder", "deck", "surface"] as const;
+  for (const group of groups) {
+    for (const [key, hex] of Object.entries(roles[group])) vars[roleVar(group, key)] = hexChannels(hex);
+  }
+  vars[roleVar("connected")] = hexChannels(roles.connected);
+  return vars;
+}
+
+/** Gradients that switch with the theme, exposed as --rv-gradient-* variables. */
+export const gradientVars = {
+  light: { "--rv-gradient-orb": palette.gradient.orb },
+  dark: { "--rv-gradient-orb": "radial-gradient(circle at 30% 24%, #2A2A2A 0%, #1A1A1A 52%, #111111 100%)" },
+} as const;
+
+/** Theme-following colour for inline styles: rgb(var(--rv-…)). */
+export function roleColor(group: string, key = "DEFAULT", alpha?: number): string {
+  return alpha === undefined ? `rgb(var(${roleVar(group, key)}))` : `rgb(var(${roleVar(group, key)}) / ${alpha})`;
+}

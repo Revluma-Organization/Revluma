@@ -66,13 +66,13 @@ export const Checkout: FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-50 px-4 py-12 dark:bg-slate-950 sm:px-6 lg:px-8">
+    <div className="min-h-screen w-full bg-slate-50 px-4 py-12 dark:bg-neutral-950 sm:px-6 lg:px-8">
       <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="mx-auto max-w-xl">
         <div className="mb-8 flex items-center justify-between">
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="flex items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+            className="flex items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-slate-900 dark:text-neutral-400 dark:hover:text-white"
           >
             <ArrowLeft className="h-4 w-4" />
             <span>Back</span>
@@ -84,16 +84,16 @@ export const Checkout: FC = () => {
         </div>
 
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Review your plan</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">You will pay on Paystack&apos;s secure page. Revluma never sees your card details.</p>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">You will pay on Paystack&apos;s secure page. Revluma never sees your card details.</p>
 
-        <section aria-label="Order summary" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/50">
+        <section aria-label="Order summary" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/50">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Plan</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">Plan</p>
               <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white" data-testid="checkout-plan">
                 Revluma {selection.name}
               </p>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
+              <p className="text-sm text-slate-500 dark:text-neutral-400">
                 {selection.cycle === "annual" ? `${usd(selection.perMonth)}/month, billed yearly` : "Billed monthly"}
               </p>
             </div>
@@ -101,28 +101,28 @@ export const Checkout: FC = () => {
               <p className="text-2xl font-bold text-slate-900 dark:text-white" data-testid="checkout-total">
                 {usd(selection.total)}
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">USD {selection.cycle === "annual" ? "per year" : "per month"}</p>
+              <p className="text-xs text-slate-500 dark:text-neutral-400">USD {selection.cycle === "annual" ? "per year" : "per month"}</p>
             </div>
           </div>
 
-          <dl className="mt-6 space-y-3 border-t border-slate-100 pt-5 text-sm dark:border-slate-800">
+          <dl className="mt-6 space-y-3 border-t border-slate-100 pt-5 text-sm dark:border-neutral-800">
             {user?.email && (
               <div className="flex justify-between gap-4">
-                <dt className="text-slate-500 dark:text-slate-400">Account</dt>
+                <dt className="text-slate-500 dark:text-neutral-400">Account</dt>
                 <dd className="truncate font-medium text-slate-900 dark:text-white">{user.email}</dd>
               </div>
             )}
             <div className="flex justify-between gap-4">
-              <dt className="text-slate-500 dark:text-slate-400">Currency</dt>
+              <dt className="text-slate-500 dark:text-neutral-400">Currency</dt>
               <dd className="font-medium text-slate-900 dark:text-white">US dollars (USD)</dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className="text-slate-500 dark:text-slate-400">Renews</dt>
+              <dt className="text-slate-500 dark:text-neutral-400">Renews</dt>
               <dd className="font-medium text-slate-900 dark:text-white">{selection.cycle === "annual" ? "Every year" : "Every month"}, cancel anytime</dd>
             </div>
           </dl>
 
-          <ul className="mt-5 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+          <ul className="mt-5 space-y-2 text-sm text-slate-600 dark:text-neutral-300">
             <li className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Pay by card on Paystack
             </li>
@@ -155,7 +155,7 @@ export const Checkout: FC = () => {
           )}
         </Button>
 
-        <div className="mt-4 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+        <div className="mt-4 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-neutral-400">
           <ShieldCheck className="h-4 w-4 text-emerald-500" />
           <span>Payments are processed and secured by Paystack.</span>
         </div>

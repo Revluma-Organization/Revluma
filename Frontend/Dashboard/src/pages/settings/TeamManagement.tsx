@@ -241,9 +241,9 @@ const TeamManagement: FC = () => {
             variant="ghost"
             size="icon"
             onClick={() => window.history.back()}
-            className="rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+            className="rounded-full hover:bg-slate-200 dark:hover:bg-neutral-800 transition-colors"
           >
-            <X className="h-5 w-5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white" />
+            <X className="h-5 w-5 text-slate-500 hover:text-slate-900 dark:text-neutral-400 dark:hover:text-white" />
           </MotionButton>
         </div>
       </motion.div>
@@ -280,7 +280,7 @@ const TeamManagement: FC = () => {
                 key={m.membershipId}
                 className={`relative z-10 p-4 flex items-center gap-4 ${
                   i < members.length - 1
-                    ? "border-b border-slate-200 dark:border-slate-800"
+                    ? "border-b border-slate-200 dark:border-neutral-800"
                     : ""
                 }`}
               >

@@ -122,10 +122,10 @@ const IOSDarkToggle: FC<ToggleSwitchProps> = ({ checked, onToggle, label }) => {
       aria-checked={checked}
       aria-label={label}
       onClick={onToggle}
-      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007FFF] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950 ${
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007FFF] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-950 ${
         checked
           ? "bg-[#007FFF]"
-          : "bg-slate-200 dark:bg-slate-700"
+          : "bg-slate-200 dark:bg-neutral-700"
       }`}
     >
       <motion.span
@@ -253,9 +253,9 @@ export const Notifications: FC = () => {
   }, {});
 
       return (
-    <div className="w-full max-w-5xl space-y-8 bg-transparent text-slate-900 dark:text-slate-100 pb-10">
+    <div className="w-full max-w-5xl space-y-8 bg-transparent text-slate-900 dark:text-neutral-100 pb-10">
       {/* Page Header */}
-      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 dark:border-neutral-800 pb-6 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-50 dark:bg-sky-500/10 text-[#007FFF] dark:text-sky-400 ring-1 ring-sky-500/20">
             <Bell className="h-6 w-6" />
@@ -264,7 +264,7 @@ export const Notifications: FC = () => {
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
               Notification Preferences
             </h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
               Control which email alerts and in-app notifications you receive across workspace events.
             </p>
           </div>
@@ -278,9 +278,9 @@ export const Notifications: FC = () => {
             size="sm"
             onClick={handleMuteNonEssential}
             disabled={isSaving}
-            className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/80 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white shadow-sm transition-all"
+            className="border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/80 text-xs text-slate-600 dark:text-neutral-300 hover:bg-slate-50 dark:hover:bg-neutral-800 hover:text-slate-900 dark:hover:text-white shadow-sm transition-all"
           >
-            <VolumeX className="mr-1.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+            <VolumeX className="mr-1.5 h-3.5 w-3.5 text-slate-400 dark:text-neutral-500" />
             <span>Mute Non-Essential</span>
           </Button>
 
@@ -290,7 +290,7 @@ export const Notifications: FC = () => {
             size="sm"
             onClick={handleEnableAll}
             disabled={isSaving}
-            className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/80 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white shadow-sm transition-all"
+            className="border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/80 text-xs text-slate-600 dark:text-neutral-300 hover:bg-slate-50 dark:hover:bg-neutral-800 hover:text-slate-900 dark:hover:text-white shadow-sm transition-all"
           >
             <Volume2 className="mr-1.5 h-3.5 w-3.5 text-[#007FFF] dark:text-sky-400" />
             <span>Enable All</span>
@@ -306,10 +306,10 @@ export const Notifications: FC = () => {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: groupIdx * 0.08 }}
-              className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 shadow-sm dark:shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-slate-700/80"
+              className="overflow-hidden rounded-2xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 shadow-sm dark:shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-neutral-700/80"
             >
               {/* Category Group Header */}
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-950/60 px-6 py-4">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-neutral-800/80 bg-slate-50 dark:bg-neutral-950/60 px-6 py-4">
                 <div className="flex items-center gap-2.5">
                   {icon}
                   <h2 className="text-base font-bold text-slate-900 dark:text-white">
@@ -318,7 +318,7 @@ export const Notifications: FC = () => {
                 </div>
 
                 {/* Column Headers for Email & In-App */}
-                <div className="flex items-center gap-8 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:gap-12">
+                <div className="flex items-center gap-8 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-400 sm:gap-12">
                   <div className="flex items-center gap-1.5 min-w-[50px] justify-center">
                     <Mail className="h-3.5 w-3.5 text-[#007FFF] dark:text-sky-400" />
                     <span>Email</span>
@@ -331,7 +331,7 @@ export const Notifications: FC = () => {
               </div>
 
               {/* Rows inside Category Group */}
-              <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
+              <div className="divide-y divide-slate-100 dark:divide-neutral-800/80">
                 {items.map((item) => {
                   const emailOn = Boolean(emailPreferences[item.id]);
                   const inAppOn = Boolean(inAppPreferences[item.id]);
@@ -339,7 +339,7 @@ export const Notifications: FC = () => {
                   return (
                     <div
                       key={item.id}
-                      className="flex flex-col justify-between gap-4 px-6 py-4 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40 sm:flex-row sm:items-center"
+                      className="flex flex-col justify-between gap-4 px-6 py-4 transition-colors hover:bg-slate-50 dark:hover:bg-neutral-800/40 sm:flex-row sm:items-center"
                     >
                       {/* Title & Description */}
                       <div className="max-w-xl space-y-0.5">
@@ -353,7 +353,7 @@ export const Notifications: FC = () => {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <p className="text-xs text-slate-500 dark:text-neutral-400">
                           {item.description}
                         </p>
                       </div>

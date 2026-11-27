@@ -29,14 +29,15 @@
     --blue: 213 100% 65%;
     --purple: 252 95% 76%;
 
-    /* DARK SURFACES (default theme) */
-    --bg: 0 0% 3.5%;
-    --bg-2: 0 0% 6.7%;
-    --bg-3: 0 0% 9.4%;
-    --bg-4: 0 0% 13.3%;
-    --bg-5: 0 0% 17.3%;
-    --sidebar-bg: 0 0% 2%;
-    --notif-bg: 0 0% 6.7%;
+    /* DARK SURFACES (default theme): neutral pure black, never navy.
+       Canvas #000, panels #0D0D0D, raised #141414 (tokens.ts paletteDark). */
+    --bg: 0 0% 0%;
+    --bg-2: 0 0% 5%;
+    --bg-3: 0 0% 8%;
+    --bg-4: 0 0% 12%;
+    --bg-5: 0 0% 16%;
+    --sidebar-bg: 0 0% 0%;
+    --notif-bg: 0 0% 5%;
 
     /* Text */
     --t1: 0 0% 95%;
@@ -370,3 +371,139 @@
 @media (prefers-reduced-motion: reduce) {
   .rv-side-rise, .rv-side-pop { animation: none; }
 }
+
+/* ──────────────────────────────────────────────
+   Command Center dark bridge
+   The Command Center was built light-only with literal Tailwind colours
+   (bg-white, text-slate-900, border-[#E7E9EF] …). In dark mode these map to
+   the same theme roles the palette utilities use (tokens.ts paletteDark:
+   neutral pure black, never navy). Scoped to the Command Center, its finding
+   drawer and shared light-only status cards ([data-rv-themed]) so pages that
+   already have dark: styling keep it.
+   ────────────────────────────────────────────── */
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-white,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-white { background-color: rgb(var(--rv-surface-panel)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-slate-50,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-slate-50,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-\[\#F8F9FB\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-\[\#F8F9FB\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-\[\#F4F5F8\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-\[\#F4F5F8\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).hover\:bg-white:hover,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .hover\:bg-white:hover,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).focus\:bg-white:focus,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .focus\:bg-white:focus { background-color: rgb(var(--rv-surface-subtle)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-slate-100,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-slate-100,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-slate-200,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-slate-200,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-\[\#EEF0F4\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-\[\#EEF0F4\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-\[\#EAECEF\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-\[\#EAECEF\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-\[\#f2f4f7\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-\[\#f2f4f7\] { background-color: rgb(var(--rv-surface-skeleton)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).hover\:bg-slate-50:hover,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .hover\:bg-slate-50:hover,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).hover\:bg-slate-100:hover,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .hover\:bg-slate-100:hover,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).hover\:bg-\[\#F4F5F8\]:hover,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .hover\:bg-\[\#F4F5F8\]:hover { background-color: rgb(var(--rv-line-soft)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-\[\#FEF2F2\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-\[\#FEF2F2\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-\[\#FFFBFA\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-\[\#FFFBFA\] { background-color: rgb(var(--rv-danger-soft)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-\[\#FFFCF5\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-\[\#FFFCF5\] { background-color: rgb(var(--rv-warning-soft)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-\[\#F6FEF9\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-\[\#F6FEF9\] { background-color: rgb(var(--rv-success-soft)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-slate-900,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-slate-900,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#17191F\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#17191F\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#101828\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#101828\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).focus\:text-slate-900:focus,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .focus\:text-slate-900:focus { color: rgb(var(--rv-ink)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-slate-800,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-slate-800,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-slate-700,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-slate-700,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#344054\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#344054\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#343844\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#343844\] { color: rgb(var(--rv-ink-soft)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-slate-600,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-slate-600,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-slate-500,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-slate-500,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-gray-600,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-gray-600,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#475467\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#475467\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#667085\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#667085\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#707582\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#707582\] { color: rgb(var(--rv-ink-muted)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-slate-300,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-slate-300 { color: rgb(var(--rv-ink-faint)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#4438E8\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#4438E8\] { color: rgb(var(--rv-brand)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).hover\:text-\[\#372CD1\]:hover,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .hover\:text-\[\#372CD1\]:hover { color: rgb(var(--rv-brand-deep)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#B42318\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#B42318\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#912018\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#912018\] { color: rgb(var(--rv-danger)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#991B1B\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#991B1B\] { color: rgb(var(--rv-danger-deep)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#7F1D1D\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#7F1D1D\] { color: rgb(var(--rv-danger-deeper)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#92400E\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#92400E\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#93370D\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#93370D\] { color: rgb(var(--rv-warning)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#067647\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#067647\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).text-\[\#05603A\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .text-\[\#05603A\] { color: rgb(var(--rv-success)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-white\/60,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-white\/60,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-slate-200,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-slate-200,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-\[\#E7E9EF\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-\[\#E7E9EF\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-\[\#eaecf0\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-\[\#eaecf0\] { border-color: rgb(var(--rv-line)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-slate-300,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-slate-300,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-\[\#d0d5dd\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-\[\#d0d5dd\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-\[\#D9DCE5\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-\[\#D9DCE5\] { border-color: rgb(var(--rv-line-strong)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).hover\:border-slate-400:hover,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .hover\:border-slate-400:hover { border-color: rgb(var(--rv-ink-faint)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-\[\#D8D7FA\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-\[\#D8D7FA\] { border-color: rgb(var(--rv-brand-line)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-\[\#FECACA\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-\[\#FECACA\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-\[\#FDA29B\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-\[\#FDA29B\] { border-color: rgb(var(--rv-danger-line)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-\[\#FEDF89\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-\[\#FEDF89\] { border-color: rgb(var(--rv-warning-line)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-\[\#A6F4C5\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-\[\#A6F4C5\] { border-color: rgb(var(--rv-success-line)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-white\/50,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-white\/50 { background-color: rgb(var(--rv-surface-panel) / 0.5); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-white\/60,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-white\/60 { background-color: rgb(var(--rv-surface-panel) / 0.6); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-white\/70,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-white\/70 { background-color: rgb(var(--rv-surface-panel) / 0.7); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-white\/80,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-white\/80 { background-color: rgb(var(--rv-surface-panel) / 0.8); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).bg-white\/85,
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .bg-white\/85 { background-color: rgb(var(--rv-surface-panel) / 0.85); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .divide-slate-200\/70 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(var(--rv-line)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]).border-\[\#8490A3\],
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .border-\[\#8490A3\] { border-color: rgb(var(--rv-line-strong)); }
+.dark :is([data-command-center], [data-cc-drawer], [data-rv-themed]) .hover\:bg-\[\#F5F7FA\]:hover { background-color: rgb(var(--rv-line-soft)); }

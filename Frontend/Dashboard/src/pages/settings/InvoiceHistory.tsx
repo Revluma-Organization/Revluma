@@ -142,7 +142,7 @@ export const InvoiceHistory: FC = () => {
       default:
         return {
           icon: <ArrowUp className="h-5 w-5 text-slate-400" />,
-          bg: "bg-slate-50 dark:bg-slate-800",
+          bg: "bg-slate-50 dark:bg-neutral-800",
           amountColor: "text-slate-900 dark:text-white",
         };
     }
@@ -160,7 +160,7 @@ export const InvoiceHistory: FC = () => {
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto space-y-6 bg-transparent text-slate-900 dark:text-slate-100 pb-10">
+    <div className="w-full max-w-3xl mx-auto space-y-6 bg-transparent text-slate-900 dark:text-neutral-100 pb-10">
       
       {/* Header & Controls */}
       <div className="flex items-center justify-between">
@@ -172,7 +172,7 @@ export const InvoiceHistory: FC = () => {
           variant="outline"
           onClick={handleExportCsv}
           disabled={isExporting}
-          className="h-10 rounded-full border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50"
+          className="h-10 rounded-full border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 font-semibold text-slate-700 dark:text-neutral-200 hover:bg-slate-50"
         >
           {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-sky-500" /> : <FileSpreadsheet className="mr-2 h-4 w-4 text-sky-500" />}
           <span>Export</span>
@@ -188,8 +188,8 @@ export const InvoiceHistory: FC = () => {
             onClick={() => setStatusFilter(status)}
             className={`rounded-full px-5 py-2 text-sm font-semibold capitalize transition-all shrink-0 ${
               statusFilter === status
-                ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900"
-                : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800"
+                ? "bg-slate-900 dark:bg-white text-white dark:text-neutral-900"
+                : "bg-white dark:bg-neutral-900 text-slate-600 dark:text-neutral-400 border border-slate-200 dark:border-neutral-800"
             }`}
           >
             {status}
@@ -205,7 +205,7 @@ export const InvoiceHistory: FC = () => {
               <Loader2 className="h-8 w-8 animate-spin text-sky-500 mb-3" />
             </div>
           ) : filteredInvoices.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-slate-500 rounded-[28px] border border-dashed border-slate-200 bg-white/50">
+            <div className="flex flex-col items-center justify-center py-16 text-slate-500 rounded-[28px] border border-dashed border-slate-200 bg-white/50 dark:border-neutral-800 dark:bg-neutral-950/50 dark:text-neutral-400">
               <FileText className="h-10 w-10 text-slate-300 mb-3" />
               <span className="text-sm font-medium">No invoices found.</span>
             </div>
@@ -221,7 +221,7 @@ export const InvoiceHistory: FC = () => {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.98 }}
-                  className="flex items-center justify-between p-4 sm:p-5 rounded-[28px] bg-white dark:bg-slate-900 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-slate-100 dark:border-slate-800"
+                  className="flex items-center justify-between p-4 sm:p-5 rounded-[28px] bg-white dark:bg-neutral-900 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-slate-100 dark:border-neutral-800"
                 >
                   {/* Left Side: Icon & Titles */}
                   <div className="flex items-center gap-4">
@@ -235,7 +235,7 @@ export const InvoiceHistory: FC = () => {
                       </h4>
                       <div className="flex items-center gap-1.5 mt-1 text-[13px] text-slate-400 font-medium">
                         {/* Dynamic Card Icon and Text */}
-                        <CreditCard className="h-3.5 w-3.5 text-slate-300 dark:text-slate-500" />
+                        <CreditCard className="h-3.5 w-3.5 text-slate-300 dark:text-neutral-500" />
                         <span>{getCardBrandDisplay(inv.cardBrand)} **** {inv.cardLast4}</span>
                       </div>
                     </div>
@@ -257,7 +257,7 @@ export const InvoiceHistory: FC = () => {
                       type="button"
                       disabled={isDownloading}
                       onClick={() => handleDownloadPdf(inv)}
-                      className="ml-2 h-9 w-9 flex items-center justify-center rounded-full bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-sky-500 hover:bg-sky-50 transition-colors disabled:opacity-50"
+                      className="ml-2 h-9 w-9 flex items-center justify-center rounded-full bg-slate-50 dark:bg-neutral-800 text-slate-400 hover:text-sky-500 hover:bg-sky-50 transition-colors disabled:opacity-50"
                     >
                       {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                     </button>

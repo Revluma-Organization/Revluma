@@ -45,7 +45,7 @@ export function PlaceholderPage({ title, description }: { title: string; descrip
       </div>
 
       <div className="mt-16 flex gap-3 opacity-60">
-        <span className="inline-flex items-center rounded-full border border-slate-300 dark:border-slate-700 px-3 py-1 text-[0.65rem] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+        <span className="inline-flex items-center rounded-full border border-slate-300 dark:border-neutral-700 px-3 py-1 text-[0.65rem] font-bold uppercase tracking-widest text-slate-500 dark:text-neutral-400">
           In Development
         </span>
       </div>

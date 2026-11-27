@@ -722,9 +722,9 @@ function historyRowMeta(conversation: Conversation): string {
 // states can use them from Tailwind classes.
 function historyPalette(isDark: boolean): React.CSSProperties {
   const tokens = isDark ? {
-    bg: "#110F24", surface: "#15132A", hover: "#1C1A33", border: "#2C2946", strong: "#3D3960",
-    text: "#F4F3F8", soft: "#D6D4E2", muted: "#B3B1C2", faint: "#A6A4B8",
-    wash: "#221D4D", accent: "#C4BDFF", ring: "rgba(169,159,255,0.28)", focus: "#B4ABFF",
+    bg: "#000000", surface: "#0D0D0D", hover: "#161616", border: "#262626", strong: "#3A3A3A",
+    text: "#F5F5F5", soft: "#D4D4D4", muted: "#A3A3A3", faint: "#8A8A8A",
+    wash: "#16142B", accent: "#B9B3FF", ring: "rgba(142,135,255,0.3)", focus: "#8E87FF",
     btnBg: "#FFFFFF", btnText: "#0C0A1D", btnHover: "#EEEBFF", chip: "rgba(12,10,29,0.08)",
     shadow: "0 1px 0 rgba(255,255,255,0.03) inset, 0 12px 24px -18px rgba(0,0,0,0.8)",
   } : {
@@ -816,7 +816,7 @@ function ConversationHistoryList({
 
       <div aria-busy={loading} className="flex-1 overflow-y-auto px-3 pb-3 [scrollbar-width:thin]">
         <HistoryStatus loading={loading} error={error} count={conversations.length} query={query}
-          onRetry={onRetry} color={isDark ? "#B3B1C2" : "#5E5C6B"} />
+          onRetry={onRetry} color={isDark ? "#A3A3A3" : "#5E5C6B"} />
         {groups.map(group => (
           <section key={group.label} aria-label={group.label} className="pt-2">
             <h3 className="px-3 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--h-faint)", margin: 0 }}>{group.label}</h3>
@@ -862,7 +862,7 @@ function ConversationHistoryList({
       </div>
 
       <div className="px-4 pb-4 pt-2">
-        <div className="flex gap-2.5 rounded-2xl px-3.5 py-3" style={{ background: isDark ? "#15132A" : "#F4F2EE" }}>
+        <div className="flex gap-2.5 rounded-2xl px-3.5 py-3" style={{ background: isDark ? "#0D0D0D" : "#F4F2EE" }}>
           <ShieldCheck size={15} aria-hidden="true" className="mt-0.5 shrink-0" style={{ color: "var(--h-accent)" }} />
           <p className="m-0 text-[12px] leading-relaxed" style={{ color: "var(--h-muted)" }}>
             Rev observes and explains your store. It cannot change prices, orders, discounts, themes or settings, and it never sends campaigns.
@@ -923,7 +923,7 @@ function InvestigationHeader({
         <div className="flex items-center gap-2">
           <button onClick={onNewChat} aria-label="Start a new conversation"
             className={`rev-pill-btn inline-flex min-h-11 items-center gap-1.5 rounded-full border px-4 text-[13px] font-semibold transition-colors duration-200 ${isDark ? "hover:border-[#B4ABFF]" : "hover:border-[#0C0A1D]"}`}
-            style={{ borderColor: border, color: t1, background: isDark ? "#15132A" : "#FFFFFF" }}>
+            style={{ borderColor: border, color: t1, background: isDark ? "#0D0D0D" : "#FFFFFF" }}>
             <Plus size={14} aria-hidden="true" />New chat
           </button>
           {historyToggle}
@@ -2217,11 +2217,13 @@ export default function RevIntell() {
   };
 
   // Theme
-  const bg   = isDark ? "#111"    : "#f7f8fc";
-  const card = isDark ? "#171717" : "#ffffff";
-  const bdr  = isDark ? "#222"    : "#e8eaf0";
-  const t1   = isDark ? "#f1f5f9" : "#1a1a2e";
-  const t2   = isDark ? "#94a3b8" : "#64748b";
+  // Dark is neutral pure black (canvas #000, panels #0D0D0D, hairlines
+  // #262626), matching the sidebar and Command Center. Never navy.
+  const bg   = isDark ? "#000000" : "#f7f8fc";
+  const card = isDark ? "#0D0D0D" : "#ffffff";
+  const bdr  = isDark ? "#262626" : "#e8eaf0";
+  const t1   = isDark ? "#F5F5F5" : "#1a1a2e";
+  const t2   = isDark ? "#A3A3A3" : "#64748b";
   const t4   = t2;
 
   const inputProps = {
@@ -2722,7 +2724,7 @@ export default function RevIntell() {
                 initial={{ x: "calc(100% + 24px)", opacity: 0.6 }} animate={{ x: 0, opacity: 1 }} exit={{ x: "calc(100% + 24px)", opacity: 0.6 }}
                 transition={{ type: "spring", stiffness: 380, damping: 38 }}
                 className="relative z-10 m-2 h-[calc(100%-16px)] w-[min(400px,calc(100vw-16px))] max-w-full overflow-hidden rounded-[24px] border sm:m-3 sm:h-[calc(100%-24px)]"
-                style={{ borderColor: isDark ? "#2C2946" : "#E8E6E1", boxShadow: isDark ? "0 24px 60px -20px rgba(0,0,0,0.75)" : "0 24px 60px -24px rgba(12,10,29,0.35), 0 4px 12px -6px rgba(12,10,29,0.12)" }}>
+                style={{ borderColor: isDark ? "#262626" : "#E8E6E1", boxShadow: isDark ? "0 24px 60px -20px rgba(0,0,0,0.75)" : "0 24px 60px -24px rgba(12,10,29,0.35), 0 4px 12px -6px rgba(12,10,29,0.12)" }}>
                 <ConversationHistoryList onClose={() => setMenuOpen(false)}
                   conversations={conversations} activeId={activeId}
                   loading={historyLoading} error={historyError}

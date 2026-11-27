@@ -481,9 +481,9 @@ export function TopPrioritiesSection({
         className="relative flex min-w-0 flex-wrap items-start justify-between gap-3 overflow-hidden rounded-2xl border border-white/60 bg-white/70 px-5 py-5 backdrop-blur-xl sm:px-6"
         style={{
           background:
-            "radial-gradient(560px 200px at 12% -40px, rgba(68, 56, 232, 0.10), transparent 65%), radial-gradient(480px 180px at 88% -30px, rgba(20, 184, 166, 0.10), transparent 60%), linear-gradient(180deg, rgba(255,255,255,0.85) 0%, rgba(247,248,255,0.75) 100%)",
+            "radial-gradient(560px 200px at 12% -40px, rgba(68, 56, 232, 0.10), transparent 65%), radial-gradient(480px 180px at 88% -30px, rgba(20, 184, 166, 0.10), transparent 60%), linear-gradient(180deg, rgb(var(--rv-surface-panel) / 0.85) 0%, rgb(var(--rv-surface-veil) / 0.75) 100%)",
           boxShadow:
-            "0 4px 24px -6px rgba(15, 23, 42, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.95)",
+            "0 4px 24px -6px rgba(15, 23, 42, 0.08), inset 0 1px 1px rgb(var(--rv-surface-panel) / 0.95)",
         }}
       >
         <div
@@ -602,9 +602,9 @@ export function TopPrioritiesSection({
             className="min-w-0 overflow-hidden rounded-2xl border border-white/60 bg-white/70 backdrop-blur-xl"
             style={{
               background:
-                "radial-gradient(720px 220px at 50% -90px, rgba(68, 56, 232, 0.07), transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(247,248,255,0.8) 100%)",
+                "radial-gradient(720px 220px at 50% -90px, rgba(68, 56, 232, 0.07), transparent 70%), linear-gradient(180deg, rgb(var(--rv-surface-panel) / 0.9) 0%, rgb(var(--rv-surface-veil) / 0.8) 100%)",
               boxShadow:
-                "0 4px 24px -6px rgba(15, 23, 42, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.95)",
+                "0 4px 24px -6px rgba(15, 23, 42, 0.08), inset 0 1px 1px rgb(var(--rv-surface-panel) / 0.95)",
             }}
           >
             <div className="flex items-center justify-between gap-2 border-b border-white/60 bg-white/60 px-5 py-3.5 backdrop-blur-md">

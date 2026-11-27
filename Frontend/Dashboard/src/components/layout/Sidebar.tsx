@@ -15,26 +15,27 @@ import { RevOrbVideo } from "@/components/rev/RevOrb";
 /**
  * Sidebar design tokens: the landing and auth system (auth-theme.css) on the
  * dashboard shell. Light is the warm #FBFAF8 canvas with ink #0C0A1D type and
- * #E8E6E1 hairlines; dark is the same system on the ink canvas. The current
- * page is an ink pill (white in dark), the landing CTA shape. Literal class
- * strings so Tailwind's scanner and the tests can read them.
+ * #E8E6E1 hairlines; dark is neutral pure black (#000 canvas, #0D0D0D cards,
+ * #262626 hairlines), never navy. The current page is a Revluma blue pill
+ * (#2B13CF, the auth accent) in both themes. Literal class strings so
+ * Tailwind's scanner and the tests can read them.
  */
 const side = {
-  surface: "bg-[#FBFAF8] text-[#0C0A1D] border-[#E8E6E1] dark:bg-[#0C0A1D] dark:text-[#F4F3F8] dark:border-[#2C2946]",
-  text: "text-[#0C0A1D] dark:text-[#F4F3F8]",
-  muted: "text-[#5E5C6B] dark:text-[#B3B1C2]",
-  faint: "text-[#6B6977] dark:text-[#A6A4B8]",
-  icon: "text-[#6B6977] group-hover:text-[#0C0A1D] dark:text-[#A6A4B8] dark:group-hover:text-white",
-  item: "text-[#3F3D4E] hover:bg-[#F1EFEA] hover:text-[#0C0A1D] dark:text-[#D6D4E2] dark:hover:bg-[#1C1A33] dark:hover:text-white",
-  active: "bg-[#0C0A1D] text-white shadow-[0_10px_22px_-12px_rgba(12,10,29,0.55)] dark:bg-white dark:text-[#0C0A1D] dark:shadow-[0_10px_22px_-12px_rgba(0,0,0,0.8)]",
-  badge: "bg-[#EEEBFF] text-[#2B13CF] dark:bg-[#221D4D] dark:text-[#C4BDFF]",
-  badgeActive: "bg-white/15 text-white dark:bg-[#0C0A1D]/10 dark:text-[#0C0A1D]",
-  iconButton: "shrink-0 items-center justify-center rounded-full border border-[#E8E6E1] bg-white text-[#3F3D4E] transition-colors duration-200 hover:border-[#0C0A1D] hover:text-[#0C0A1D] dark:border-[#2C2946] dark:bg-[#15132A] dark:text-[#D6D4E2] dark:hover:border-[#B4ABFF] dark:hover:text-white flex",
-  card: "border-[#E8E6E1] bg-white shadow-[0_1px_2px_rgba(12,10,29,0.04),0_18px_36px_-26px_rgba(12,10,29,0.28)] dark:border-[#2C2946] dark:bg-[#15132A] dark:shadow-none",
-  pop: "border-[#E8E6E1] bg-white shadow-[0_18px_36px_-14px_rgba(12,10,29,0.28),0_4px_10px_-4px_rgba(12,10,29,0.1)] dark:border-[#2C2946] dark:bg-[#15132A] dark:shadow-[0_18px_36px_-14px_rgba(0,0,0,0.6)]",
-  rowHover: "hover:bg-[#F4F2EE] dark:hover:bg-[#1C1A33]",
-  divider: "border-[#E8E6E1] dark:border-[#2C2946]",
-  focus: "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2B13CF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#FBFAF8] dark:focus-visible:ring-[#B4ABFF] dark:focus-visible:ring-offset-[#0C0A1D]",
+  surface: "bg-[#FBFAF8] text-[#0C0A1D] border-[#E8E6E1] dark:bg-black dark:text-[#F5F5F5] dark:border-[#1F1F1F]",
+  text: "text-[#0C0A1D] dark:text-[#F5F5F5]",
+  muted: "text-[#5E5C6B] dark:text-[#A3A3A3]",
+  faint: "text-[#6B6977] dark:text-[#8A8A8A]",
+  icon: "text-[#6B6977] group-hover:text-[#0C0A1D] dark:text-[#8A8A8A] dark:group-hover:text-white",
+  item: "text-[#3F3D4E] hover:bg-[#F1EFEA] hover:text-[#0C0A1D] dark:text-[#D4D4D4] dark:hover:bg-[#141414] dark:hover:text-white",
+  active: "bg-[#2B13CF] text-white shadow-[0_10px_22px_-12px_rgba(43,19,207,0.7)] hover:bg-[#1F06AC] dark:shadow-[0_10px_24px_-12px_rgba(43,19,207,0.9)]",
+  badge: "bg-[#EEEBFF] text-[#2B13CF] dark:bg-[#16142B] dark:text-[#B9B3FF]",
+  badgeActive: "bg-white/20 text-white",
+  iconButton: "shrink-0 items-center justify-center rounded-full border border-[#E8E6E1] bg-white text-[#3F3D4E] transition-colors duration-200 hover:border-[#0C0A1D] hover:text-[#0C0A1D] dark:border-[#262626] dark:bg-[#0D0D0D] dark:text-[#D4D4D4] dark:hover:border-[#525252] dark:hover:text-white flex",
+  card: "border-[#E8E6E1] bg-white shadow-[0_1px_2px_rgba(12,10,29,0.04),0_18px_36px_-26px_rgba(12,10,29,0.28)] dark:border-[#262626] dark:bg-[#0D0D0D] dark:shadow-none",
+  pop: "border-[#E8E6E1] bg-white shadow-[0_18px_36px_-14px_rgba(12,10,29,0.28),0_4px_10px_-4px_rgba(12,10,29,0.1)] dark:border-[#262626] dark:bg-[#0D0D0D] dark:shadow-[0_18px_36px_-14px_rgba(0,0,0,0.9)]",
+  rowHover: "hover:bg-[#F4F2EE] dark:hover:bg-[#161616]",
+  divider: "border-[#E8E6E1] dark:border-[#262626]",
+  focus: "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2B13CF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#FBFAF8] dark:focus-visible:ring-[#8E87FF] dark:focus-visible:ring-offset-black",
 } as const;
 
 function initials(name: string | null | undefined) {
@@ -160,7 +161,7 @@ export function Sidebar() {
   return <>
     <div
       aria-hidden
-      className={cn("fixed inset-0 z-40 bg-[#0C0A1D]/40 backdrop-blur-[3px] md:hidden", mobileSidebarOpen ? "block" : "hidden")}
+      className={cn("fixed inset-0 z-40 bg-black/50 backdrop-blur-[3px] md:hidden", mobileSidebarOpen ? "block" : "hidden")}
       onClick={() => setMobileSidebarOpen(false)}
     />
     <aside
@@ -178,15 +179,12 @@ export function Sidebar() {
         mobileSidebarOpen ? "translate-x-0 max-md:visible" : "-translate-x-full max-md:invisible",
       )}
     >
-      {/* Brand: the same ink pill as the landing and auth navbar (white round
-          mark, white wordmark), so the dashboard opens on the brand it was
-          signed into. Collapsed, only the round mark remains. */}
-      <div className={cn("flex h-[72px] shrink-0 items-center justify-between gap-2 px-3.5", sidebarCollapsed && "md:justify-center md:px-2")}>
-        <div className={cn("flex h-11 min-w-0 items-center gap-2.5 rounded-full bg-[#1C1C1C] p-[5px] shadow-[0_12px_24px_-14px_rgba(12,10,29,0.55)] outline outline-1 outline-white/[0.06]", sidebarCollapsed ? "md:pr-[5px]" : "pr-4")}>
-          <span className="grid aspect-square h-full shrink-0 place-items-center rounded-full bg-white">
-            <img src={revlumaIcon} alt="" className="h-[56%] w-[56%] object-contain" />
-          </span>
-          <span className={cn("truncate text-[15px] font-semibold tracking-[-0.01em] text-white", sidebarCollapsed && "md:hidden")}>Revluma</span>
+      {/* Brand: the Revluma mark and wordmark sit directly on the sidebar
+          canvas, with no pill behind them. Collapsed, only the mark remains. */}
+      <div className={cn("flex h-[72px] shrink-0 items-center justify-between gap-2 px-4", sidebarCollapsed && "md:justify-center md:px-2")}>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <img src={revlumaIcon} alt="" className="h-7 w-7 shrink-0 object-contain" />
+          <span className={cn("truncate text-[17px] font-bold tracking-[-0.02em]", side.text, sidebarCollapsed && "md:hidden")}>Revluma</span>
         </div>
         <button
           type="button"
@@ -223,8 +221,8 @@ export function Sidebar() {
               {item.useCustomIcon
                 ? (
                   // The orb video blends with "screen", so it sits on its own
-                  // ink disc to stay visible on the white dark-mode active pill.
-                  <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center overflow-hidden rounded-full bg-[#0C0A1D]">
+                  // ink disc to stay visible on light canvases and the blue pill.
+                  <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center overflow-hidden rounded-full bg-black">
                     <RevOrbVideo size={22} className="shrink-0" />
                   </span>
                 )
@@ -270,7 +268,7 @@ export function Sidebar() {
             aria-label={`Use ${theme === "light" ? "dark" : "light"} workspace theme`}>
             {theme === "light" ? <Moon className="h-4 w-4" aria-hidden="true" /> : <Sun className="h-4 w-4" aria-hidden="true" />}
             <span className="flex-1 text-left">Dark mode</span>
-            <span aria-hidden="true" className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors duration-200", theme === "dark" ? "bg-[#A99FFF]" : "bg-[#D6D3CC]")}>
+            <span aria-hidden="true" className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors duration-200", theme === "dark" ? "bg-[#2B13CF]" : "bg-[#D6D3CC]")}>
               <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-[left] duration-200 motion-reduce:transition-none", theme === "dark" ? "left-[18px]" : "left-0.5")} />
             </span>
           </button>}

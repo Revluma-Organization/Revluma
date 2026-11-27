@@ -53,7 +53,7 @@ export function MerchantJourneyStatus({ workspace = false }: { workspace?: boole
   // The useful briefing itself is the returning experience. Do not add a
   // redundant welcome panel once the merchant is already in Command Center.
   if (workspace && journey?.selected.can_enter_workspace) return null;
-  return <section aria-labelledby="merchant-journey-heading" className="mb-5 rounded-xl border border-[#d0d5dd] bg-white p-4 text-[#101828] shadow-sm sm:p-5">
+  return <section data-rv-themed="" aria-labelledby="merchant-journey-heading" className="mb-5 rounded-xl border border-[#d0d5dd] bg-white p-4 text-[#101828] shadow-sm sm:p-5">
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <p className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#475467]"><Store className="h-4 w-4" aria-hidden="true" />Store setup</p>

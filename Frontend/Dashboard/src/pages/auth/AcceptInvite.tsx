@@ -24,11 +24,11 @@ export default function AcceptInvite() {
   // If there's no token in the URL, immediately show an error state
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-neutral-950 p-4">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="max-w-md w-full bg-white dark:bg-slate-900/50 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-8 text-center"
+          className="max-w-md w-full bg-white dark:bg-neutral-900/50 rounded-2xl shadow-xl border border-slate-200 dark:border-neutral-800 p-8 text-center"
         >
           <div className="w-16 h-16 bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-6">
             <AlertCircle size={32} />
@@ -36,7 +36,7 @@ export default function AcceptInvite() {
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
             Invalid Invitation
           </h2>
-          <p className="text-slate-600 dark:text-slate-400">
+          <p className="text-slate-600 dark:text-neutral-400">
             This invitation link is invalid or has expired. Please ask your workspace admin to send you a new invite.
           </p>
         </motion.div>
@@ -85,11 +85,11 @@ export default function AcceptInvite() {
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-neutral-950 p-4">
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="max-w-md w-full bg-white dark:bg-slate-900/50 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-8 text-center"
+          className="max-w-md w-full bg-white dark:bg-neutral-900/50 rounded-2xl shadow-xl border border-slate-200 dark:border-neutral-800 p-8 text-center"
         >
           <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 size={32} />
@@ -97,7 +97,7 @@ export default function AcceptInvite() {
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
             Welcome to Revluma!
           </h2>
-          <p className="text-slate-600 dark:text-slate-400 mb-6">
+          <p className="text-slate-600 dark:text-neutral-400 mb-6">
             Your account has been successfully set up. You can now access your workspace.
           </p>
           <button 
@@ -112,12 +112,12 @@ export default function AcceptInvite() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-neutral-950 p-4">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="max-w-md w-full bg-white dark:bg-slate-900/50 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-8"
+        className="max-w-md w-full bg-white dark:bg-neutral-900/50 rounded-2xl shadow-xl border border-slate-200 dark:border-neutral-800 p-8"
       >
         <div className="flex justify-center mb-6">
           <div className="w-12 h-12 bg-sky-100 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 rounded-xl flex items-center justify-center ring-1 ring-sky-500/20">
@@ -129,7 +129,7 @@ export default function AcceptInvite() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
             Join your team
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+          <p className="text-sm text-slate-500 dark:text-neutral-400 mt-2">
             Set up your Revluma account to accept the invitation
           </p>
         </div>
@@ -147,7 +147,7 @@ export default function AcceptInvite() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            <label className="text-sm font-medium text-slate-700 dark:text-neutral-300">
               Full Name
             </label>
             <input
@@ -156,13 +156,13 @@ export default function AcceptInvite() {
               required
               value={formData.fullName}
               onChange={handleChange}
-              className="w-full h-11 px-3 bg-white dark:bg-slate-950/80 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-500/30 focus-visible:border-sky-500 transition-all"
+              className="w-full h-11 px-3 bg-white dark:bg-neutral-950/80 border border-slate-300 dark:border-neutral-700 rounded-xl text-slate-900 dark:text-neutral-100 placeholder-slate-400 dark:placeholder-neutral-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-500/30 focus-visible:border-sky-500 transition-all"
               placeholder="Jane Doe"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            <label className="text-sm font-medium text-slate-700 dark:text-neutral-300">
               Password
             </label>
             <div className="relative">
@@ -172,13 +172,13 @@ export default function AcceptInvite() {
                 required
                 value={formData.password}
                 onChange={handleChange}
-                className="w-full h-11 px-3 pr-10 bg-white dark:bg-slate-950/80 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-500/30 focus-visible:border-sky-500 transition-all"
+                className="w-full h-11 px-3 pr-10 bg-white dark:bg-neutral-950/80 border border-slate-300 dark:border-neutral-700 rounded-xl text-slate-900 dark:text-neutral-100 placeholder-slate-400 dark:placeholder-neutral-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-500/30 focus-visible:border-sky-500 transition-all"
                 placeholder="••••••••"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-neutral-300 transition-colors"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -186,7 +186,7 @@ export default function AcceptInvite() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            <label className="text-sm font-medium text-slate-700 dark:text-neutral-300">
               Confirm Password
             </label>
             <div className="relative">
@@ -196,13 +196,13 @@ export default function AcceptInvite() {
                 required
                 value={formData.confirmPassword}
                 onChange={handleChange}
-                className="w-full h-11 px-3 pr-10 bg-white dark:bg-slate-950/80 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-500/30 focus-visible:border-sky-500 transition-all"
+                className="w-full h-11 px-3 pr-10 bg-white dark:bg-neutral-950/80 border border-slate-300 dark:border-neutral-700 rounded-xl text-slate-900 dark:text-neutral-100 placeholder-slate-400 dark:placeholder-neutral-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-500/30 focus-visible:border-sky-500 transition-all"
                 placeholder="••••••••"
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-neutral-300 transition-colors"
               >
                 {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>

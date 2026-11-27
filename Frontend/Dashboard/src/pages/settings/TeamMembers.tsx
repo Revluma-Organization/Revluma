@@ -171,9 +171,9 @@ export const TeamMembers: FC = () => {
   };
 
   return (
-    <div className="w-full max-w-5xl space-y-8 text-slate-900 dark:text-slate-100">
+    <div className="w-full max-w-5xl space-y-8 text-slate-900 dark:text-neutral-100">
       {/* Page Header with Invite Member button at top right */}
-      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 dark:border-neutral-800 pb-6 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
             <Users className="h-6 w-6" />
@@ -182,7 +182,7 @@ export const TeamMembers: FC = () => {
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
               Team Members
             </h1>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            <p className="mt-1 text-sm text-slate-600 dark:text-neutral-400">
               Invite colleagues and manage role permissions across your workspace.
             </p>
           </div>
@@ -229,21 +229,21 @@ export const TeamMembers: FC = () => {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40 shadow-xl"
+        className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-neutral-800 dark:bg-neutral-900/40 shadow-xl"
       >
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-100/60 dark:border-slate-800 dark:bg-slate-950/60 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              <tr className="border-b border-slate-200 bg-slate-100/60 dark:border-neutral-800 dark:bg-neutral-950/60 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-neutral-400">
                 <th className="px-6 py-4">User</th>
                 <th className="px-6 py-4">Role</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800/80">
+            <tbody className="divide-y divide-slate-200/80 dark:divide-neutral-800/80">
               {isLoading ? (
                 <tr>
-                  <td colSpan={3} className="px-6 py-12 text-center text-sm text-slate-600 dark:text-slate-400">
+                  <td colSpan={3} className="px-6 py-12 text-center text-sm text-slate-600 dark:text-neutral-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <Loader2 className="h-6 w-6 animate-spin text-sky-400" />
                       <span>Loading team members...</span>
@@ -252,7 +252,7 @@ export const TeamMembers: FC = () => {
                 </tr>
               ) : members.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-6 py-12 text-center text-sm text-slate-500 dark:text-slate-500">
+                  <td colSpan={3} className="px-6 py-12 text-center text-sm text-slate-500 dark:text-neutral-500">
                     No team members found. Click &quot;Invite Member&quot; to add someone to your workspace.
                   </td>
                 </tr>
@@ -260,7 +260,7 @@ export const TeamMembers: FC = () => {
                 members.map((member) => (
                   <tr
                     key={member.id}
-                    className="group transition-colors hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
+                    className="group transition-colors hover:bg-slate-100/60 dark:hover:bg-neutral-800/40"
                   >
                     {/* User Column (Avatar + Name + Email) */}
                     <td className="whitespace-nowrap px-6 py-4">
@@ -285,7 +285,7 @@ export const TeamMembers: FC = () => {
                               </Badge>
                             )}
                           </div>
-                          <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-neutral-400">
                             <Mail className="h-3 w-3 opacity-60" />
                             <span>{member.email}</span>
                           </div>

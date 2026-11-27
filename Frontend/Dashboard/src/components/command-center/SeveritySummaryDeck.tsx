@@ -1,7 +1,7 @@
 import { type MouseEvent, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { cc, palette } from "./tokens";
+import { cc, palette, roleColor } from "./tokens";
 
 export type SeverityFilterTier = "all" | "critical_high" | "medium" | "low";
 
@@ -309,7 +309,7 @@ function SeverityTierCard({
                   aria-hidden="true"
                   className="relative inline-flex h-2 w-2 rounded-full"
                   style={{
-                    backgroundColor: hasItems ? tier.dotColor : palette.deck.dotEmpty,
+                    backgroundColor: hasItems ? tier.dotColor : roleColor("deck", "dotEmpty"),
                   }}
                 />
               </span>
@@ -324,10 +324,8 @@ function SeverityTierCard({
             aria-hidden="true"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-brand-line transition-transform duration-300 group-hover:scale-[1.04]"
             style={{
-              background:
-                palette.gradient.orb,
-              boxShadow:
-                "0 4px 10px -4px rgba(12, 10, 29, 0.14), inset 0 1px 0 rgba(255, 255, 255, 1)",
+              background: "var(--rv-gradient-orb)",
+              boxShadow: `0 4px 10px -4px rgba(12, 10, 29, 0.14), inset 0 1px 0 ${roleColor("surface", "panel")}`,
             }}
           >
             <TelemetryGlyph
@@ -415,8 +413,8 @@ function SeverityTierCard({
 
   const sharedStyle = {
     boxShadow: isSelected
-      ? "0 1px 2px rgba(12, 10, 29, 0.05), 0 12px 26px -16px rgba(43, 19, 207, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.95)"
-      : "0 1px 2px rgba(12, 10, 29, 0.03), 0 10px 24px -18px rgba(12, 10, 29, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.95)",
+      ? "0 1px 2px rgba(12, 10, 29, 0.05), 0 12px 26px -16px rgba(43, 19, 207, 0.24), inset 0 1px 0 rgb(var(--rv-surface-panel) / 0.95)"
+      : "0 1px 2px rgba(12, 10, 29, 0.03), 0 10px 24px -18px rgba(12, 10, 29, 0.14), inset 0 1px 0 rgb(var(--rv-surface-panel) / 0.95)",
   };
 
   const motionProps = {

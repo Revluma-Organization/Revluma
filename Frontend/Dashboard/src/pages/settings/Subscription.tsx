@@ -102,10 +102,10 @@ export const Subscription: FC = () => {
   const currentPlanData = PLANS[activePlan];
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-8 rounded-2xl bg-white p-6 text-slate-900 shadow-xl border border-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:p-8">
+    <div className="w-full max-w-4xl mx-auto space-y-8 rounded-2xl bg-white p-6 text-slate-900 shadow-xl border border-slate-200 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 sm:p-8">
       
       {/* Dashboard Header */}
-      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-6 dark:border-slate-800 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-6 dark:border-neutral-800 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-100 text-sky-600 ring-1 ring-sky-500/20 dark:bg-sky-500/10 dark:text-sky-400">
             <CreditCard className="h-6 w-6" />
@@ -114,7 +114,7 @@ export const Subscription: FC = () => {
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
               Subscription & Plans
             </h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
               Manage your subscription tier and track visitor usage.
             </p>
           </div>
@@ -126,7 +126,7 @@ export const Subscription: FC = () => {
         <motion.section
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 to-sky-50/50 p-6 shadow-sm dark:border-sky-500/30 dark:from-slate-900 dark:to-sky-950/40 dark:shadow-xl"
+          className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 to-sky-50/50 p-6 shadow-sm dark:border-sky-500/30 dark:from-neutral-900 dark:to-sky-950/40 dark:shadow-xl"
         >
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
             <div className="space-y-3">
@@ -139,14 +139,14 @@ export const Subscription: FC = () => {
                 </h2>
               </div>
             </div>
-            <div className="w-full max-w-md space-y-2.5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800/80 dark:bg-slate-950/70 dark:shadow-inner">
+            <div className="w-full max-w-md space-y-2.5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-neutral-800/80 dark:bg-neutral-950/70 dark:shadow-inner">
               <div className="flex items-center justify-between text-xs font-semibold">
-                <span className="text-slate-500 dark:text-slate-400">Tracked Visitors</span>
+                <span className="text-slate-500 dark:text-neutral-400">Tracked Visitors</span>
                 <span className="font-mono text-sky-600 dark:text-sky-400">
                   {subscription.monthlyTrackedVisitorsUsed.toLocaleString()} / {subscription.monthlyTrackedVisitorsLimit.toLocaleString()}
                 </span>
               </div>
-              <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+              <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-neutral-800">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${usagePercent}%` }}
@@ -170,11 +170,11 @@ export const Subscription: FC = () => {
           </h2>
 
           {/* Plan Toggle (Starter vs Premium) */}
-          <div className="mx-auto flex w-fit rounded-full bg-slate-100 p-1 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+          <div className="mx-auto flex w-fit rounded-full bg-slate-100 p-1 ring-1 ring-slate-200 dark:bg-neutral-900 dark:ring-neutral-800">
             <button
               onClick={() => setActivePlan("starter")}
               className={`rounded-full px-6 py-2.5 text-sm font-semibold transition-all ${
-                activePlan === "starter" ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:text-white dark:ring-slate-700" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                activePlan === "starter" ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 dark:bg-neutral-800 dark:text-white dark:ring-neutral-700" : "text-slate-500 hover:text-slate-700 dark:text-neutral-400 dark:hover:text-neutral-200"
               }`}
             >
               Starter plan
@@ -182,7 +182,7 @@ export const Subscription: FC = () => {
             <button
               onClick={() => setActivePlan("premium")}
               className={`flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold transition-all ${
-                activePlan === "premium" ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:text-white dark:ring-slate-700" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                activePlan === "premium" ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 dark:bg-neutral-800 dark:text-white dark:ring-neutral-700" : "text-slate-500 hover:text-slate-700 dark:text-neutral-400 dark:hover:text-neutral-200"
               }`}
             >
               Premium plan
@@ -202,7 +202,7 @@ export const Subscription: FC = () => {
                 className="space-y-4"
               >
                 {currentPlanData.features.map((feature, idx) => (
-                  <li key={idx} className="flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-200 sm:text-base">
+                  <li key={idx} className="flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-neutral-200 sm:text-base">
                     {feature.isAi ? (
                       <Sparkles className="h-5 w-5 shrink-0 text-sky-500 dark:text-sky-400" />
                     ) : (
@@ -216,7 +216,7 @@ export const Subscription: FC = () => {
           </div>
 
           {/* Bottom Billing Box (Monthly vs Yearly Selection) */}
-          <div className="space-y-4 rounded-3xl bg-white p-4 shadow-xl ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+          <div className="space-y-4 rounded-3xl bg-white p-4 shadow-xl ring-1 ring-slate-200 dark:bg-neutral-900 dark:ring-neutral-800">
             <div className="grid grid-cols-2 gap-3">
               
               {/* Monthly Button */}
@@ -225,20 +225,20 @@ export const Subscription: FC = () => {
                 className={`relative flex flex-col items-start rounded-2xl p-4 text-left transition-all ${
                   billingCycle === "monthly"
                     ? "bg-sky-50 ring-2 ring-sky-500 dark:bg-sky-500/10"
-                    : "bg-slate-50 ring-1 ring-slate-200 hover:bg-slate-100 dark:bg-slate-950 dark:ring-slate-800 dark:hover:bg-slate-900"
+                    : "bg-slate-50 ring-1 ring-slate-200 hover:bg-slate-100 dark:bg-neutral-950 dark:ring-neutral-800 dark:hover:bg-neutral-900"
                 }`}
               >
                 <div className="mb-2 flex w-full items-center justify-between">
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Monthly</span>
+                  <span className="text-sm font-semibold text-slate-700 dark:text-neutral-300">Monthly</span>
                   {billingCycle === "monthly" ? (
                     <CheckCircle2 className="h-5 w-5 text-sky-500" />
                   ) : (
-                    <Circle className="h-5 w-5 text-slate-300 dark:text-slate-700" />
+                    <Circle className="h-5 w-5 text-slate-300 dark:text-neutral-700" />
                   )}
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-2xl font-bold text-slate-900 dark:text-white">${currentPlanData.monthlyPrice}</span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">/mo</span>
+                  <span className="text-xs text-slate-500 dark:text-neutral-400">/mo</span>
                 </div>
               </button>
 
@@ -248,12 +248,12 @@ export const Subscription: FC = () => {
                 className={`relative flex flex-col items-start rounded-2xl p-4 text-left transition-all ${
                   billingCycle === "annual"
                     ? "bg-sky-50 ring-2 ring-sky-500 dark:bg-sky-500/10"
-                    : "bg-slate-50 ring-1 ring-slate-200 hover:bg-slate-100 dark:bg-slate-950 dark:ring-slate-800 dark:hover:bg-slate-900"
+                    : "bg-slate-50 ring-1 ring-slate-200 hover:bg-slate-100 dark:bg-neutral-950 dark:ring-neutral-800 dark:hover:bg-neutral-900"
                 }`}
               >
                 <div className="mb-2 flex w-full items-center justify-between">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Yearly</span>
+                    <span className="text-sm font-semibold text-slate-700 dark:text-neutral-300">Yearly</span>
                     <Badge className="border-emerald-200 bg-emerald-100 px-1.5 py-0 text-[10px] text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-400 dark:hover:bg-emerald-500/20">
                       -20%
                     </Badge>
@@ -261,12 +261,12 @@ export const Subscription: FC = () => {
                   {billingCycle === "annual" ? (
                     <CheckCircle2 className="h-5 w-5 text-sky-500" />
                   ) : (
-                    <Circle className="h-5 w-5 text-slate-300 dark:text-slate-700" />
+                    <Circle className="h-5 w-5 text-slate-300 dark:text-neutral-700" />
                   )}
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-2xl font-bold text-slate-900 dark:text-white">${currentPlanData.annualTotal}</span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">/yr</span>
+                  <span className="text-xs text-slate-500 dark:text-neutral-400">/yr</span>
                 </div>
               </button>
             </div>
@@ -280,10 +280,10 @@ export const Subscription: FC = () => {
               Start 7-day trial
             </Button>
 
-            <div className="flex flex-col items-center justify-center gap-2 pt-2 text-xs text-slate-500 dark:text-slate-500">
+            <div className="flex flex-col items-center justify-center gap-2 pt-2 text-xs text-slate-500 dark:text-neutral-500">
               <div className="flex gap-4">
-                <button className="hover:text-slate-700 dark:hover:text-slate-300">Restore subscription</button>
-                <button className="hover:text-slate-700 dark:hover:text-slate-300">Terms of Service</button>
+                <button className="hover:text-slate-700 dark:hover:text-neutral-300">Restore subscription</button>
+                <button className="hover:text-slate-700 dark:hover:text-neutral-300">Terms of Service</button>
               </div>
               <div className="mt-1 flex items-center gap-1">
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />

@@ -53,7 +53,7 @@ function statusTone(status: string): { dot: string; text: string } {
     case "running": return { dot: "bg-sky-500 animate-pulse", text: "text-sky-700 dark:text-sky-400" };
     case "failed": return { dot: "bg-red-500", text: "text-red-700 dark:text-red-400" };
     case "degraded": return { dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400" };
-    default: return { dot: "bg-slate-400", text: "text-slate-500 dark:text-slate-400" };
+    default: return { dot: "bg-slate-400", text: "text-slate-500 dark:text-neutral-400" };
   }
 }
 
@@ -64,18 +64,18 @@ function jobTone(status: SyncProgressModel["job"]["status"]): string {
     case "stalled": return "text-amber-700 dark:text-amber-400";
     case "failed": return "text-red-700 dark:text-red-400";
     case "partial": return "text-amber-700 dark:text-amber-400";
-    default: return "text-slate-600 dark:text-slate-300";
+    default: return "text-slate-600 dark:text-neutral-300";
   }
 }
 
 function Skeleton() {
   return (
     <div className="w-full space-y-3" role="status" aria-label="Loading synchronization progress">
-      <div className="h-3 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
-      <div className="h-2 w-full animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
+      <div className="h-3 w-24 animate-pulse rounded bg-slate-200 dark:bg-neutral-800" />
+      <div className="h-2 w-full animate-pulse rounded-full bg-slate-200 dark:bg-neutral-800" />
       <div className="space-y-2">
-        <div className="h-3 w-3/4 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
-        <div className="h-3 w-1/2 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+        <div className="h-3 w-3/4 animate-pulse rounded bg-slate-200 dark:bg-neutral-800" />
+        <div className="h-3 w-1/2 animate-pulse rounded bg-slate-200 dark:bg-neutral-800" />
       </div>
       <span className="sr-only">Loading synchronization progress</span>
     </div>
@@ -84,7 +84,7 @@ function Skeleton() {
 
 function Unavailable({ message }: { message: string }) {
   return (
-    <div className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300">
+    <div className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600 dark:border-neutral-800 dark:bg-neutral-900/40 dark:text-neutral-300">
       {message}
     </div>
   );
@@ -169,12 +169,12 @@ export function SyncProgressCard({
           <span className={cn("text-sm font-semibold", completedWithLimitations ? "text-amber-700 dark:text-amber-400" : jobTone(jobStatus))}>
             {completedWithLimitations ? "Complete with limitations" : SYNC_JOB_STATUS_LABELS[jobStatus]}
           </span>
-          <span className="truncate text-xs text-slate-500 dark:text-slate-400" title={line}>
+          <span className="truncate text-xs text-slate-500 dark:text-neutral-400" title={line}>
             {line}
           </span>
         </div>
         <div
-          className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"
+          className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-neutral-800"
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={100}
@@ -186,7 +186,7 @@ export function SyncProgressCard({
             <div className="h-full rounded-full bg-emerald-500 transition-[width] duration-500" style={{ width: `${overall.percent}%` }} />
           ) : (
             // Honest indeterminate: no fabricated fill, just a real "in progress" cue.
-            <div className={cn("h-full w-full rounded-full bg-slate-300 dark:bg-slate-700", (inFlight || jobStatus === "stalled") && "animate-pulse")} />
+            <div className={cn("h-full w-full rounded-full bg-slate-300 dark:bg-neutral-700", (inFlight || jobStatus === "stalled") && "animate-pulse")} />
           )}
         </div>
       </div>
@@ -200,7 +200,7 @@ export function SyncProgressCard({
             <li key={d.domain} className="min-w-0">
               <div className="flex items-center gap-2">
                 <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", tone.dot)} />
-                <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700 dark:text-slate-200">
+                <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700 dark:text-neutral-200">
                   {domainLabel(d.domain)}
                   {d.required && <span className="ml-1 text-[0.6rem] uppercase tracking-wide text-slate-400">required</span>}
                 </span>
@@ -260,9 +260,9 @@ export function SyncProgressCard({
               disabled={submitting || inFlight}
               className={cn(
                 "min-h-[44px] w-full rounded-xl px-4 text-sm font-semibold transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-950",
                 submitting || inFlight
-                  ? "cursor-not-allowed bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                  ? "cursor-not-allowed bg-slate-200 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400"
                   : "bg-sky-600 text-white hover:bg-sky-700 active:bg-sky-800",
               )}
               aria-busy={submitting || undefined}
@@ -276,7 +276,7 @@ export function SyncProgressCard({
               onClick={onReconnect}
               className={cn(
                 "min-h-[44px] w-full rounded-xl bg-amber-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-amber-700",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-950",
               )}
             >
               Reconnect required
@@ -287,11 +287,11 @@ export function SyncProgressCard({
 
       {/* Expandable diagnostics (accessible disclosure, no overflow) */}
       <details className="group mt-3 w-full">
-        <summary className="flex min-h-[40px] cursor-pointer list-none items-center gap-1.5 rounded-lg px-1 text-xs font-semibold text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:text-slate-300 [&::-webkit-details-marker]:hidden">
+        <summary className="flex min-h-[40px] cursor-pointer list-none items-center gap-1.5 rounded-lg px-1 text-xs font-semibold text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:text-neutral-300 [&::-webkit-details-marker]:hidden">
           <span aria-hidden="true" className="transition-transform group-open:rotate-90">›</span>
           Diagnostics
         </summary>
-        <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-[0.7rem] text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300 sm:grid-cols-2">
+        <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-[0.7rem] text-slate-600 dark:border-neutral-800 dark:bg-neutral-900/40 dark:text-neutral-300 sm:grid-cols-2">
           <div className="flex justify-between gap-2"><dt className="text-slate-400">Stage</dt><dd className="truncate font-medium">{overall.stage || "—"}</dd></div>
           <div className="flex justify-between gap-2"><dt className="text-slate-400">Attempt</dt><dd className="font-medium">{retry.attempt ?? job.id ? `#${retry.attempt ?? "?"}` : "—"}</dd></div>
           <div className="flex justify-between gap-2"><dt className="text-slate-400">Records retrieved</dt><dd className="font-medium">{overall.records.retrieved}</dd></div>

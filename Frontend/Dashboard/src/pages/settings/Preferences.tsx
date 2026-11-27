@@ -133,9 +133,9 @@ export const Preferences: FC = () => {
   };
 
     return (
-    <div className="w-full max-w-5xl space-y-8 bg-transparent text-slate-900 dark:text-slate-100 pb-10">
+    <div className="w-full max-w-5xl space-y-8 bg-transparent text-slate-900 dark:text-neutral-100 pb-10">
       {/* Page Header */}
-      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 dark:border-neutral-800 pb-6 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 ring-1 ring-sky-500/20">
             <Sliders className="h-6 w-6" />
@@ -144,7 +144,7 @@ export const Preferences: FC = () => {
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
               User Preferences
             </h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
               Customize your interface theme, regional localization, and timestamp formatting.
             </p>
           </div>
@@ -157,13 +157,13 @@ export const Preferences: FC = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-6 shadow-sm dark:shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-slate-700 sm:p-8"
+          className="rounded-2xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 p-6 shadow-sm dark:shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-neutral-700 sm:p-8"
         >
           <div className="space-y-1.5">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
               Interface Theme
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 sm:text-sm">
+            <p className="text-xs text-slate-500 dark:text-neutral-400 sm:text-sm">
               Select your preferred appearance for the Revluma dashboard and navigation.
             </p>
           </div>
@@ -189,7 +189,7 @@ export const Preferences: FC = () => {
                   className={`group relative flex flex-col justify-between overflow-hidden rounded-xl border p-4 transition-all duration-200 cursor-pointer ${
                     isSelected
                       ? "border-sky-500 bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-200 ring-1 ring-sky-200 dark:ring-sky-500/30 shadow-sm"
-                      : "border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-900"
+                      : "border-slate-200 dark:border-neutral-800 bg-slate-50 dark:bg-neutral-950/70 text-slate-600 dark:text-neutral-300 hover:border-slate-300 dark:hover:border-neutral-700 hover:bg-slate-100 dark:hover:bg-neutral-900"
                   }`}
                 >
                   {/* Top Preview Banner */}
@@ -212,7 +212,7 @@ export const Preferences: FC = () => {
                     <div className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-sky-600 dark:group-hover:text-sky-300 transition-colors">
                       {block.name}
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    <div className="mt-0.5 text-xs text-slate-500 dark:text-neutral-400">
                       {block.subtitle}
                     </div>
                   </div>
@@ -227,13 +227,13 @@ export const Preferences: FC = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.1 }}
-          className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-6 shadow-sm dark:shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-slate-700 sm:p-8"
+          className="rounded-2xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 p-6 shadow-sm dark:shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-neutral-700 sm:p-8"
         >
           <div className="space-y-1.5">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
               Localization
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 sm:text-sm">
+            <p className="text-xs text-slate-500 dark:text-neutral-400 sm:text-sm">
               Configure your language preferences and local geographic timezone for metrics and schedules.
             </p>
           </div>
@@ -243,7 +243,7 @@ export const Preferences: FC = () => {
             <div className="space-y-2">
               <Label
                 htmlFor="default-language"
-                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-400"
               >
                 <Globe className="h-3.5 w-3.5 text-sky-500 dark:text-sky-400" />
                 <span>Default Language</span>
@@ -262,11 +262,11 @@ export const Preferences: FC = () => {
               >
                 <SelectTrigger
                   id="default-language"
-                  className="h-11 w-full border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30"
+                  className="h-11 w-full border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-950 text-slate-900 dark:text-neutral-100 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30"
                 >
                   <SelectValue placeholder="Select language" />
                 </SelectTrigger>
-                <SelectContent className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+                <SelectContent className="border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-slate-900 dark:text-neutral-100">
                   <SelectItem value="en-US">
                     American English (en-US) — Default
                   </SelectItem>
@@ -287,7 +287,7 @@ export const Preferences: FC = () => {
                   </SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-[0.75rem] text-slate-500 dark:text-slate-400">
+              <p className="text-[0.75rem] text-slate-500 dark:text-neutral-400">
                 Determines UI copy and numerical formatting across all dashboard modules.
               </p>
             </div>
@@ -296,7 +296,7 @@ export const Preferences: FC = () => {
             <div className="space-y-2">
               <Label
                 htmlFor="timezone-select"
-                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-400"
               >
                 <Clock className="h-3.5 w-3.5 text-sky-500 dark:text-sky-400" />
                 <span>Timezone</span>
@@ -310,11 +310,11 @@ export const Preferences: FC = () => {
               >
                 <SelectTrigger
                   id="timezone-select"
-                  className="h-11 w-full border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30"
+                  className="h-11 w-full border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-950 text-slate-900 dark:text-neutral-100 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30"
                 >
                   <SelectValue placeholder="Select timezone" />
                 </SelectTrigger>
-                <SelectContent className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+                <SelectContent className="border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-slate-900 dark:text-neutral-100">
                   <SelectItem value="America/Los_Angeles">
                     Pacific Time (US & Canada) — UTC-08:00
                   </SelectItem>
@@ -332,7 +332,7 @@ export const Preferences: FC = () => {
                   </SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-[0.75rem] text-slate-500 dark:text-slate-400">
+              <p className="text-[0.75rem] text-slate-500 dark:text-neutral-400">
                 Used for analytics charts, scheduled email campaigns, and order timestamps.
               </p>
             </div>
@@ -344,13 +344,13 @@ export const Preferences: FC = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.2 }}
-          className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-6 shadow-sm dark:shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-slate-700 sm:p-8"
+          className="rounded-2xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 p-6 shadow-sm dark:shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-neutral-700 sm:p-8"
         >
           <div className="space-y-1.5">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
               Date & Time Format
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 sm:text-sm">
+            <p className="text-xs text-slate-500 dark:text-neutral-400 sm:text-sm">
               Choose how dates and timestamps appear across data tables, audit logs, and reports.
             </p>
           </div>
@@ -360,7 +360,7 @@ export const Preferences: FC = () => {
             <div className="space-y-2">
               <Label
                 htmlFor="date-format-select"
-                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-400"
               >
                 <Calendar className="h-3.5 w-3.5 text-sky-500 dark:text-sky-400" />
                 <span>Preferred Format</span>
@@ -374,11 +374,11 @@ export const Preferences: FC = () => {
               >
                 <SelectTrigger
                   id="date-format-select"
-                  className="h-11 w-full border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30"
+                  className="h-11 w-full border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-950 text-slate-900 dark:text-neutral-100 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30"
                 >
                   <SelectValue placeholder="Select date format" />
                 </SelectTrigger>
-                <SelectContent className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+                <SelectContent className="border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-slate-900 dark:text-neutral-100">
                   <SelectItem value="MM/DD/YYYY">
                     MM/DD/YYYY (e.g., 07/26/2026) — American Standard
                   </SelectItem>
@@ -393,7 +393,7 @@ export const Preferences: FC = () => {
                   </SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-[0.75rem] text-slate-500 dark:text-slate-400">
+              <p className="text-[0.75rem] text-slate-500 dark:text-neutral-400">
                 Applies immediately across all tables and export files.
               </p>
             </div>

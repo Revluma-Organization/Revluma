@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import tailwindConfig from "../../../tailwind.config";
 import { getSeverityMeta } from "./findingDisplay";
-import { cc, palette, shell } from "./tokens";
+import { cc, hexChannels, palette, paletteDark, paletteVars, shell } from "./tokens";
 import type { Finding } from "./types";
 
 /**
@@ -89,35 +89,75 @@ describe("severity meta reads palette", () => {
   });
 });
 
-describe("Tailwind theme derives from palette", () => {
+describe("Tailwind theme derives from palette through theme variables", () => {
   const themeColors = (
     tailwindConfig as unknown as {
       theme: { extend: { colors: Record<string, Record<string, string> & { DEFAULT?: string }> } };
     }
   ).theme.extend.colors;
+  const light = paletteVars();
+  const dark = paletteVars(paletteDark);
+  const role = (name: string) => `rgb(var(${name}) / <alpha-value>)`;
 
-  it("maps theme colors to palette values", () => {
-    expect(themeColors.brand.DEFAULT).toBe(palette.brand.DEFAULT);
-    expect(themeColors.brand.deeper).toBe(palette.brand.deeper);
-    expect(themeColors.ink.DEFAULT).toBe(palette.ink.DEFAULT);
-    expect(themeColors.ink.muted).toBe(palette.ink.muted);
-    expect(themeColors.line.soft).toBe(palette.line.soft);
-    expect(themeColors.danger.limited).toBe(palette.danger.limited);
-    expect(themeColors.warning.lineStrong).toBe(palette.warning.lineStrong);
-    expect(themeColors.band.body).toBe(palette.band.body);
-    expect(themeColors.severity.critical).toBe(palette.severity.critical.base);
-    expect(themeColors.deck.ghost).toBe(palette.deck.ghost);
+  it("maps theme colors to CSS variables", () => {
+    expect(themeColors.brand.DEFAULT).toBe(role("--rv-brand"));
+    expect(themeColors.brand.deeper).toBe(role("--rv-brand-deeper"));
+    expect(themeColors.ink.DEFAULT).toBe(role("--rv-ink"));
+    expect(themeColors.ink.muted).toBe(role("--rv-ink-muted"));
+    expect(themeColors.line.soft).toBe(role("--rv-line-soft"));
+    expect(themeColors.danger.limited).toBe(role("--rv-danger-limited"));
+    expect(themeColors.warning.lineStrong).toBe(role("--rv-warning-lineStrong"));
+    expect(themeColors.band.body).toBe(role("--rv-band-body"));
+    expect(themeColors.severity.critical).toBe(role("--rv-severity-critical"));
+    expect(themeColors.deck.ghost).toBe(role("--rv-deck-ghost"));
   });
 
-  it("maps flat surface singletons to palette values", () => {
+  it("keeps the light variables equal to the palette values", () => {
+    expect(light["--rv-brand"]).toBe(hexChannels(palette.brand.DEFAULT));
+    expect(light["--rv-brand-deeper"]).toBe(hexChannels(palette.brand.deeper));
+    expect(light["--rv-ink"]).toBe(hexChannels(palette.ink.DEFAULT));
+    expect(light["--rv-ink-muted"]).toBe(hexChannels(palette.ink.muted));
+    expect(light["--rv-line-soft"]).toBe(hexChannels(palette.line.soft));
+    expect(light["--rv-severity-critical"]).toBe(hexChannels(palette.severity.critical.base));
+    expect(light["--rv-surface-workspace"]).toBe(hexChannels(palette.surface.workspace));
+    expect(light["--rv-band-bg"]).toBe(hexChannels(palette.band.bg));
+    expect(light["--rv-connected"]).toBe(hexChannels(palette.connected));
+  });
+
+  it("maps flat surface singletons to surface variables", () => {
     const flat = themeColors as unknown as Record<string, string>;
-    expect(flat.workspace).toBe(palette.surface.workspace);
-    expect(flat.subtle).toBe(palette.surface.subtle);
-    expect(flat.wash).toBe(palette.surface.wash);
-    expect(flat.veil).toBe(palette.surface.veil);
-    expect(flat.skeleton).toBe(palette.surface.skeleton);
-    expect(flat.scrim).toBe(palette.band.bg);
-    expect(flat.connected).toBe(palette.connected);
+    expect(flat.workspace).toBe(role("--rv-surface-workspace"));
+    expect(flat.subtle).toBe(role("--rv-surface-subtle"));
+    expect(flat.wash).toBe(role("--rv-surface-wash"));
+    expect(flat.veil).toBe(role("--rv-surface-veil"));
+    expect(flat.skeleton).toBe(role("--rv-surface-skeleton"));
+    expect(flat.panel).toBe(role("--rv-surface-panel"));
+    expect(flat.scrim).toBe(role("--rv-band-bg"));
+    expect(flat.connected).toBe(role("--rv-connected"));
+  });
+
+  it("defines a dark value for every light variable", () => {
+    for (const name of Object.keys(dark)) expect(light).toHaveProperty(name);
+    for (const name of ["--rv-ink", "--rv-line", "--rv-surface-panel", "--rv-surface-workspace", "--rv-brand", "--rv-band-bg"]) {
+      expect(dark).toHaveProperty(name);
+    }
+  });
+
+  it("keeps the dark workspace neutral pure black, never navy", () => {
+    const channels = (name: string) => dark[name].split(" ").map(Number);
+    expect(dark["--rv-surface-workspace"]).toBe("0 0 0");
+    expect(dark["--rv-band-bg"]).toBe("0 0 0");
+    for (const name of ["--rv-surface-panel", "--rv-surface-subtle", "--rv-line", "--rv-line-soft", "--rv-line-strong", "--rv-ink"]) {
+      const [r, g, b] = channels(name);
+      expect(r === g && g === b).toBe(true);
+    }
+  });
+});
+
+describe("hexChannels", () => {
+  it("converts hex colors to Tailwind channel triples", () => {
+    expect(hexChannels("#4438E8")).toBe("68 56 232");
+    expect(hexChannels("#000")).toBe("0 0 0");
   });
 });
 

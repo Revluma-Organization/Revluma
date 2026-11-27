@@ -13,16 +13,28 @@ afterEach(() => {
   window.innerWidth = 1280;
 });
 
-// Active nav items wear the landing/auth ink pill (bg-[#0C0A1D], white in dark).
-const isActive = (element: HTMLElement) => element.className.split(/\s+/).includes("bg-[#0C0A1D]");
+// Active nav items wear the Revluma blue pill (bg-[#2B13CF]) in both themes.
+const isActive = (element: HTMLElement) => element.className.split(/\s+/).includes("bg-[#2B13CF]");
 
 describe("Landing-language sidebar and responsive navigation", () => {
-  it("uses the landing/auth canvas: warm light surface, ink in dark mode", () => {
+  it("uses the landing/auth canvas: warm light surface, pure black in dark mode", () => {
     renderSidebar();
     const aside = document.querySelector("aside")?.className ?? "";
     expect(aside).toContain("bg-[#FBFAF8]");
-    expect(aside).toContain("dark:bg-[#0C0A1D]");
-    expect(aside).not.toContain("bg-[#111318]");
+    expect(aside).toContain("dark:bg-black");
+    expect(aside).not.toContain("dark:bg-[#0C0A1D]");
+  });
+  it("shows the Revluma mark and wordmark without a pill behind them", () => {
+    renderSidebar();
+    const wordmark = screen.getByText("Revluma");
+    expect(wordmark.parentElement?.className).not.toContain("bg-[#1C1C1C]");
+    expect(wordmark.parentElement?.className).not.toContain("rounded-full");
+  });
+  it("marks the current page with a blue pill, never black or white", () => {
+    renderSidebar();
+    const current = screen.getByRole("link", { name: "Command Center" }).className;
+    expect(current).toContain("bg-[#2B13CF]");
+    expect(current).not.toMatch(/(^|\s)(dark:)?bg-(white|\[#0C0A1D\]|black)(\s|$)/);
   });
   it("preserves all MVP navigation destinations", () => {
     renderSidebar();
