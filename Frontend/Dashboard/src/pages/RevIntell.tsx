@@ -391,7 +391,7 @@ function answerCopyText(message: Message): string {
     const parts = [item.label, item.why, item.measure].map(textValue).filter(Boolean);
     return parts.length && !parts.every(text => coveredBy(shown, text)) ? [parts.join("\n")] : [];
   });
-  if (recommendations.length) blocks.push(`Recommended next steps\nRecommendations only — nothing was changed or sent.\n${recommendations.join("\n\n")}`);
+  if (recommendations.length) blocks.push(`Recommended next steps\nRecommendations only. Nothing was changed or sent.\n${recommendations.join("\n\n")}`);
   return blocks.join("\n\n");
 }
 

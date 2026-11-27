@@ -1203,7 +1203,7 @@ describe('Phase 5.4 follow-up answer copying', () => {
   it('keeps visible facts, hypotheses, limits, warnings and recommendations while excluding raw evidence', async () => {
     const { writeText, button } = await openAnswer({ text: 'Answer body.', facts: [{ text: 'Recorded fact.', evidence_ids: ['PRIVATE_ID'] }], comparison_facts: [{ text: 'Comparison fact.' }], hypotheses: [{ statement: 'A possible explanation.', internal: 'PRIVATE_HYPOTHESIS' }], unknowns: ['Missing records.'], warnings: ['Limited coverage.'], recommendations: [{ label: 'Review the segment.', why: 'It changed.', measure: 'Compare recorded orders.', tool: 'PRIVATE_TOOL' }], evidence: { private: 'RAW_JSON' } });
     await act(async () => { fireEvent.click(button); }); const copied = writeText.mock.calls[0][0];
-    for (const text of ['Answer body.', 'Facts', 'Recorded fact.', 'Comparison fact.', 'Hypotheses — not verified', 'A possible explanation.', 'Unknowns and limits', 'Missing records.', 'Limited coverage.', 'Review the segment.', 'It changed.', 'Compare recorded orders.', 'nothing was changed or sent']) expect(copied).toContain(text);
+    for (const text of ['Answer body.', 'Facts', 'Recorded fact.', 'Comparison fact.', 'Hypotheses — not verified', 'A possible explanation.', 'Unknowns and limits', 'Missing records.', 'Limited coverage.', 'Review the segment.', 'It changed.', 'Compare recorded orders.', 'Nothing was changed or sent']) expect(copied).toContain(text);
     expect(copied).not.toMatch(/PRIVATE_|RAW_JSON|evidence_ids/);
   });
 });
