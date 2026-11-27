@@ -11,6 +11,7 @@
  * POST /api/v1/rev/message-feedback  — thumbs up/down on a persisted Rev answer
  * POST /api/v1/memory                — write a merchant memory
  * GET  /api/v1/rev/health            — Python service health check
+ * POST /api/v1/rev/conversation/:id/title/generate — model-written title after the first answer
  */
 
 const express    = require('express');
@@ -108,6 +109,9 @@ router.delete('/conversation/:id',        authenticateToken,               revCo
 
 // Rename a conversation
 router.patch('/conversation/:id/title',   authenticateToken,               revController.renameConversation);
+
+// Model-written title after the first answer (replaces automatic titles only)
+router.post('/conversation/:id/title/generate', authenticateToken, chatLimiter, revController.generateConversationTitle);
 
 // Thumbs up/down on a persisted Rev answer (upsert; rating null clears)
 router.post('/message-feedback',          authenticateToken, feedbackLimiter, revController.submitMessageFeedback);

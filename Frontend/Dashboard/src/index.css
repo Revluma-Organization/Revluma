@@ -391,6 +391,33 @@
   .rv-dots-hint { animation: none; }
 }
 
+/* Rev conversation title reveal (components/rev/RevAnimatedTitle.tsx).
+   Letters fade in from a soft blur, left to right, while a thin caret at the
+   end of the line blinks and fades out. Opacity and filter only: they animate on inline
+   text, so the single-line ellipsis keeps working while the title types. */
+@keyframes rvTitleChar {
+  from { opacity: 0; filter: blur(4px); }
+  to { opacity: 1; filter: blur(0); }
+}
+@keyframes rvTitleCaretBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+@keyframes rvTitleCaretOut { to { opacity: 0; width: 0; margin-left: 0; } }
+.rv-title-char { animation: rvTitleChar 0.36s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.rv-title-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.14em;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.7;
+  animation: rvTitleCaretBlink 0.5s steps(2, jump-none) 2, rvTitleCaretOut 0.2s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-title-char { animation: none; }
+  .rv-title-caret { display: none; animation: none; }
+}
+
 /* ──────────────────────────────────────────────
    Command Center dark bridge
    The Command Center was built light-only with literal Tailwind colours

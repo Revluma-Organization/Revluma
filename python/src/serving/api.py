@@ -1587,6 +1587,34 @@ def rev_stream(req: InvestigateRequest):
     )
 
 
+class TitleRequest(BaseModel):
+    """First exchange of a conversation, sent by Node to name it."""
+    model_config = ConfigDict(extra="ignore")
+    message: str = Field(..., min_length=1, max_length=2000)
+    reply: str = Field("", max_length=4000)
+    intent: str | None = Field(None, max_length=60)
+
+
+@app.post("/rev/title", dependencies=[Depends(verify_internal_caller)])
+async def rev_conversation_title(req: TitleRequest):
+    """Short model-written conversation title (ChatGPT-style naming).
+
+    503 when the model is unavailable, 422 when it returned nothing usable;
+    Node keeps its deterministic draft title in both cases.
+    """
+    from src.agents.conversation_title import generate_conversation_title
+
+    try:
+        title = await run_in_threadpool(generate_conversation_title, req.message, req.reply)
+    except ValueError as exc:
+        logger.info("rev_title_rejected error_type=%s", type(exc).__name__)
+        raise HTTPException(status_code=422, detail="Title unavailable.") from exc
+    except Exception as exc:
+        logger.warning("rev_title_unavailable error_type=%s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Title unavailable.") from exc
+    return {"title": title}
+
+
 @app.get("/internal/rev/metrics", dependencies=[Depends(verify_internal_caller)])
 def rev_operational_metrics():
     """Internal-only low-cardinality metrics snapshot; never exposes request IDs."""

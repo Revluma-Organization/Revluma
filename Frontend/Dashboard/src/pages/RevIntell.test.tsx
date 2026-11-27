@@ -8,6 +8,8 @@ import { historyGroupLabel } from '@/lib/revHistory';
 
 const theme = vi.hoisted(() => ({ value: 'dark' }));
 const answerView = vi.hoisted(() => vi.fn());
+const requestTitle = vi.hoisted(() => vi.fn<(id: string) => Promise<string | null>>());
+vi.mock('@/lib/revTitle', () => ({ requestConversationTitle: requestTitle }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { full_name: 'Test Owner' } }) }));
 vi.mock('@/store', () => ({ useThemeStore: (select: (state: { theme: string }) => unknown) => select({ theme: theme.value }) }));
 vi.mock('@/lib/api', () => {
@@ -129,6 +131,7 @@ function send(text = 'Investigate revenue') {
 beforeEach(() => {
   replies = new Map(); streams = [];
   answerView.mockClear();
+  requestTitle.mockReset(); requestTitle.mockResolvedValue(null);
   theme.value = 'dark';
   vi.mocked(api.get).mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(streamRevAnswer).mockReset();
   vi.mocked(api.delete).mockReset(); vi.mocked(api.patch).mockReset();
@@ -2316,18 +2319,99 @@ describe('Phase 5E evidence-first workspace', () => {
     expect(within(region).queryByText('Critical')).not.toBeInTheDocument();
   });
 
-  it('shows Investigating while a turn is in flight and clears it after', async () => {
+  it('shows Investigating only while a turn runs store checks, and clears it after', async () => {
     noHistoryToResume();
     renderPage();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
     expect(screen.queryByText('Investigating…')).not.toBeInTheDocument();
     send('Investigate revenue');
+    // Nothing is claimed before the server has planned any checks.
+    expect(screen.queryByText('Investigating…')).not.toBeInTheDocument();
+    act(() => {
+      streams[0].request.handlers.onPlan?.({ steps: [{ id: 'revenue', tool: 'revenue_observations', label: 'Reading revenue', status: 'running' }] } as never);
+    });
     expect(screen.getByText('Investigating…')).toBeInTheDocument();
     await act(async () => {
       streams[0].request.handlers.onFinal?.(answer('Created', 'Done'));
       streams[0].result.resolve({ conversationId: 'Created', completed: true });
     });
     expect(screen.queryByText('Investigating…')).not.toBeInTheDocument();
+  });
+
+  it('never shows Investigating for a friendly greeting that runs no checks', async () => {
+    noHistoryToResume();
+    renderPage();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
+    send('Hello chat');
+    expect(screen.queryByText('Investigating…')).not.toBeInTheDocument();
+    await act(async () => {
+      streams[0].request.handlers.onMeta?.({ conversation_id: 'Created' } as never);
+    });
+    expect(screen.queryByText('Investigating…')).not.toBeInTheDocument();
+    await act(async () => {
+      streams[0].request.handlers.onFinal?.(answer('Created', 'Hello. What are you working on today?'));
+      streams[0].result.resolve({ conversationId: 'Created', completed: true });
+    });
+    expect(screen.queryByText('Investigating…')).not.toBeInTheDocument();
+  });
+
+  it('names a new conversation after the first answer and types the title into the header', async () => {
+    noHistoryToResume();
+    const named = deferred<string | null>();
+    requestTitle.mockReturnValue(named.promise);
+    renderPage();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
+    send('Hello chat');
+    await act(async () => {
+      streams[0].request.handlers.onMeta?.({ conversation_id: 'Created' } as never);
+    });
+    // While the conversation is being named the header never shows the
+    // opening words or "Untitled conversation".
+    const header = screen.getByRole('banner');
+    expect(within(header).getByText('New conversation')).toBeInTheDocument();
+    expect(within(header).queryByText('Untitled conversation')).not.toBeInTheDocument();
+    replies.set('/rev/conversations', Promise.resolve(reply([{ ...conversation('Created'), title: 'Warm welcome' }])));
+    await act(async () => {
+      streams[0].request.handlers.onFinal?.(answer('Created', 'Hello. What are you working on today?'));
+      streams[0].result.resolve({ conversationId: 'Created', completed: true });
+    });
+    expect(requestTitle).toHaveBeenCalledWith('Created');
+    expect(within(header).getByText('New conversation')).toBeInTheDocument();
+    await act(async () => named.resolve('Friendly greetings'));
+    expect(within(header).getByText('Friendly greetings')).toBeInTheDocument();
+    expect(within(header).queryByText('Hello chat')).not.toBeInTheDocument();
+    // Letters are revealed by aria-hidden spans; the full title is announced once.
+    const typed = header.querySelector('[data-rev-title] [aria-hidden="true"]');
+    expect(typed?.querySelectorAll('.rv-title-char')).toHaveLength('Friendly greetings'.length);
+    expect(header.querySelector('[data-rev-title]')).toHaveAttribute('title', 'Friendly greetings');
+    // A later history reload cannot put the draft title back.
+    openHistory();
+    expect(await screen.findByRole('button', { name: /^Friendly greetings\b/ })).toBeInTheDocument();
+  });
+
+  it('falls back to the stored draft title when no model title is available', async () => {
+    noHistoryToResume();
+    renderPage();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
+    send('Hello chat');
+    replies.set('/rev/conversations', Promise.resolve(reply([{ ...conversation('Created'), title: 'Warm welcome' }])));
+    await act(async () => {
+      streams[0].request.handlers.onMeta?.({ conversation_id: 'Created' } as never);
+      streams[0].request.handlers.onFinal?.(answer('Created', 'Hi there.'));
+      streams[0].result.resolve({ conversationId: 'Created', completed: true });
+    });
+    await waitFor(() => expect(within(screen.getByRole('banner')).getByText('Warm welcome')).toBeInTheDocument());
+  });
+
+  it('does not rename an existing conversation when another turn is sent', async () => {
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText('Message from A');
+    send('Follow up');
+    await act(async () => {
+      streams[0].request.handlers.onFinal?.(answer('A', 'Follow-up answer'));
+      streams[0].result.resolve({ conversationId: 'A', completed: true });
+    });
+    expect(requestTitle).not.toHaveBeenCalled();
   });
 
   it('reflects a rename in the header title as well as the history row', async () => {
