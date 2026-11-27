@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@700;800;900&family=Archivo+Black&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -189,6 +189,9 @@
   }
   .serif { font-family: 'Instrument Serif', serif; }
   .display { font-family: 'DM Sans', system-ui, sans-serif; letter-spacing: -0.035em; }
+  /* Landing and auth headline face: Arial Black, with the open Archivo Black
+     lookalike where Arial Black is missing (iOS, Android, Linux). */
+  .display-black { font-family: 'Arial Black', 'Archivo Black', 'DM Sans', system-ui, sans-serif; font-weight: 900; letter-spacing: -0.02em; }
 
   /* ──────────────────────────────────────────────
      Ultra Glassmorphism · Sidebar
@@ -355,4 +358,15 @@
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+
+/* Shell motion, matching the landing and auth fade-and-rise (auth-theme.css
+   rvRise / rvDrop): short, eased, and removed under reduced motion. */
+@keyframes rvSideRise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes rvSidePop { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+.rv-side-rise { animation: rvSideRise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.rv-side-pop { animation: rvSidePop 0.18s cubic-bezier(0.22, 1, 0.36, 1) both; transform-origin: bottom center; }
+@media (prefers-reduced-motion: reduce) {
+  .rv-side-rise, .rv-side-pop { animation: none; }
 }

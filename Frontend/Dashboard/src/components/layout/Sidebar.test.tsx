@@ -13,11 +13,16 @@ afterEach(() => {
   window.innerWidth = 1280;
 });
 
-describe("Task 219 dark sidebar and responsive navigation", () => {
-  it("uses a stable dark surface in the light workspace theme", () => {
+// Active nav items wear the landing/auth ink pill (bg-[#0C0A1D], white in dark).
+const isActive = (element: HTMLElement) => element.className.split(/\s+/).includes("bg-[#0C0A1D]");
+
+describe("Landing-language sidebar and responsive navigation", () => {
+  it("uses the landing/auth canvas: warm light surface, ink in dark mode", () => {
     renderSidebar();
-    expect(document.querySelector("aside")?.className).toContain("bg-[#111318]");
-    expect(document.querySelector("aside")?.className).not.toContain("bg-white");
+    const aside = document.querySelector("aside")?.className ?? "";
+    expect(aside).toContain("bg-[#FBFAF8]");
+    expect(aside).toContain("dark:bg-[#0C0A1D]");
+    expect(aside).not.toContain("bg-[#111318]");
   });
   it("preserves all MVP navigation destinations", () => {
     renderSidebar();
@@ -32,25 +37,25 @@ describe("Task 219 dark sidebar and responsive navigation", () => {
   });
   it("lights exactly one overview view active for each deep-link state", () => {
     const priority = renderSidebar("/dashboard/overview?section=priority");
-    expect(screen.getByRole("link", { name: "Priorities" }).className).toContain("bg-[#1F06AC]");
-    expect(screen.getByRole("link", { name: "Command Center" }).className).not.toContain("bg-[#1F06AC]");
-    expect(screen.getByRole("link", { name: "Signals" }).className).not.toContain("bg-[#1F06AC]");
+    expect(isActive(screen.getByRole("link", { name: "Priorities" }))).toBe(true);
+    expect(isActive(screen.getByRole("link", { name: "Command Center" }))).toBe(false);
+    expect(isActive(screen.getByRole("link", { name: "Signals" }))).toBe(false);
     priority.unmount();
     renderSidebar("/dashboard/overview?section=signals");
-    expect(screen.getByRole("link", { name: "Signals" }).className).toContain("bg-[#1F06AC]");
-    expect(screen.getByRole("link", { name: "Command Center" }).className).not.toContain("bg-[#1F06AC]");
-    expect(screen.getByRole("link", { name: "Priorities" }).className).not.toContain("bg-[#1F06AC]");
+    expect(isActive(screen.getByRole("link", { name: "Signals" }))).toBe(true);
+    expect(isActive(screen.getByRole("link", { name: "Command Center" }))).toBe(false);
+    expect(isActive(screen.getByRole("link", { name: "Priorities" }))).toBe(false);
   });
   it("treats a finding deep link as the Priorities view", () => {
     renderSidebar("/dashboard/overview?finding=3ed79446-cb6d-4a1c-b174-9ec1ab91fe15");
-    expect(screen.getByRole("link", { name: "Priorities" }).className).toContain("bg-[#1F06AC]");
-    expect(screen.getByRole("link", { name: "Command Center" }).className).not.toContain("bg-[#1F06AC]");
+    expect(isActive(screen.getByRole("link", { name: "Priorities" }))).toBe(true);
+    expect(isActive(screen.getByRole("link", { name: "Command Center" }))).toBe(false);
   });
   it("keeps Command Center active for non-nav overview sections", () => {
     renderSidebar("/dashboard/overview?section=activity");
-    expect(screen.getByRole("link", { name: "Command Center" }).className).toContain("bg-[#1F06AC]");
-    expect(screen.getByRole("link", { name: "Priorities" }).className).not.toContain("bg-[#1F06AC]");
-    expect(screen.getByRole("link", { name: "Signals" }).className).not.toContain("bg-[#1F06AC]");
+    expect(isActive(screen.getByRole("link", { name: "Command Center" }))).toBe(true);
+    expect(isActive(screen.getByRole("link", { name: "Priorities" }))).toBe(false);
+    expect(isActive(screen.getByRole("link", { name: "Signals" }))).toBe(false);
   });
   it("announces a single current page across overview deep links", () => {
     const plain = renderSidebar("/dashboard/overview");
@@ -63,7 +68,7 @@ describe("Task 219 dark sidebar and responsive navigation", () => {
   });
   it("communicates the active route with text and an active surface", () => {
     renderSidebar();
-    expect(screen.getByRole("link", { name: "Command Center" }).className).toContain("bg-[#1F06AC]");
+    expect(isActive(screen.getByRole("link", { name: "Command Center" }))).toBe(true);
   });
   it("uses consistent 44px navigation touch targets", () => {
     renderSidebar();
