@@ -186,6 +186,26 @@ describe('structured conversation rehydration', () => {
     expect(screen.getByText(/record unavailable/)).toBeInTheDocument();
     expect(screen.getByText('Evidence unavailable.')).toBeInTheDocument();
   });
+  it('shows the pending image inside the composer and the sent image above the question', async () => {
+    vi.mocked(api.post).mockResolvedValue({ ok: true, status: 200, data: {
+      success: true, conversation_id: 'ImageInside', response_type: 'analysis', text: 'Image answer',
+    } });
+    const view = renderPage();
+    fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['fixture'], 'fixture.png', { type: 'image/png' })] } });
+    const thumb = await screen.findByAltText('Attached image');
+    expect(thumb.closest('.rev-composer')).not.toBeNull();
+    expect(screen.queryByText('fixture.png')).not.toBeInTheDocument();
+    send('What is in this image?');
+    const sent = await screen.findByAltText('Image you sent');
+    expect(sent.closest('.rev-turn-user')).not.toBeNull();
+    await waitFor(() => expect(screen.queryByAltText('Attached image')).not.toBeInTheDocument());
+  });
+  it('attaches an image pasted into the composer', async () => {
+    renderPage();
+    const box = await screen.findByRole('textbox', { name: 'Message Rev' });
+    fireEvent.paste(box, { clipboardData: { files: [new File(['fixture'], 'pasted.png', { type: 'image/png' })] } });
+    expect(await screen.findByAltText('Attached image')).toBeInTheDocument();
+  });
   it('normalises a legacy structured attachment response before rendering it', async () => {
     vi.mocked(api.post).mockResolvedValue({ ok: true, status: 200, data: {
       success: true, conversation_id: 'ImageCreated', response_type: 'analysis', text: null,
@@ -193,7 +213,7 @@ describe('structured conversation rehydration', () => {
     } });
     const view = renderPage();
     fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['fixture'], 'fixture.png', { type: 'image/png' })] } });
-    await screen.findByAltText('attachment'); send('Read this attachment');
+    await screen.findByAltText('Attached image'); send('Read this attachment');
     await waitFor(() => expect(answerView).toHaveBeenCalledWith(expect.objectContaining({ response: expect.objectContaining({ situation: 'Attachment situation', insight: 'Attachment insight', implication: 'Attachment implication', recommendation: 'Attachment recommendation' }) })));
     expect(screen.getAllByText('Read this attachment')).toHaveLength(1);
     expect(streamRevAnswer).not.toHaveBeenCalled();
@@ -262,7 +282,7 @@ describe('finding investigation handoff', () => {
     fireEvent.change(view.container.querySelector('input[type="file"]')!, {
       target: { files: [new File(['fixture image'], 'fixture.png', { type: 'image/png' })] },
     });
-    await screen.findByAltText('attachment'); send('Explain the finding with this image');
+    await screen.findByAltText('Attached image'); send('Explain the finding with this image');
     await screen.findByText('Image finding answer');
     expect(api.post).toHaveBeenCalledWith('/rev/chat', expect.objectContaining({ finding_id: findingOne, message: 'Explain the finding with this image', image_media_type: 'image/png' }));
     expect(JSON.stringify(vi.mocked(api.post).mock.calls)).not.toContain('RAW_EVIDENCE');
@@ -298,7 +318,7 @@ describe('finding investigation handoff', () => {
     if (failure === 'attachment rejection') {
       vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Unverified', { error: { code: 'FINDING_EVIDENCE_UNVERIFIED' } }));
       fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['image'], 'fixture.png', { type: 'image/png' })] } });
-      await screen.findByAltText('attachment');
+      await screen.findByAltText('Attached image');
     }
     send('Check this finding');
     if (failure !== 'attachment rejection') await act(async () => {
@@ -421,7 +441,7 @@ describe('finding investigation handoff', () => {
     const attach = () => fireEvent.change(view.container.querySelector('input[type="file"]')!, {
       target: { files: [new File(['fixture image'], 'fixture.png', { type: 'image/png' })] },
     });
-    attach(); await screen.findByAltText('attachment'); send('Investigate using this image');
+    attach(); await screen.findByAltText('Attached image'); send('Investigate using this image');
     if (outcome === 'rejected') {
       fireEvent.click(await screen.findByRole('button', { name: 'Retry finding' }));
       await screen.findByRole('heading', { name: 'Revenue decline' });
@@ -435,7 +455,7 @@ describe('finding investigation handoff', () => {
     } else {
       // Rejected/uncertain submissions preserve the original attachment for a
       // safe retry; an already accepted turn requires an explicit reattach.
-      expect(screen.getByAltText('attachment')).toBeInTheDocument();
+      expect(screen.getByAltText('Attached image')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
     }
     if (outcome === 'successful' || outcome === 'acknowledged failure') {
@@ -443,7 +463,10 @@ describe('finding investigation handoff', () => {
       expect(api.post).toHaveBeenCalledTimes(1);
     }
     expect(streamRevAnswer).not.toHaveBeenCalled();
-    attach(); await screen.findByAltText('attachment');
+    // The cleared thumbnail can still be collapsing out of the composer, so
+    // wait for the reattached image to make the turn sendable.
+    attach(); await screen.findByAltText('Attached image');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled());
     vi.mocked(api.post).mockResolvedValue(turnReply(answer('ImageCreated', 'Repeated image answer')));
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     await screen.findByText('Repeated image answer');
@@ -854,7 +877,7 @@ describe('turn callbacks remain in their originating thread', () => {
     const view = renderPage('/dashboard/rev-intell/A'); await screen.findByText('Message from A'); await historyReady();
     const file = new File(['fixture image'], 'fixture.png', { type: 'image/png' });
     fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [file] } });
-    await screen.findByAltText('attachment'); send('Explain this image');
+    await screen.findByAltText('Attached image'); send('Explain this image');
     expect(api.post).toHaveBeenCalledWith('/rev/chat', expect.objectContaining({ conversation_id: 'A' }));
     await select('B'); await screen.findByText('Message from B'); send('Question for B');
     await act(async () => pending.resolve(turnReply(answer('ImageLate', 'Outdated image answer'))));
@@ -1420,10 +1443,10 @@ describe('landing continuity (REV-RESUME-001)', () => {
     fireEvent.change(view.container.querySelector('input[type="file"]')!, {
       target: { files: [new File(['fixture'], 'fixture.png', { type: 'image/png' })] },
     });
-    await screen.findByAltText('attachment');
+    await screen.findByAltText('Attached image');
     await act(async () => pending.resolve(reply(history)));
     expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/);
-    expect(screen.getByAltText('attachment')).toBeInTheDocument();
+    expect(screen.getByAltText('Attached image')).toBeInTheDocument();
     send('Keep this image');
     await screen.findByText('Image draft answer');
     expect(api.post).toHaveBeenCalledWith('/rev/chat', expect.objectContaining({

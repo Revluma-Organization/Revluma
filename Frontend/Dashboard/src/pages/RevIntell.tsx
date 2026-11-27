@@ -37,6 +37,7 @@ import { workspaceDesign } from "@/lib/workspaceDesign";
 import { RevOrb } from "@/components/rev/RevOrb";
 import { RevDotLoader } from "@/components/rev/RevDotLoader";
 import { RevAnimatedTitle } from "@/components/rev/RevAnimatedTitle";
+import { RevComposerAttachment, RevSentImage } from "@/components/rev/RevImageAttachment";
 import { requestConversationTitle } from "@/lib/revTitle";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
@@ -93,6 +94,8 @@ interface Message {
   /** Only a pre-persistence rejection permits replacing a local failed attempt. */
   persistence?: "persisted" | "not-persisted" | "unknown";
   imageAssisted?: boolean;
+  /** Local preview of an image sent this session (bytes are never persisted). */
+  imagePreview?: string;
   /** Full evidence-bearing payload for this turn (streamed or rehydrated). */
   payload?:    RevAnswerPayload;
   /** Live investigation steps while the turn is streaming. */
@@ -449,7 +452,8 @@ function Bubble({ msg, latest = false, onCopy, onRetry, retryLabel, onSend, onOp
   if (!isRev) return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18, ease: "easeOut" }}
-      className="rev-turn rev-turn-user flex justify-end mb-6">
+      className="rev-turn rev-turn-user flex flex-col items-end gap-2 mb-6">
+      {msg.imagePreview && <RevSentImage src={msg.imagePreview} isDark={isDark} />}
       <div data-rev-user-message className="max-w-[85%] sm:max-w-[70%] px-4 py-2.5 rounded-3xl text-[0.94rem] leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
         style={{ background: isDark ? "rgba(255,255,255,0.08)" : "#ECE9FB", color: t1 }}>
         {typeof msg.content === "string" ? msg.content : ""}
@@ -616,11 +620,14 @@ function AttachMenu({ onFile, t1 }: {
 
 // ── Input toolbar ─────────────────────────────────────────────────────────────
 
-function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disabled, sendDisabled,
-  onSend, onFile, onStop, thinking, card, border, t1, t2, isDark, maxLength = MAX_QUESTION_LENGTH }: {
+function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, placeholder, disabled, sendDisabled,
+  onSend, onFile, onStop, thinking, attachment, onRemoveAttachment, card, border, t1, t2, isDark, maxLength = MAX_QUESTION_LENGTH }: {
   inputRef: React.RefObject<HTMLTextAreaElement>;
   value: string; onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
   onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
+  onPaste?: React.ClipboardEventHandler<HTMLTextAreaElement>;
+  /** The pending image, shown inside the composer (which grows to hold it). */
+  attachment?: { preview: string; name: string } | null; onRemoveAttachment?: () => void;
   placeholder: string; disabled?: boolean; sendDisabled?: boolean; maxLength?: number;
   onSend: () => void; onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onStop?: () => void; thinking: boolean;
@@ -644,7 +651,19 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disab
     <div className="rev-composer rounded-[26px] overflow-visible transition-shadow focus-within:ring-2 focus-within:ring-[#1F06AC]/20"
       style={{ background: card, border: `1px solid ${over ? "#dc2626" : border}`,
         boxShadow: isDark ? "0 10px 30px rgba(0,0,0,0.35)" : "0 1px 2px rgba(16,24,40,0.04), 0 10px 28px -12px rgba(16,24,40,0.14)" }}>
-      <textarea ref={inputRef} value={value} onChange={onChange} onKeyDown={onKeyDown}
+      {/* Attachment row (ChatGPT composer study): the thumbnail sits inside
+          the box above the field and the composer grows to make room. */}
+      <AnimatePresence initial={false}>
+        {attachment && (
+          <motion.div key="attachment" className="overflow-hidden"
+            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}>
+            <RevComposerAttachment src={attachment.preview} name={attachment.name}
+              onRemove={() => { onRemoveAttachment?.(); inputRef.current?.focus(); }} isDark={isDark} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <textarea ref={inputRef} value={value} onChange={onChange} onKeyDown={onKeyDown} onPaste={onPaste}
         placeholder={placeholder} aria-label="Message Rev" rows={1} disabled={disabled}
         maxLength={maxLength}
         className="block w-full bg-transparent text-[0.95rem] outline-none focus-visible:!outline-none resize-none px-5 pt-4 pb-1 max-h-52 [scrollbar-width:thin] leading-relaxed"
@@ -1692,7 +1711,7 @@ export default function RevIntell() {
     const sid = `r${Date.now()}-${turn}`;
     setMessages(prev => {
       const placeholder: Message = { id: sid, role: "rev", content: "", timestamp: new Date(), isStreaming: true, steps: [], persistence: "unknown", imageAssisted: Boolean(imageAttachment), startedAt: Date.now() };
-      const question: Message = { id: `u${Date.now()}-${turn}`, role: "user", content: trimmed, timestamp: new Date(), imageAssisted: Boolean(imageAttachment) };
+      const question: Message = { id: `u${Date.now()}-${turn}`, role: "user", content: trimmed, timestamp: new Date(), imageAssisted: Boolean(imageAttachment), imagePreview: imageAttachment?.preview };
       const index = findingRetryDraft?.recoverInPlace ? prev.findIndex(message => message.id === findingRetryDraft.messageId) : -1;
       if (index === prev.length - 1 && index > 0 && prev[index].persistence === "not-persisted") {
         return prev.map((message, position) => position === index ? placeholder
@@ -2181,7 +2200,17 @@ export default function RevIntell() {
   const handleFile = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
+    if (file) acceptImageFile(file);
+  };
+  // Pasting an image into the composer attaches it, like ChatGPT. Text paste
+  // is untouched.
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const file = Array.from(event.clipboardData?.files ?? []).find(entry => entry.type.startsWith("image/"));
     if (!file) return;
+    event.preventDefault();
+    acceptImageFile(file);
+  };
+  const acceptImageFile = (file: File) => {
     setAttachmentError(null);
     if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type) || file.size > 5 * 1024 * 1024) {
       setAttachmentError("Choose a JPEG, PNG, WebP or GIF image under 5 MB. Other files and videos are not supported.");
@@ -2265,8 +2294,9 @@ export default function RevIntell() {
   const t4   = t2;
 
   const inputProps = {
-    inputRef, value: input, onChange: resize, onKeyDown: handleKey,
+    inputRef, value: input, onChange: resize, onKeyDown: handleKey, onPaste: handlePaste,
     onSend: () => send(input), onFile: handleFile,
+    attachment: imageAttachment, onRemoveAttachment: removeAttachment,
     thinking,
     disabled: findingLoading || Boolean(findingError),
     sendDisabled: Boolean((findingRetryDraft?.requiresImage || findingRetryDraft?.attachmentUnknown) && !imageAttachment),
@@ -2636,19 +2666,6 @@ export default function RevIntell() {
 
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25 }} className="w-full mb-7">
-              {imageAttachment && (
-                <div className="flex items-center gap-3 mb-2 px-1">
-                  <div className="relative">
-                    <img src={imageAttachment.preview} alt="attachment"
-                      className="h-14 w-14 rounded-xl object-cover border"
-                      style={{ borderColor: bdr }} />
-                    <button onClick={removeAttachment} aria-label="Remove attachment"
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                      style={{ background: "#dc2626" }}>×</button>
-                  </div>
-                  <span className="text-[0.75rem]" style={{ color: t2 }}>{imageAttachment.name.slice(0, 40)}</span>
-                </div>
-              )}
               <InputToolbar {...inputProps} placeholder="Ask me anything about your business..." />
             </motion.div>
 
@@ -2720,20 +2737,6 @@ export default function RevIntell() {
       {(hasMessages || activeId) && !convLoading && !convNotFound && !convError && (
         <div className="rev-composer-dock relative z-10 shrink-0 px-4 sm:px-6 pb-3 pt-3 -mt-6">
           <div className="max-w-3xl mx-auto">
-            {/* Image attachment preview */}
-            {imageAttachment && (
-              <div className="flex items-center gap-3 mb-2 px-1">
-                <div className="relative group/img">
-                  <img src={imageAttachment.preview} alt="attachment"
-                    className="h-14 w-14 rounded-xl object-cover border"
-                    style={{ borderColor: bdr }} />
-                  <button onClick={removeAttachment} aria-label="Remove attachment"
-                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                    style={{ background: "#dc2626" }}>×</button>
-                </div>
-                <span className="text-[0.75rem]" style={{ color: t2 }}>{imageAttachment.name.slice(0, 40)}</span>
-              </div>
-            )}
             <InputToolbar {...inputProps} placeholder="Ask Rev anything..." disabled={thinking || findingLoading || Boolean(findingError)} />
             <p className="text-center text-[0.66rem] mt-2" style={{ color: t4 }}>
               Rev reads your store data and never changes it. Check key numbers in Evidence.

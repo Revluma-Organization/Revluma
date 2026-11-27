@@ -199,9 +199,9 @@ describe('Task 223 acceptance-safe submission', () => {
     vi.mocked(api.post).mockRejectedValue(new ApiError(503, 'Unavailable', { error: { code: 'INTELLIGENCE_UNAVAILABLE' } }));
     const view = renderPage();
     fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['image'], 'proof.png', { type: 'image/png' })] } });
-    await screen.findByAltText('attachment'); typeQuestion('Inspect this'); clickSend();
+    await screen.findByAltText('Attached image'); typeQuestion('Inspect this'); clickSend();
     await screen.findByText('A supporting service did not respond. Verified information already shown remains available.');
-    expect(screen.getByAltText('attachment')).toBeInTheDocument();
+    expect(screen.getByAltText('Attached image')).toBeInTheDocument();
     expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ request_id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
   });
 
@@ -223,7 +223,7 @@ describe('Task 223 acceptance-safe submission', () => {
     vi.mocked(api.post).mockResolvedValue({ ok: true, status: 200, data: { success: true, conversation_id: 'image-conversation', read_only: true, response_type: 'analysis', text: 'Image answer' } });
     const view = renderPage();
     fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['image'], 'proof.png', { type: 'image/png' })] } });
-    await screen.findByAltText('attachment'); typeQuestion('Inspect this'); clickSend();
-    await screen.findByText('Image answer'); await waitFor(() => expect(screen.queryByAltText('attachment')).not.toBeInTheDocument());
+    await screen.findByAltText('Attached image'); typeQuestion('Inspect this'); clickSend();
+    await screen.findByText('Image answer'); await waitFor(() => expect(screen.queryByAltText('Attached image')).not.toBeInTheDocument());
   });
 });
