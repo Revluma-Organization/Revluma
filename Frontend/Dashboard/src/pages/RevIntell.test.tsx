@@ -1087,14 +1087,94 @@ describe('Phase 5.4 interaction and honest capabilities', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('not supported');
     expect(api.post).not.toHaveBeenCalled(); expect(streamRevAnswer).not.toHaveBeenCalled();
   });
-  it('rejects oversized images and exposes voice and calls as unavailable', () => {
+  it('rejects oversized images, explains unsupported voice input and keeps calls unavailable', async () => {
     const view = renderPage(); const file = new File(['fixture'], 'large.png', { type: 'image/png' });
     Object.defineProperty(file, 'size', { value: 6 * 1024 * 1024 });
     fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [file] } });
     expect(screen.getByRole('alert')).toHaveTextContent('under 5 MB');
-    expect(screen.getByRole('button', { name: 'Voice messages unavailable in this release' })).toBeDisabled();
+    // jsdom has no SpeechRecognition: the mic stays discoverable and explains why.
+    const mic = screen.getByRole('button', { name: "Voice input isn't supported in this browser" });
+    expect(mic).toHaveAttribute('aria-disabled', 'true');
+    await act(async () => { fireEvent.click(mic); });
+    expect(await screen.findByText(/Voice input isn't supported in this browser. Try Chrome, Edge or Safari./)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Audio calls unavailable in this release' })).toBeDisabled();
     expect(api.post).not.toHaveBeenCalled(); expect(streamRevAnswer).not.toHaveBeenCalled();
+  });
+  describe('voice input (live dictation)', () => {
+    class FakeRecognition {
+      static instances: FakeRecognition[] = [];
+      lang = ''; continuous = false; interimResults = false; maxAlternatives = 1;
+      onresult: ((event: unknown) => void) | null = null;
+      onerror: ((event: { error: string }) => void) | null = null;
+      onend: (() => void) | null = null;
+      onstart: (() => void) | null = null;
+      constructor() { FakeRecognition.instances.push(this); }
+      start() { this.onstart?.(); }
+      stop() { this.onend?.(); }
+      abort() {}
+      emit(parts: [string, boolean][]) {
+        this.onresult?.({ resultIndex: 0, results: parts.map(([transcript, isFinal]) => Object.assign([{ transcript }], { isFinal })) });
+      }
+    }
+    const recognition = () => FakeRecognition.instances[FakeRecognition.instances.length - 1];
+    beforeEach(() => {
+      FakeRecognition.instances = [];
+      (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition = FakeRecognition;
+      // jsdom has no canvas; the waveform simply skips drawing.
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    });
+    afterEach(() => { delete (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition; });
+
+    it('writes spoken words into the composer live and keeps them when done', async () => {
+      renderPage();
+      const box = await screen.findByRole('textbox', { name: 'Message Rev' });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start voice input' })); });
+      expect(screen.getByRole('group', { name: 'Voice input' })).toBeInTheDocument();
+      expect(box).toHaveAttribute('readonly');
+      expect(box).toHaveAttribute('placeholder', 'Listening…');
+      act(() => recognition().emit([['which products', false]]));
+      expect(box).toHaveValue('Which products');
+      act(() => recognition().emit([['which products are selling', true], [' best', false]]));
+      expect(box).toHaveValue('Which products are selling best');
+      fireEvent.click(screen.getByRole('button', { name: 'Stop voice input and keep text' }));
+      expect(screen.queryByRole('group', { name: 'Voice input' })).not.toBeInTheDocument();
+      expect(box).toHaveValue('Which products are selling best');
+      expect(box).not.toHaveAttribute('readonly');
+      expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
+      expect(api.post).not.toHaveBeenCalled(); expect(streamRevAnswer).not.toHaveBeenCalled();
+    });
+
+    it('cancels with Escape and restores what was typed before', async () => {
+      renderPage();
+      const box = await screen.findByRole('textbox', { name: 'Message Rev' });
+      fireEvent.change(box, { target: { value: 'Typed first' } });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start voice input' })); });
+      act(() => recognition().emit([['then spoken', false]]));
+      expect(box).toHaveValue('Typed first then spoken');
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByRole('group', { name: 'Voice input' })).not.toBeInTheDocument();
+      expect(box).toHaveValue('Typed first');
+    });
+
+    it('sends the dictated question with Enter and stops listening', async () => {
+      renderPage();
+      const box = await screen.findByRole('textbox', { name: 'Message Rev' });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start voice input' })); });
+      act(() => recognition().emit([['what changed this week', true]]));
+      fireEvent.keyDown(box, { key: 'Enter' });
+      await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledWith(expect.objectContaining({ message: 'What changed this week' })));
+      expect(screen.queryByRole('group', { name: 'Voice input' })).not.toBeInTheDocument();
+    });
+
+    it('shows a clear error when the microphone is blocked', async () => {
+      renderPage();
+      await screen.findByRole('textbox', { name: 'Message Rev' });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start voice input' })); });
+      act(() => recognition().onerror?.({ error: 'not-allowed' }));
+      expect(await screen.findByText(/Microphone access is blocked/)).toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Message Rev' })).toHaveAttribute('aria-describedby');
+      expect(screen.getByRole('button', { name: 'Start voice input' })).toBeInTheDocument();
+    });
   });
   it.each(['resolve', 'reject'] as const)('announces clipboard %s only after the browser result', async completion => {
     const pending = deferred<void>(); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(() => pending.promise) } });

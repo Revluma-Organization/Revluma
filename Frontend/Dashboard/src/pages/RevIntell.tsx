@@ -15,7 +15,7 @@
 
 import {
   useState, useRef, useEffect, useLayoutEffect, useCallback, FC,
-  useMemo,
+  useMemo, useId,
 } from "react";
 import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-motion";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -38,6 +38,8 @@ import { RevOrb } from "@/components/rev/RevOrb";
 import { RevDotLoader } from "@/components/rev/RevDotLoader";
 import { RevAnimatedTitle } from "@/components/rev/RevAnimatedTitle";
 import { RevComposerAttachment, RevSentImage } from "@/components/rev/RevImageAttachment";
+import { RevDictationBar } from "@/components/rev/RevDictationBar";
+import { useDictation, DICTATION_ERROR_MESSAGES } from "@/lib/useDictation";
 import { requestConversationTitle } from "@/lib/revTitle";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
@@ -620,12 +622,14 @@ function AttachMenu({ onFile, t1 }: {
 
 // ── Input toolbar ─────────────────────────────────────────────────────────────
 
-function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, placeholder, disabled, sendDisabled,
+function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, onDictate, placeholder, disabled, sendDisabled,
   onSend, onFile, onStop, thinking, attachment, onRemoveAttachment, card, border, t1, t2, isDark, maxLength = MAX_QUESTION_LENGTH }: {
   inputRef: React.RefObject<HTMLTextAreaElement>;
   value: string; onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
   onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
   onPaste?: React.ClipboardEventHandler<HTMLTextAreaElement>;
+  /** Receives the composer text while the merchant dictates (live words). */
+  onDictate?: (text: string) => void;
   /** The pending image, shown inside the composer (which grows to hold it). */
   attachment?: { preview: string; name: string } | null; onRemoveAttachment?: () => void;
   placeholder: string; disabled?: boolean; sendDisabled?: boolean; maxLength?: number;
@@ -647,6 +651,42 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, placehold
     field.style.height = "auto";
     field.style.height = `${Math.min(field.scrollHeight || 0, 208)}px`;
   }, [value, inputRef]);
+
+  // Voice input (ChatGPT-style dictation, words stream into the field live).
+  // See lib/useDictation.ts for the engine and RevDictationBar for the UI.
+  const dictation = useDictation({ value, onChange: text => onDictate?.(text), maxLength });
+  const dictating = dictation.active;
+  const voiceBlocked = Boolean(disabled || thinking || !onDictate);
+  const { stop: stopDictation, cancel: cancelDictation, clearError: clearDictationError } = dictation;
+  const focusFieldEnd = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const field = inputRef.current;
+      if (!field) return;
+      field.focus();
+      const end = field.value.length;
+      try { field.setSelectionRange(end, end); } catch { /* not focusable yet */ }
+    });
+  }, [inputRef]);
+  const finishDictation = useCallback(() => { stopDictation(); focusFieldEnd(); }, [stopDictation, focusFieldEnd]);
+  const abandonDictation = useCallback(() => { cancelDictation(); focusFieldEnd(); }, [cancelDictation, focusFieldEnd]);
+  // Generation starting or the composer locking always ends dictation.
+  useEffect(() => { if (voiceBlocked) stopDictation(); }, [voiceBlocked, stopDictation]);
+  const startDictation = () => {
+    void dictation.start();
+    // Keep keyboard focus in the field (the mic button is replaced by the
+    // recording bar): Enter still sends, Escape cancels.
+    focusFieldEnd();
+  };
+  const dictationErrorId = useId();
+  const handleFieldKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = event => {
+    // Sending mid-dictation keeps what was transcribed, then sends it.
+    if (dictating && event.key === "Enter" && !event.shiftKey) stopDictation();
+    onKeyDown(event);
+  };
+  const handleFieldChange: React.ChangeEventHandler<HTMLTextAreaElement> = event => {
+    if (dictation.error) clearDictationError();
+    onChange(event);
+  };
   return (
     <div className="rev-composer rounded-[26px] overflow-visible transition-shadow focus-within:ring-2 focus-within:ring-[#1F06AC]/20"
       style={{ background: card, border: `1px solid ${over ? "#dc2626" : border}`,
@@ -663,8 +703,9 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, placehold
           </motion.div>
         )}
       </AnimatePresence>
-      <textarea ref={inputRef} value={value} onChange={onChange} onKeyDown={onKeyDown} onPaste={onPaste}
-        placeholder={placeholder} aria-label="Message Rev" rows={1} disabled={disabled}
+      <textarea ref={inputRef} value={value} onChange={handleFieldChange} onKeyDown={handleFieldKeyDown} onPaste={onPaste}
+        placeholder={dictating ? "Listening…" : placeholder} aria-label="Message Rev" rows={1} disabled={disabled}
+        readOnly={dictating} aria-describedby={dictation.error ? dictationErrorId : undefined}
         maxLength={maxLength}
         className="block w-full bg-transparent text-[0.95rem] outline-none focus-visible:!outline-none resize-none px-5 pt-4 pb-1 max-h-52 [scrollbar-width:thin] leading-relaxed"
         style={{ color: t1, minHeight: 28 }} />
@@ -674,13 +715,40 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, placehold
           {value.length} / {maxLength}{over ? " — shorten to send" : ""}
         </p>
       )}
+      {dictation.error && (
+        <p id={dictationErrorId} role="alert" data-rev-dictation-error=""
+          className="m-0 flex items-start gap-1.5 px-5 pb-1 text-[0.74rem] leading-snug"
+          style={{ color: isDark ? "#fca5a5" : "#b91c1c" }}>
+          <AlertCircle size={13} className="mt-[2px] shrink-0" aria-hidden="true" />
+          {DICTATION_ERROR_MESSAGES[dictation.error]}
+        </p>
+      )}
+      <span className="sr-only" role="status">{dictation.listening ? "Listening. Your words appear in the message field." : ""}</span>
+      {dictating ? (
+        <RevDictationBar startedAt={dictation.startedAt} stream={dictation.stream}
+          activityRef={dictation.activityRef} starting={dictation.starting}
+          onCancel={abandonDictation} onDone={finishDictation} isDark={isDark} t2={t2} />
+      ) : (
       <div className="flex items-center justify-between px-2.5 pb-2.5">
         <AttachMenu onFile={onFile} t1={t1} />
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <button title="Voice messages unavailable in this release" aria-label="Voice messages unavailable in this release" disabled
-            className="h-11 w-11 flex items-center justify-center rounded-lg opacity-60" style={{ color: t2 }}>
-            <Mic size={15} />
-          </button>
+          {dictation.supported ? (
+            <button type="button" onClick={startDictation} disabled={voiceBlocked}
+              aria-label="Start voice input" title="Voice input"
+              className="h-11 w-11 flex items-center justify-center rounded-full transition-colors hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6F66FF]"
+              style={{ color: t1 }}>
+              <Mic size={17} />
+            </button>
+          ) : (
+            // Unsupported browsers (e.g. Firefox): keep the control discoverable
+            // and explain why on click instead of a silent disabled icon.
+            <button type="button" onClick={() => void dictation.start()} aria-disabled="true"
+              aria-label="Voice input isn't supported in this browser" title="Voice input isn't supported in this browser"
+              className="h-11 w-11 flex items-center justify-center rounded-full opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6F66FF]"
+              style={{ color: t2 }}>
+              <Mic size={17} />
+            </button>
+          )}
           <button title="Audio calls unavailable in this release" aria-label="Audio calls unavailable in this release" disabled
             className="p-1.5 rounded-lg transition-colors opacity-60 hover:opacity-100" style={{ color: t2 }}>
             <Phone size={15} />
@@ -705,6 +773,7 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, placehold
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -2295,6 +2364,7 @@ export default function RevIntell() {
 
   const inputProps = {
     inputRef, value: input, onChange: resize, onKeyDown: handleKey, onPaste: handlePaste,
+    onDictate: (text: string) => { inputEditedRef.current = true; setInput(text); },
     onSend: () => send(input), onFile: handleFile,
     attachment: imageAttachment, onRemoveAttachment: removeAttachment,
     thinking,
