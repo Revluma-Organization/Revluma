@@ -372,6 +372,25 @@
   .rv-side-rise, .rv-side-pop { animation: none; }
 }
 
+/* Rev dot-matrix loader (components/rev/RevDotLoader.tsx). Each dot swells
+   and brightens as the ripple passes; per-dot delays grow with distance from
+   the centre, so the pulse travels outward and fades at the rim. */
+@keyframes rvDotRipple {
+  0%, 56%, 100% { transform: scale(0.55); opacity: 0.34; }
+  20% { transform: scale(1); opacity: 1; }
+}
+@keyframes rvDotsHint { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.rv-dots circle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rvDotRipple 1.8s ease-in-out infinite both;
+}
+.rv-dots-hint { animation: rvDotsHint 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .rv-dots circle { animation: none; transform: none; opacity: 0.85; }
+  .rv-dots-hint { animation: none; }
+}
+
 /* ──────────────────────────────────────────────
    Command Center dark bridge
    The Command Center was built light-only with literal Tailwind colours
