@@ -34,7 +34,8 @@ import { historyGroupLabel } from "@/lib/revHistory";
 import { formatSourceLabel, getSeverityMeta } from "@/components/command-center/findingDisplay";
 import { explainWorkspaceError, isKnownWorkspaceCode, merchantMessage } from "@/lib/workspaceCommunication";
 import { workspaceDesign } from "@/lib/workspaceDesign";
-import { RevOrb, RevOrbLoader } from "@/components/rev/RevOrb";
+import { RevOrb } from "@/components/rev/RevOrb";
+import { RevDotLoader } from "@/components/rev/RevDotLoader";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
 import api, { ApiError } from "@/lib/api";
@@ -477,7 +478,9 @@ function Bubble({ msg, latest = false, onCopy, onRetry, retryLabel, onSend, onOp
           </p>
         )}
 
-        {msg.isStreaming && <RevOrbLoader accessibleLabel="Rev is preparing a response" />}
+        {msg.isStreaming && (
+          <RevDotLoader accessibleLabel="Rev is preparing a response" showHint={!msg.steps?.length} />
+        )}
 
         {msg.isStreaming && !msg.payload && msg.steps && msg.steps.length > 0 && (
           <div style={{ marginTop: 10 }}>
