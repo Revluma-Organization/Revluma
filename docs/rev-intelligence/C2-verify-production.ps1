@@ -1,5 +1,6 @@
 # C2 production pre-maintenance verification — Windows PowerShell 5.1+.
-# Reads only: GETs Node /ready and Python /health, compares build SHAs.
+# Reads only: GETs Node /ready, Python /health, and public GitHub main HEAD;
+# compares build SHAs.
 # No access token required. Performs no writes, freezes, or migrations.
 #
 # Run:  powershell -ExecutionPolicy Bypass -File C2-verify-production.ps1
@@ -9,11 +10,35 @@ $ErrorActionPreference = 'Stop'
 
 $NodeReadyUrl = 'https://revluma-backend-lqve.onrender.com/ready'
 $PythonHealthUrl = 'https://revluma-python-swwk.onrender.com/health'
-# Known C2-identical commits: #519 merge, #522 merge (waitlist-only),
-#523+#524 merge (store-sync guard + waitlist frontend, C2-orthogonal, no migrations).
-$AcceptedPrefixes = @('9a133438', '48957cc', 'c455084')
+# Known C2-identical commits (verified: C2 paths untouched, zero prod
+# migrations): #519, #522 (waitlist-only), #523+#524 (C2-orthogonal),
+#525 (docs-only). Live main HEAD is fetched at runtime (public GitHub API,
+# no token) and accepted as well, so newer docs-only merges never fail this
+# gate spuriously. C2-identical lineage of any new HEAD is verified
+# separately (git diff) before the window; the merge freeze (see readiness
+# report) forbids main movement once the window starts.
+$AcceptedPrefixes = @('9a133438', '48957cc', 'c455084', '4e1f47c')
+$MainHeadUrl = 'https://api.github.com/repos/Revluma-Organization/Revluma/commits/main'
 
 $failures = @()
+
+# --- Live main HEAD (self-updating acceptance; falls back to the static list) ---
+$liveHead = ''
+$liveHeadNote = 'fetch_failed_static_list_only'
+try {
+    $gh = Invoke-WebRequest -Uri $MainHeadUrl -Method Get -TimeoutSec 30 -UseBasicParsing -Headers @{'User-Agent' = 'C2-verify-production'}
+    $liveHead = [string](($gh.Content | ConvertFrom-Json).sha)
+    if (-not [string]::IsNullOrWhiteSpace($liveHead)) {
+        $livePrefix = $liveHead
+        if ($livePrefix.Length -gt 12) { $livePrefix = $livePrefix.Substring(0, 12) }
+        $AcceptedPrefixes += $livePrefix
+        $liveHeadNote = 'added_to_accepted'
+    }
+} catch {
+    $liveHeadNote = ('fetch_failed:{0}' -f $_.Exception.Message)
+}
+Write-Host ('Live main HEAD: {0} ({1})' -f $liveHead, $liveHeadNote)
+Write-Host ''
 
 function Get-JsonEndpoint([string]$url, [string]$label) {
     try {
@@ -34,7 +59,10 @@ function Get-JsonEndpoint([string]$url, [string]$label) {
 function Test-AcceptedSha([string]$sha) {
     if ([string]::IsNullOrWhiteSpace($sha) -or $sha -eq 'unknown') { return 'UNKNOWN' }
     foreach ($prefix in $AcceptedPrefixes) {
-        if ($sha.StartsWith($prefix)) { return 'ACCEPTED' }
+        # Length-symmetric: endpoints may report short or full SHAs.
+        $n = $sha.Length
+        if ($prefix.Length -lt $n) { $n = $prefix.Length }
+        if ($n -ge 7 -and $sha.Substring(0, $n) -eq $prefix.Substring(0, $n)) { return 'ACCEPTED' }
     }
     return 'MISMATCH'
 }
@@ -136,3 +164,4 @@ Write-Host '--- RESULTS BLOCK (copy everything below this line) ---'
 Write-Host ('A1: HTTP={0} status={1} node_build={2} python_build={3} python_ready={4} database_ready={5}' -f $nodeHttp, $nodeStatus, $nodeBuild, $pyBuildViaNode, $nodePyReady, $nodeDbReady)
 Write-Host ('A2: HTTP={0} build={1} version={2} status={3} model_status={4}' -f $pyHttp, $pyBuild, $pyVersion, $pyStatus, $pyModels)
 Write-Host ('SHA: node={0} python={1} agreement={2} overall_failures={3}' -f $nodeShaVerdict, $pyShaVerdict, $pairVerdict, $(if ($failures.Count -eq 0) { 'none' } else { $failures -join ',' }))
+Write-Host ('GH: live_main_head={0} note={1}' -f $liveHead, $liveHeadNote)

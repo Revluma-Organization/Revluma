@@ -25,12 +25,22 @@ write, or config change performed.
 - **Live post-deploy traffic**: newest turn 22:33–22:34Z, user seq 1 + rev
   seq 2, no errors — creation, persistence, ordering, and continuation all
   healthy in production; 0 ties since #519.
+- **main advanced again**: #523 (store sync retry guard) + #524 (waitlist
+  frontend redesign) merged → `c455084`. Verified C2-orthogonal: no
+  `Backend/prisma/` changes, zero C2-keyword hits in the diff; prod
+  `_prisma_migrations` still 37/founding-last/0 C2; census n=776 stable.
+- **#525 merged** (`4e1f47c`): this evidence pack, docs-only, code tree
+  identical to `c455084`. SHA gate is now self-updating: the script
+  accepts live main HEAD (public GitHub API, no token) plus the verified
+  list `9a133438`/`48957cc`/`c455084`/`4e1f47c`; prod expected on
+  `4e1f47c`+ after auto-deploy. **Merge freeze from here until the window
+  completes** — any main movement during the window stops it.
 
 ## Verdicts
 
 | # | Gate | Verdict | Evidence |
 |---|---|---|---|
-| 1 | Application deployment | **Blocked by missing access/evidence** | Operator 200s + `9a133438` + readies + `beta_ready` on record but predates the #522 redeploy; fresh script output required (accepted SHAs `9a133438`/`48957cc`, must agree). No Render API from here. |
+| 1 | Application deployment | **Blocked by missing access/evidence** | Operator 200s + `9a133438` + readies + `beta_ready` on record but predates the #522 redeploy; fresh script output required (accepted: live main HEAD or `9a133438`/`48957cc`/`c455084`/`4e1f47c`, must agree). No Render API from here. |
 | 2 | Authenticated functionality | **Verified** | Operator: conversations listing 200. Prod data: healthy 22:33Z turn; 0 cross-org messages; local suites green (paging 9/9, tuple 6/6, retry contract, Part A); CI green on main post-#522. Full local `npm test`: 124/134 — 10 failures all environmental (no Prisma engine download, no Shopify network), none C2-related. |
 | 3 | Writer serialization | **Verified** | Identical advisory key + tx boundary in Node and Python at the deployed lineage (#522 verified C2-identical); CI two-session proof green on #519; Python 23505 retries once then raises; **0 new ties including post-deploy traffic**. |
 | 4 | Recovery readiness | **Blocked by missing access/evidence** | DB + pooler `ACTIVE_HEALTHY`; plan/PITR/retention/recoverable-point/backup-timestamp have no integration path (list/get_project expose no plan or backup fields). Exact dashboard values still outstanding. `pg_dump` procedure specified. |
@@ -44,7 +54,8 @@ No gate is Failed. Nothing here authorizes the window.
 
 1. Run `docs/rev-intelligence/C2-verify-production.ps1`, paste its results
    block. Binding pre-maintenance SHA gate: at window start it must PASS —
-   all accepted (`9a133438`/`48957cc`/`c455084`) and agreeing. Anything else
+   accepted (live main HEAD or `9a133438`/`48957cc`/`c455084`/`4e1f47c`)
+   and agreeing. Anything else
    stops the window. No Render deploys during the window (freeze covers the
    writer processes AND the deploy pipeline; #522 proved prod can move
    mid-review).
