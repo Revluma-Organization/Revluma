@@ -5,6 +5,9 @@ import {
 import RevMarkdown from "@/components/rev/RevMarkdown";
 import { CitationChip } from "@/components/rev/CitationChip";
 import { RevVerifiedComparison } from "@/components/rev/RevVerifiedComparison";
+import { RevMetricCards } from "@/components/rev/RevMetricCards";
+import { parseVerifiedComparison } from "@/lib/revComparison";
+import { deriveMetricCards } from "@/lib/revVisuals";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import type { EvidenceItem, RevAnswerPayload, RevFact, RevHypothesis, RevRecommendation, SpecialistsSummary, InvestigationStep } from "@/lib/revStream";
 
@@ -37,6 +40,7 @@ export function RevAnswerView({
   onRetry, onCopy, copied = false, canRetry = false, dark = false,
 }: Props) {
   const payload = useMemo(() => normaliseRevAnswer(original) ?? original, [original]);
+  const metricCards = useMemo(() => deriveMetricCards(payload), [payload]);
   const state = useMemo(() => deriveAnswerState(payload, streaming), [payload, streaming]);
   const pill = ANSWER_STATE_PILL[state];
   const strong = dark ? "#F2F4F7" : "#101828";
@@ -258,6 +262,13 @@ export function RevAnswerView({
           <ul className="list-disc pl-4">{[...new Set(values)].map(text => <li key={text}>{text}</li>)}</ul>
         </section>)}
       </div>
+
+      {/* Commerce component catalog (adoption R5): KPI cards built only from
+          retrieved evidence records, shown when they add more than the prose.
+          The legacy verified-comparison card set takes precedence. */}
+      {!quiet && !streaming && metricCards.length > 0 && !parseVerifiedComparison(body) && (
+        <RevMetricCards cards={metricCards} tone={dark ? "dark" : "light"} onOpen={onOpenEvidence ? () => onOpenEvidence() : undefined} />
+      )}
 
       {!streaming && (quiet ? monetary : Boolean(investigation?.period?.start || monetary)) && (
         <p style={{ margin: 0, fontSize: "0.7rem", color: muted }}>

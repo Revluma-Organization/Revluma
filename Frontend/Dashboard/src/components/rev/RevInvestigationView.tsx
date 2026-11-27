@@ -1,10 +1,13 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  ArrowUpRight, Calculator, Check, Database, FileText, FlaskConical, HelpCircle, TriangleAlert,
+  ArrowUpRight, Calculator, Check, Database, FlaskConical, HelpCircle, TriangleAlert,
 } from "lucide-react";
 import RevMarkdown from "@/components/rev/RevMarkdown";
 import { CitationChip } from "@/components/rev/CitationChip";
 import { RevVerifiedComparison } from "@/components/rev/RevVerifiedComparison";
+import { RevMetricCards } from "@/components/rev/RevMetricCards";
+import { parseVerifiedComparison } from "@/lib/revComparison";
+import { deriveMetricCards } from "@/lib/revVisuals";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import type { EvidenceItem, RevAnswerPayload, RevFact, RevHypothesis, RevRecommendation, SpecialistsSummary, InvestigationStep } from "@/lib/revStream";
 
@@ -196,6 +199,7 @@ export function RevInvestigationView({
   payload: original, streaming = false, evidenceOpen = false, onOpenEvidence, onFollowUp, dark = false,
 }: Props) {
   const payload = useMemo(() => normaliseRevAnswer(original) ?? original, [original]);
+  const metricCards = useMemo(() => deriveMetricCards(payload), [payload]);
   const state = useMemo(() => deriveAnswerState(payload, streaming), [payload, streaming]);
   const pill = ANSWER_STATE_PILL[state];
   const strong = dark ? "#F2F4F7" : "#101828";
@@ -359,7 +363,9 @@ export function RevInvestigationView({
           a percentage, never filler. */}
       {!quiet && hasSummary && (
         <section aria-label="Executive summary" className="flex flex-col gap-2">
-          <SectionHeading icon={<FileText size={13} color={muted} aria-hidden="true" />} title="Summary" muted={muted} />
+          {/* Answer first, unboxed (ChatGPT-UI study §3): no visible report
+              label above the answer; the heading stays for assistive tech. */}
+          <h3 className="sr-only">Summary</h3>
           <div style={{ fontSize: "0.9rem", lineHeight: 1.65, color: strong }}>
             {body && <RevMarkdown text={body} tone={dark ? "dark" : "light"} streaming={streaming} />}
             {sections.map(section => <section key={section.id ?? section.label} className="mt-3">
@@ -380,6 +386,14 @@ export function RevInvestigationView({
       )}
 
       {empty && <p style={{ fontSize: "0.9rem", color: strong }}>No answer content was returned.</p>}
+
+      {/* Commerce component catalog (adoption R5): KPI cards built only from
+          retrieved evidence records, shown when they add more than the prose.
+          The legacy verified-comparison card set takes precedence. */}
+      {!quiet && !streaming && metricCards.length > 0 && !parseVerifiedComparison(body) && (
+        <RevMetricCards cards={metricCards} tone={dark ? "dark" : "light"} onOpen={onOpenEvidence ? () => onOpenEvidence() : undefined} />
+      )}
+
 
       {/* Evidence ledger — every retrieved record with its own
           classification. Comparison-period records carry a Comparison tag in

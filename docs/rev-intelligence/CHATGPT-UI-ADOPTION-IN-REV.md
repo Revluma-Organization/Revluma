@@ -140,3 +140,19 @@ Frontend/Dashboard/src/components/rev/RevMarkdown.test.tsx     (extended — 4 s
 Frontend/Dashboard/src/pages/RevIntell.tsx                     (thumbs, read-aloud, feedback rehydration)
 Frontend/Dashboard/src/pages/RevIntell.test.tsx                (extended — 7 dock cases)
 ```
+
+## 7. Increment 3 (2026-11-18): chat shell, answer chrome, cards and charts
+
+Driven by the REA pass recorded in the study, section 10.
+
+| Pattern | Implementation | Test |
+|---|---|---|
+| Tonal user pill, unboxed answer | `Bubble` in `pages/RevIntell.tsx` (`data-rev-user-message`), `sr-only` Summary heading in `RevInvestigationView` | `RevIntell.test.tsx` thread-count helper, `RevInvestigationView.test.tsx` |
+| Icon action dock, latest always visible, older on hover/focus (fine pointers only) | `DockButton`, `.rev-dock` CSS in the workspace style block | `RevIntell.test.tsx` "turn chrome" |
+| Honest "Worked for Ns" | `Message.startedAt` / `durationMs`, live turns only | `RevIntell.test.tsx` "never invents a duration" |
+| Pill composer, auto-grow, round send/stop | `InputToolbar` | existing 44px and focus-ring contracts |
+| KPI cards from evidence (R5) | `lib/revVisuals.ts`, `components/rev/RevMetricCards.tsx` | `revVisuals.test.ts`, `RevVisuals.test.tsx` |
+| Table / Chart switch on printed tables | `tableChartSpec`, `components/rev/RevTableChart.tsx` (lazy) | `revVisuals.test.ts`, `RevVisuals.test.tsx` |
+| Wider reading column (768px) and empty-state refresh | `max-w-3xl` thread and composer, prompt cards | visual check, light/dark, 390px |
+
+R2 is narrowed, not reversed: touch and keyboard users always see the dock.

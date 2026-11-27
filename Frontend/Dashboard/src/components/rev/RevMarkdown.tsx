@@ -1,5 +1,9 @@
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Check, Copy, X } from "lucide-react";
+import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown, BarChart3, Check, Copy, Table2, X } from "lucide-react";
+import { tableChartSpec } from "@/lib/revVisuals";
+
+// Charts are an on-demand view; recharts loads only when one is opened.
+const RevTableChart = lazy(() => import("@/components/rev/RevTableChart"));
 import { revTokens, type RevTone } from "@/lib/revTokens";
 import { copyTextToClipboard, plainCellText, tableToCsv, tableToMarkdown } from "@/lib/revTableExport";
 
@@ -227,6 +231,11 @@ function TableBlock({ source, tone, streaming }: { source: string; tone: RevTone
   );
   const [head, ...body] = rows;
   const [sort, setSort] = useState<SortState>(null);
+  // Chart view (ChatGPT-UI study §9): offered only when the table's own cells
+  // make an honest chart (revVisuals.tableChartSpec); the table stays default.
+  const chartSpec = useMemo(() => (streaming ? null : tableChartSpec(rows)), [rows, streaming]);
+  const [view, setView] = useState<"table" | "chart">("table");
+  const showChart = view === "chart" && chartSpec !== null;
 
   const displayBody = useMemo(() => {
     if (!sort) return body;
@@ -253,8 +262,30 @@ function TableBlock({ source, tone, streaming }: { source: string; tone: RevTone
         <div className="flex flex-wrap items-center gap-1" data-rev-table-toolbar style={{ marginBottom: 2 }}>
           <CopyButton value={tableToCsv([head, ...displayBody])} label="Copy CSV" tone={tone} />
           <CopyButton value={tableToMarkdown(lines)} label="Copy Markdown" tone={tone} />
+          {chartSpec && (
+            <div role="group" aria-label="Table view" className="ml-auto inline-flex items-center rounded-full p-0.5"
+              style={{ background: tone === "dark" ? "rgba(255,255,255,0.05)" : "#F2F4F7" }}>
+              {([["table", "Table", Table2], ["chart", "Chart", BarChart3]] as const).map(([key, label, Icon]) => (
+                <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)}
+                  className="inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 transition-colors"
+                  style={{
+                    fontSize: "0.68rem", fontWeight: 650, border: "none", cursor: "pointer",
+                    background: view === key ? (tone === "dark" ? "#26262B" : "#FFFFFF") : "transparent",
+                    color: view === key ? t.strong : t.muted,
+                    boxShadow: view === key && tone !== "dark" ? "0 1px 2px rgba(16,24,40,0.08)" : "none",
+                  }}>
+                  <Icon size={12} aria-hidden="true" />{label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
+      {showChart && chartSpec ? (
+        <Suspense fallback={<div role="status" style={{ height: 160, borderRadius: 14, border: `1px solid ${t.border}`, display: "grid", placeItems: "center", fontSize: "0.72rem", color: t.muted }}>Preparing chart…</div>}>
+          <RevTableChart spec={chartSpec} tone={tone} />
+        </Suspense>
+      ) : (
       <div style={{ overflowX: "auto", border: `1px solid ${t.border}`, borderRadius: 10 }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
           <thead>
@@ -299,6 +330,7 @@ function TableBlock({ source, tone, streaming }: { source: string; tone: RevTone
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
@@ -354,9 +386,9 @@ const Block = memo(function Block({ block, tone, streaming }: { block: string; t
   }
   if (lines.every((line) => /^\s*[-*]\s+/.test(line))) {
     return (
-      <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 6 }}>
+      <ul className="marker:text-[#98A2B3]" style={{ margin: 0, paddingLeft: 22, listStyle: "disc" }}>
         {lines.map((line, index) => (
-          <li key={index} style={{ color: t.body, fontSize: "0.95rem", lineHeight: 1.65 }}>
+          <li key={index} style={{ color: t.body, fontSize: "0.95rem", lineHeight: 1.65, margin: index ? "6px 0 0" : 0, paddingLeft: 2 }}>
             {inline(line.replace(/^\s*[-*]\s+/, ""), `li-${index}`)}
           </li>
         ))}
@@ -365,9 +397,9 @@ const Block = memo(function Block({ block, tone, streaming }: { block: string; t
   }
   if (lines.every((line) => /^\s*\d+[.)]\s+/.test(line))) {
     return (
-      <ol style={{ margin: 0, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
+      <ol className="marker:text-[#98A2B3] marker:font-semibold" style={{ margin: 0, paddingLeft: 24, listStyle: "decimal" }}>
         {lines.map((line, index) => (
-          <li key={index} style={{ color: t.body, fontSize: "0.95rem", lineHeight: 1.65 }}>
+          <li key={index} style={{ color: t.body, fontSize: "0.95rem", lineHeight: 1.65, margin: index ? "8px 0 0" : 0, paddingLeft: 2 }}>
             {inline(line.replace(/^\s*\d+[.)]\s+/, ""), `oli-${index}`)}
           </li>
         ))}
