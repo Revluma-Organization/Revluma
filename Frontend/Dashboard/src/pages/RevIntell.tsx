@@ -41,8 +41,8 @@ import { RevComposerAttachment, RevSentImage } from "@/components/rev/RevImageAt
 import { RevDictationBar } from "@/components/rev/RevDictationBar";
 import { useDictation, DICTATION_ERROR_MESSAGES } from "@/lib/useDictation";
 import { polishDictation } from "@/lib/dictationPolish";
-import { useRevLiveCall, type RevLiveCall } from "@/lib/useRevLiveCall";
-import { mergeTimeline, type VoiceAskOutcome } from "@/lib/revLiveCall";
+import { useRevLiveCall, type CallEndedInfo, type CallSaveState, type RevLiveCall } from "@/lib/useRevLiveCall";
+import { mergeTimeline, savedTranscriptEntry, type TranscriptEntry, type VoiceAskOutcome } from "@/lib/revLiveCall";
 import { RevLiveCallBar, RevLiveCallStage, RevLiveTranscriptLine } from "@/components/rev/RevLiveCall";
 import { requestConversationTitle } from "@/lib/revTitle";
 import { useAuth } from "@/context/AuthContext";
@@ -117,7 +117,12 @@ interface Message {
   durationMs?: number;
   /** Asked out loud during a live voice call (Rev's voice delegated it here). */
   voice?: boolean;
+  /** A saved spoken line from a call: rendered as a transcript line, never an answer card or a retry target. */
+  transcript?: TranscriptEntry;
 }
+
+/** A question/answer turn (not a saved spoken line from a call). */
+const isTurn = (message: Message) => !message.transcript;
 
 /** Elapsed ms since a live turn started; undefined when the start is unknown. */
 function elapsedSince(startedAt?: number): number | undefined {
@@ -141,6 +146,9 @@ interface PersistedConversationMessage {
   feedback_rating?: string | null;
   sequence_number?: number;
   input_mode?: string | null;
+  voice_kind?: string | null;
+  voice_client_id?: string | null;
+  voice_interrupted?: boolean | null;
 }
 
 interface FindingDetails {
@@ -1498,6 +1506,20 @@ export default function RevIntell() {
       if (res.data.success !== true || !Array.isArray(msgs)) throw new Error('Invalid conversation response.');
 
       const parsed: Message[] = msgs.map((m) => {
+        // A spoken line saved from a voice call reads back as the call's
+        // transcript (with its interruption), exactly as it was shown live.
+        const spoken = savedTranscriptEntry(m);
+        if (spoken) {
+          return {
+            id: m.id,
+            role: m.role === "user" ? "user" : "rev",
+            content: spoken.text,
+            timestamp: new Date(m.created_at),
+            persistence: "persisted",
+            sequence: typeof m.sequence_number === "number" ? m.sequence_number : undefined,
+            transcript: spoken,
+          };
+        }
         let content: string | RevResponse = "";
         const payload = m.role === "rev" ? normaliseRevAnswer(m.content) : undefined;
         const raw = m.content;
@@ -2078,7 +2100,60 @@ export default function RevIntell() {
     const outcome = await sendRef.current(question, { inputMode: "voice" });
     return outcome ?? { ok: false, reason: "failed" };
   }, []);
-  const call = useRevLiveCall({ conversationId: activeId, onAsk: askByVoice });
+  // A call is a conversation, like a typed chat: a call started outside one
+  // gets its own from the server, which the page adopts right away (URL,
+  // history, title) so every spoken line and investigated answer lands in it.
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
+  const findingIdRef = useRef(findingId);
+  findingIdRef.current = findingId;
+  const callNamedRef = useRef<string | null>(null);
+  const callHistoryRefreshRef = useRef(0);
+  const adoptCallConversation = useCallback((id: string, created: boolean) => {
+    callNamedRef.current = null;
+    if (!created || activeIdRef.current === id) return;
+    conversationRequestRef.current += 1;
+    newChatIntentRef.current = false;
+    justCreatedIdRef.current = id;
+    turnCreatedIdRef.current = id;
+    justCreatedFindingRef.current = findingIdRef.current;
+    setActiveId(id);
+    navigate(revConversationRoute(id, findingIdRef.current, returnHint), { replace: true });
+  }, [navigate, returnHint]);
+  const callLinesSaved = useCallback((id: string, saved: CallSaveState) => {
+    // Title the chat once there is enough said to summarise; the history list
+    // picks the call up (moved to the top) as its first lines are saved.
+    if (callNamedRef.current !== id && saved.userWords >= 6) {
+      callNamedRef.current = id;
+      void nameConversation(id).then(() => { void loadConversations(); });
+    } else if (Date.now() - callHistoryRefreshRef.current > 20_000) {
+      callHistoryRefreshRef.current = Date.now();
+      void loadConversations();
+    }
+  }, [loadConversations, nameConversation]);
+  const callEnded = useCallback((info: CallEndedInfo) => {
+    const { conversationId: kept, callConversationId, saved } = info;
+    if (!kept) {
+      // Nothing was said: the server removed the call's empty conversation.
+      if (info.created && callConversationId && activeIdRef.current === callConversationId) {
+        newChatIntentRef.current = true;
+        turnCreatedIdRef.current = null;
+        navigate(revConversationRoute(null, findingIdRef.current, returnHint), { replace: true });
+      }
+      void loadConversations();
+      return;
+    }
+    if (saved.lines > 0 && callNamedRef.current !== kept) {
+      callNamedRef.current = kept;
+      void nameConversation(kept).then(() => { void loadConversations(); });
+      return;
+    }
+    void loadConversations();
+  }, [loadConversations, nameConversation, navigate, returnHint]);
+  const call = useRevLiveCall({
+    conversationId: activeId, onAsk: askByVoice,
+    onConversation: adoptCallConversation, onSaved: callLinesSaved, onEnded: callEnded,
+  });
   const { inCall: callActive, end: endCall, clearTranscript: clearCallTranscript } = call;
   // Opening another conversation (or a new one) hangs up and clears the call
   // transcript. The conversation a call creates with its first spoken
@@ -2236,10 +2311,12 @@ export default function RevIntell() {
   // tries the server retry first and falls back to the draft on mismatch.
   const handleRetry = useCallback(async (source?: Message) => {
     if (turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError) return;
-    const previous = source ?? [...messages].reverse().find(message => message.role === "rev");
-    if (!previous) return;
-    const index = messages.findIndex(message => message.id === previous?.id);
-    const questionMessage = messages.slice(0, index).reverse().find(message => message.role === "user");
+    // Saved spoken lines are not turns: retry works on questions and answers only.
+    const turns = messages.filter(isTurn);
+    const previous = source ?? [...turns].reverse().find(message => message.role === "rev");
+    if (!previous || previous.transcript) return;
+    const index = turns.findIndex(message => message.id === previous?.id);
+    const questionMessage = turns.slice(0, index).reverse().find(message => message.role === "user");
     const question = questionMessage?.content;
     if (typeof question !== "string" || !question.trim()) return;
     const requiresImage = previous?.imageAssisted === true || questionMessage?.imageAssisted === true;
@@ -2247,7 +2324,7 @@ export default function RevIntell() {
     const prefillDraft = () => {
       setFindingRetryDraft({
         messageId: previous.id,
-        recoverInPlace: previous?.persistence === "not-persisted" && index === messages.length - 1,
+        recoverInPlace: previous?.persistence === "not-persisted" && index === turns.length - 1,
         requiresImage,
         attachmentUnknown,
         persistenceUnknown: previous?.persistence !== "persisted" && previous?.persistence !== "not-persisted",
@@ -2259,7 +2336,7 @@ export default function RevIntell() {
     if (!previous.hasError && !previous.cancelled) { prefillDraft(); return; }
     if (requiresImage) { prefillDraft(); return; }
     if (previous.persistence === "not-persisted") { prefillDraft(); return; }
-    if (!activeId || index !== messages.length - 1) { prefillDraft(); return; }
+    if (!activeId || index !== turns.length - 1) { prefillDraft(); return; }
     // An unconfirmed ("unknown") attempt may still have been accepted — try
     // the server retry, falling back to the draft if there is nothing to reuse.
     const draftFallback = previous.persistence === "persisted" ? undefined : {
@@ -2276,10 +2353,14 @@ export default function RevIntell() {
   // user question with no Rev turn after it. The retry endpoint reuses exactly
   // that question, so the merchant gets a "Generate response" recovery instead
   // of retyping — and no duplicate question is ever created.
-  const danglingUserTurn = !thinking && !convLoading && !convError && !convNotFound
-    && activeId !== null && messages.length > 0
-    && messages[messages.length - 1].role === "user"
-    && messages[messages.length - 1].persistence !== "not-persisted";
+  // A call's spoken lines are a conversation of their own (Rev answered out
+  // loud), so a trailing spoken line never asks for a written response.
+  const lastTurn = useMemo(() => [...messages].reverse().find(isTurn) ?? null, [messages]);
+  const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  const danglingUserTurn = !thinking && !convLoading && !convError && !convNotFound && !callActive
+    && activeId !== null && lastMessage !== null && lastMessage === lastTurn
+    && lastMessage.role === "user"
+    && lastMessage.persistence !== "not-persisted";
   const retryDanglingTurn = useCallback(() => {
     if (turnPendingRef.current || !danglingUserTurn || !activeId) return;
     const last = messages[messages.length - 1];
@@ -2496,12 +2577,15 @@ export default function RevIntell() {
   const showThread = hasMessages || call.transcript.length > 0 || call.inCall;
   const timeline = useMemo(() => mergeTimeline(messages, call.transcript), [messages, call.transcript]);
   // The newest Rev turn keeps its action dock visible (older ones reveal on hover).
-  const latestRevId = useMemo(() => [...messages].reverse().find(message => message.role === "rev")?.id ?? null, [messages]);
+  const latestRevId = useMemo(() => [...messages].reverse().find(message => message.role === "rev" && isTurn(message))?.id ?? null, [messages]);
   const starters = useMemo(() => buildStarters(storeContext), [storeContext]);
   // Phase 5E header: the title is the active conversation's stored title (a
   // model-written or draft title from the server, or the merchant's rename).
   // A brand-new conversation reads "New conversation" until it is named.
-  const activeTitle = !activeId || namingId === activeId
+  // A call's own conversation reads "New conversation" until it is titled too.
+  const unnamedCallThread = activeId !== null && call.conversationId === activeId && !titleOverrides[activeId]
+    && !conversations.find(entry => entry.id === activeId)?.title?.trim();
+  const activeTitle = !activeId || namingId === activeId || unnamedCallThread
     ? "New conversation"
     : (titleOverrides[activeId] || conversations.find(entry => entry.id === activeId)?.title?.trim() || "Untitled conversation");
   // "Investigating…" only while a turn is really running store checks.

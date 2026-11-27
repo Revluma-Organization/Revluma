@@ -66,6 +66,66 @@ export function markInterrupted(entries: TranscriptEntry[]): TranscriptEntry[] {
   return next;
 }
 
+/** A finished spoken line as the server saves it. */
+export interface TranscriptWire {
+  client_id: string;
+  speaker: "user" | "rev";
+  text: string;
+  interrupted?: boolean;
+  spoken_at: string;
+}
+
+/** The save payload for a finished line, or null when nothing was said. */
+export function transcriptWire(entry: TranscriptEntry): TranscriptWire | null {
+  const text = tidyTranscript(entry.text);
+  if (!text) return null;
+  return {
+    client_id: entry.id,
+    speaker: entry.speaker,
+    text,
+    ...(entry.speaker === "rev" && entry.interrupted ? { interrupted: true } : {}),
+    spoken_at: new Date(entry.at).toISOString(),
+  };
+}
+
+/** A saved conversation row, as GET /rev/conversations/:id returns it. */
+export interface SavedVoiceRow {
+  id: string;
+  role: string;
+  content: unknown;
+  created_at?: string | null;
+  voice_kind?: string | null;
+  voice_client_id?: string | null;
+  voice_interrupted?: boolean | null;
+}
+
+/** True for a spoken line saved from a call (not a typed or investigated turn). */
+export function isSavedTranscriptRow(row: Pick<SavedVoiceRow, "voice_kind" | "content">): boolean {
+  if (row.voice_kind === "transcript") return true;
+  const content = row.content as { voice_transcript?: unknown } | null;
+  return Boolean(content && typeof content === "object" && content.voice_transcript === true);
+}
+
+/** Turn a saved spoken line back into a transcript line (same id as when it was spoken). */
+export function savedTranscriptEntry(row: SavedVoiceRow): TranscriptEntry | null {
+  if (!isSavedTranscriptRow(row) || (row.role !== "user" && row.role !== "rev")) return null;
+  let content = row.content as { text?: unknown } | string | null;
+  if (typeof content === "string") {
+    try { content = JSON.parse(content) as { text?: unknown }; } catch { content = { text: content }; }
+  }
+  const text = content && typeof content === "object" && typeof content.text === "string" ? content.text.trim() : "";
+  if (!text) return null;
+  const at = row.created_at ? new Date(row.created_at).getTime() : 0;
+  return {
+    id: row.voice_client_id || `saved-${row.id}`,
+    speaker: row.role === "user" ? "user" : "rev",
+    text,
+    at: Number.isNaN(at) ? 0 : at,
+    final: true,
+    ...(row.role === "rev" && row.voice_interrupted ? { interrupted: true } : {}),
+  };
+}
+
 export type TimelineItem<M> =
   | { kind: "message"; key: string; message: M }
   | { kind: "transcript"; key: string; entry: TranscriptEntry };
@@ -76,9 +136,18 @@ export type TimelineItem<M> =
  * when it was spoken (so a question Rev investigates shows its answer card
  * where it happened in the conversation).
  */
-export function mergeTimeline<M extends { id: string; timestamp: Date }>(messages: M[],
-  transcript: TranscriptEntry[]): Array<TimelineItem<M>> {
-  if (!transcript.length) return messages.map(message => ({ kind: "message", key: message.id, message }));
+export function mergeTimeline<M extends { id: string; timestamp: Date; transcript?: TranscriptEntry }>(messages: M[],
+  liveTranscript: TranscriptEntry[]): Array<TimelineItem<M>> {
+  // Saved spoken lines (a reloaded or finished call) render as transcript
+  // lines in their saved place; a line still in the live transcript that has
+  // already been saved is shown once, from the saved copy.
+  const savedIds = new Set<string>();
+  for (const message of messages) if (message.transcript) savedIds.add(message.transcript.id);
+  const transcript = savedIds.size ? liveTranscript.filter(entry => !savedIds.has(entry.id)) : liveTranscript;
+  const asItem = (message: M): TimelineItem<M> => (message.transcript
+    ? { kind: "transcript", key: message.transcript.id, entry: message.transcript }
+    : { kind: "message", key: message.id, message });
+  if (!transcript.length) return messages.map(asItem);
   const items: Array<TimelineItem<M>> = [];
   let t = 0;
   for (const message of messages) {
@@ -87,7 +156,7 @@ export function mergeTimeline<M extends { id: string; timestamp: Date }>(message
       items.push({ kind: "transcript", key: transcript[t].id, entry: transcript[t] });
       t += 1;
     }
-    items.push({ kind: "message", key: message.id, message });
+    items.push(asItem(message));
   }
   for (; t < transcript.length; t += 1) items.push({ kind: "transcript", key: transcript[t].id, entry: transcript[t] });
   return items;

@@ -1068,7 +1068,9 @@ model conversations {
 
 /// Rev live voice calls (Gemini Live): one row per call, used for the daily
 /// voice allowance. Backend-only: RLS enabled with no policies and no grants
-/// to anon/authenticated. Audio and transcripts are never stored here.
+/// to anon/authenticated. Audio is never stored; spoken turns are saved as
+/// conversation_messages in conversation_id (created by the call when
+/// owns_conversation is true).
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model rev_voice_sessions {
@@ -1076,6 +1078,7 @@ model rev_voice_sessions {
   organization_id String         @db.Uuid
   user_id         String         @db.Uuid
   conversation_id String?        @db.Uuid
+  owns_conversation Boolean      @default(false)
   model           String
   status          String         @default("active")
   end_reason      String?

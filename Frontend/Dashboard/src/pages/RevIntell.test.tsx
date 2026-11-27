@@ -2810,6 +2810,107 @@ describe('live voice call with Rev', () => {
     expect(await screen.findByPlaceholderText(/Ask (me|Rev)/)).toBeInTheDocument();
   });
 
+  describe('a call is saved like a typed chat', () => {
+    const CONV = '66666666-6666-4666-8666-666666666666';
+    const posted = (suffix: string) => vi.mocked(api.post).mock.calls.filter(([path]) => String(path).endsWith(suffix));
+
+    it('gets its own conversation: URL, saved lines, a title and a place in history', async () => {
+      const ended = { conversation_id: CONV };
+      vi.mocked(api.post).mockImplementation(async (path: string) => {
+        if (path === '/rev/live/session') {
+          return { ok: true, status: 201, data: { success: true, data: { ...session, conversation_id: CONV, conversation_created: true } } } as never;
+        }
+        if (path.endsWith('/transcript')) return { ok: true, status: 200, data: { success: true, data: { conversation_id: CONV, saved: 2 } } } as never;
+        if (path.endsWith('/end')) return { ok: true, status: 200, data: { success: true, data: { status: 'ended', ...ended } } } as never;
+        return { ok: true, status: 200, data: { success: true, data: { status: 'active' } } } as never;
+      });
+      requestTitle.mockResolvedValue('Weekly sales check');
+      const client = await startCall();
+      // Adopted right away, without reloading over the live call.
+      await waitFor(() => expect(screen.getByLabelText('Current path')).toHaveTextContent(`/dashboard/rev-intell/${CONV}`));
+      expect(screen.getByRole('group', { name: 'Voice call with Rev' })).toBeInTheDocument();
+      expect(vi.mocked(api.get).mock.calls.some(([path]) => path === `/rev/conversation/${CONV}`)).toBe(false);
+
+      await act(async () => {
+        client.options.handlers.onInputTranscript?.('Hey Rev, how did sales do last week?');
+        client.options.handlers.onOutputTranscript?.('Let me take a look.');
+        client.options.handlers.onTurnComplete?.();
+      });
+      await waitFor(() => expect(posted('/transcript')).toHaveLength(1), { timeout: 3000 });
+      expect((posted('/transcript')[0][1] as { entries: unknown[] }).entries).toEqual([
+        expect.objectContaining({ speaker: 'user', text: 'Hey Rev, how did sales do last week?' }),
+        expect.objectContaining({ speaker: 'rev', text: 'Let me take a look.' }),
+      ]);
+      // Enough was said to title the chat.
+      await waitFor(() => expect(requestTitle).toHaveBeenCalledWith(CONV));
+      const historyLoads = vi.mocked(api.get).mock.calls.filter(([path]) => String(path).startsWith('/rev/conversations')).length;
+
+      await act(async () => { fireEvent.click(within(screen.getByRole('group', { name: 'Voice call with Rev' })).getByRole('button', { name: 'End call' })); });
+      await waitFor(() => expect(posted('/end')).toHaveLength(1));
+      expect(posted('/end')[0][1]).not.toHaveProperty('conversation_id');
+      await waitFor(() => expect(vi.mocked(api.get).mock.calls.filter(([path]) => String(path).startsWith('/rev/conversations')).length)
+        .toBeGreaterThan(historyLoads));
+      // Still in the call's conversation, transcript kept.
+      expect(screen.getByLabelText('Current path')).toHaveTextContent(`/dashboard/rev-intell/${CONV}`);
+      expect(document.querySelector('[data-rev-transcript="user"]')).toHaveTextContent('Hey Rev, how did sales do last week?');
+    });
+
+    it('leaves no empty conversation behind when nothing was said', async () => {
+      vi.mocked(api.post).mockImplementation(async (path: string) => {
+        if (path === '/rev/live/session') {
+          return { ok: true, status: 201, data: { success: true, data: { ...session, conversation_id: CONV, conversation_created: true } } } as never;
+        }
+        if (path.endsWith('/end')) return { ok: true, status: 200, data: { success: true, data: { status: 'ended', conversation_id: null } } } as never;
+        return { ok: true, status: 200, data: { success: true, data: { status: 'active' } } } as never;
+      });
+      await startCall();
+      await waitFor(() => expect(screen.getByLabelText('Current path')).toHaveTextContent(`/dashboard/rev-intell/${CONV}`));
+      await act(async () => { fireEvent.click(within(screen.getByRole('group', { name: 'Voice call with Rev' })).getByRole('button', { name: 'End call' })); });
+      await waitFor(() => expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/));
+      expect(requestTitle).not.toHaveBeenCalled();
+      expect(posted('/transcript')).toHaveLength(0);
+    });
+
+    it('a call from an existing chat saves into that chat', async () => {
+      replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [
+        { id: 'u1', role: 'user', content: { text: 'Typed question' }, sequence_number: 1, created_at: '2026-11-02T12:00:00Z' },
+      ] })));
+      vi.mocked(api.post).mockImplementation(async (path: string) => {
+        if (path === '/rev/live/session') return { ok: true, status: 201, data: { success: true, data: { ...session, conversation_id: 'A', conversation_created: false } } } as never;
+        return { ok: true, status: 200, data: { success: true, data: { status: 'active', conversation_id: 'A' } } } as never;
+      });
+      renderPage('/dashboard/rev-intell/A');
+      await screen.findByText('Typed question');
+      await act(async () => { fireEvent.click(await screen.findByRole('button', { name: 'Start a voice call with Rev' })); });
+      await waitFor(() => expect(live.clients).toHaveLength(1));
+      expect(api.post).toHaveBeenCalledWith('/rev/live/session', { conversation_id: 'A' }, expect.anything());
+      await act(async () => { live.clients[0].options.handlers.onReady?.(); });
+      expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/A');
+      expect(screen.getByText('Typed question')).toBeInTheDocument();
+    });
+
+    it('reloads a saved call as its transcript, never as answer cards or a pending question', async () => {
+      replies.set(`/rev/conversation/${CONV}`, Promise.resolve(reply({ messages: [
+        { id: 'r1', role: 'user', content: { text: 'How did sales do last week?', voice_transcript: true }, sequence_number: 1,
+          created_at: '2026-11-02T12:00:00Z', input_mode: 'voice', voice_kind: 'transcript', voice_client_id: 't1-1' },
+        { id: 'r2', role: 'rev', content: { text: 'Sales were up, so the', voice_transcript: true, response_type: 'voice', read_only: true },
+          sequence_number: 2, created_at: '2026-11-02T12:00:01Z', input_mode: 'voice', voice_kind: 'transcript',
+          voice_client_id: 't1-2', voice_interrupted: true },
+        { id: 'r3', role: 'user', content: { text: 'Thanks, bye', voice_transcript: true }, sequence_number: 3,
+          created_at: '2026-11-02T12:00:02Z', input_mode: 'voice', voice_kind: 'transcript', voice_client_id: 't1-3' },
+      ] })));
+      renderPage(`/dashboard/rev-intell/${CONV}`);
+      await waitFor(() => expect(document.querySelectorAll('[data-rev-transcript]')).toHaveLength(3));
+      const lines = [...document.querySelectorAll('[data-rev-transcript]')];
+      expect(lines.map(line => line.getAttribute('data-rev-transcript'))).toEqual(['user', 'rev', 'user']);
+      expect(lines[1]).toHaveTextContent('Sales were up, so the');
+      expect(screen.getByText('(interrupted)')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Generate response' })).not.toBeInTheDocument();
+      expect(answerView).not.toHaveBeenCalled();
+      expect(screen.queryByText('Asked by voice:')).not.toBeInTheDocument();
+    });
+  });
+
   it('explains when the daily voice limit is used up', async () => {
     vi.mocked(api.post).mockImplementation(async () => {
       throw new ApiError(429, 'limit', { success: false, error: { code: 'VOICE_LIMIT_REACHED' } });

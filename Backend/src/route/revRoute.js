@@ -119,6 +119,20 @@ const voiceSessionLimiter = rateLimit({
   skip: () => process.env.NODE_ENV === 'test',
 });
 
+// Spoken lines are saved as they finish (batched by the dashboard), so a
+// lively call sends more of these than heartbeats.
+const voiceTranscriptLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 90,
+  message: {
+    success: false,
+    error: { code: 'RATE_LIMITED', message: 'Too many call updates. Please wait a moment.' },
+  },
+  standardHeaders: true,
+  legacyHeaders:   false,
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 // Internal metrics scraper. Controller requires the server-to-server internal key.
@@ -166,6 +180,7 @@ router.post('/dictation/punctuate',       authenticateToken, dictationLimiter, r
 router.get('/live/allowance',             authenticateToken, voiceSessionLimiter, revController.getVoiceAllowance);
 router.post('/live/session',              authenticateToken, voiceStartLimiter,   revController.startVoiceSession);
 router.post('/live/session/:id/heartbeat', authenticateToken, voiceSessionLimiter, revController.voiceSessionHeartbeat);
+router.post('/live/session/:id/transcript', authenticateToken, voiceTranscriptLimiter, revController.saveVoiceTranscript);
 router.post('/live/session/:id/end',      authenticateToken, voiceSessionLimiter, revController.endVoiceSession);
 
 router.post('/message-feedback',          authenticateToken, feedbackLimiter, revController.submitMessageFeedback);

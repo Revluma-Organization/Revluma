@@ -14,13 +14,22 @@
 //
 // Node meters the call (30 minutes per organization per day by default):
 // heartbeats every 15 s, server-clock accounting, auto-end at the limit.
+//
+// A call is a conversation, exactly like a typed chat (ChatGPT keeps voice
+// chats in history the same way): the server gives a call started outside a
+// conversation its own, every finished spoken line is saved into it as it
+// happens, and whatever is still unsaved rides along with the hang-up (also
+// when the tab closes). The page adopts the conversation for its URL, title
+// and history.
 import { useCallback, useEffect, useRef, useState } from "react";
 import api, { ApiError, getApiBaseUrl, getStreamingAuthHeaders } from "@/lib/api";
 import { LiveAudio, MicError, liveAudioSupported } from "@/lib/revLiveAudio";
 import { LiveClient, type LiveConnectOptions, type LiveFunctionCall } from "@/lib/revLiveClient";
 import {
-  END_MESSAGES, appendTranscript, finalizeTranscript, markInterrupted, questionFromArgs, voiceToolResult,
-  type CallActivity, type CallEndReason, type CallPhase, type CallView, type TranscriptEntry, type VoiceAskOutcome,
+  END_MESSAGES, appendTranscript, finalizeTranscript, markInterrupted, questionFromArgs, transcriptWire,
+  voiceToolResult,
+  type CallActivity, type CallEndReason, type CallPhase, type CallView, type TranscriptEntry, type TranscriptWire,
+  type VoiceAskOutcome,
 } from "@/lib/revLiveCall";
 
 export interface LiveSession {
@@ -32,6 +41,27 @@ export interface LiveSession {
   max_seconds: number;
   remaining_seconds?: number;
   heartbeat_interval_ms?: number;
+  /** The conversation this call is saved into (created by the server when needed). */
+  conversation_id?: string | null;
+  /** True when the server created the conversation for this call. */
+  conversation_created?: boolean;
+}
+
+/** Progress of saving the call's spoken lines. */
+export interface CallSaveState {
+  /** Spoken lines saved into the conversation so far. */
+  lines: number;
+  /** Words the merchant said in saved lines (decides when to title the chat). */
+  userWords: number;
+}
+
+export interface CallEndedInfo {
+  /** The call's conversation, or null when the server removed it (nothing was said). */
+  conversationId: string | null;
+  /** The conversation the call was attached to when it started. */
+  callConversationId: string | null;
+  created: boolean;
+  saved: CallSaveState;
 }
 
 interface AudioLike {
@@ -61,6 +91,12 @@ export interface UseRevLiveCallOptions {
   conversationId: string | null;
   /** Run a store question through Rev's normal pipeline (shown in chat). */
   onAsk: (question: string) => Promise<VoiceAskOutcome>;
+  /** The call is attached to this conversation (created: the server made it for the call). */
+  onConversation?: (conversationId: string, created: boolean) => void;
+  /** Spoken lines were saved into the call's conversation. */
+  onSaved?: (conversationId: string, saved: CallSaveState) => void;
+  /** The call ended and its last lines were saved (or could not be). */
+  onEnded?: (info: CallEndedInfo) => void;
   /** Test seams. */
   createAudio?: (onChunk: (pcm: string) => void) => AudioLike;
   createClient?: (options: LiveConnectOptions) => ClientLike;
@@ -68,6 +104,14 @@ export interface UseRevLiveCallOptions {
 }
 
 const MAX_RECONNECTS = 3;
+const SAVE_DEBOUNCE_MS = 700;
+const SAVE_BATCH = 25;
+// How long a store question waits for the lines before it to be saved, so the
+// saved conversation reads in the order it was spoken.
+const SAVE_BEFORE_ASK_MS = 2500;
+const FINAL_SAVE_MS = 4000;
+// Browsers cap keepalive request bodies at 64 KB in total.
+const KEEPALIVE_TEXT_BUDGET = 56_000;
 const SETUP_TIMEOUT_MS = 12_000;
 const WARN_AT_SECONDS = 60;
 const USER_LEVEL_THRESHOLD = 0.14;
@@ -87,7 +131,21 @@ function errorMessage(error: unknown): string {
   return "The call couldn't start. Please try again.";
 }
 
-export function useRevLiveCall({ conversationId, onAsk, createAudio, createClient, isSupported }: UseRevLiveCallOptions) {
+function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise(resolve => {
+    const timer = window.setTimeout(resolve, ms);
+    promise.then(() => resolve(), () => resolve()).finally(() => window.clearTimeout(timer));
+  });
+}
+
+function userWords(entries: TranscriptWire[]): number {
+  return entries.filter(entry => entry.speaker === "user")
+    .reduce((total, entry) => total + entry.text.split(/\s+/).filter(Boolean).length, 0);
+}
+
+export function useRevLiveCall({
+  conversationId, onAsk, onConversation, onSaved, onEnded, createAudio, createClient, isSupported,
+}: UseRevLiveCallOptions) {
   const [phase, setPhase] = useState<CallPhase>("idle");
   const [activity, setActivity] = useState<CallActivity>("listening");
   const [muted, setMutedState] = useState(false);
@@ -99,6 +157,8 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [supported] = useState(() => (isSupported ?? liveAudioSupported)());
+  const [callConversationId, setCallConversationId] = useState<string | null>(null);
+  const [saved, setSaved] = useState<CallSaveState>({ lines: 0, userWords: 0 });
 
   const phaseRef = useRef<CallPhase>("idle");
   const audioRef = useRef<AudioLike | null>(null);
@@ -119,9 +179,101 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
   const authRef = useRef<Record<string, string>>({});
   const conversationRef = useRef(conversationId);
   const onAskRef = useRef(onAsk);
+  const onConversationRef = useRef(onConversation);
+  const onSavedRef = useRef(onSaved);
+  const onEndedRef = useRef(onEnded);
   const levelsRef = useRef({ input: 0, output: 0 });
   conversationRef.current = conversationId;
   onAskRef.current = onAsk;
+  onConversationRef.current = onConversation;
+  onSavedRef.current = onSaved;
+  onEndedRef.current = onEnded;
+
+  // Transcript mirror: socket callbacks update it synchronously so a save can
+  // read exactly what was said, without waiting for a render.
+  const transcriptRef = useRef<TranscriptEntry[]>([]);
+  const updateTranscript = useCallback((change: (entries: TranscriptEntry[]) => TranscriptEntry[]) => {
+    const next = change(transcriptRef.current);
+    if (next === transcriptRef.current) return;
+    transcriptRef.current = next;
+    setTranscript(next);
+  }, []);
+
+  // Saving spoken lines.
+  const saveTargetRef = useRef<{ sessionId: string; conversationId: string | null; created: boolean } | null>(null);
+  const savedIdsRef = useRef(new Set<string>());
+  const savedRef = useRef<CallSaveState>({ lines: 0, userWords: 0 });
+  const saveRunRef = useRef<Promise<void> | null>(null);
+  const saveTimerRef = useRef(0);
+  const saveFailuresRef = useRef(0);
+  const saveStoppedRef = useRef(false);
+
+  const unsavedLines = useCallback((source: TranscriptEntry[] = transcriptRef.current): TranscriptWire[] => source
+    .filter(entry => entry.final && !savedIdsRef.current.has(entry.id))
+    .map(transcriptWire)
+    .filter((entry): entry is TranscriptWire => entry !== null), []);
+
+  const markSaved = useCallback((batch: TranscriptWire[], conversation: string | null) => {
+    if (!batch.length) return;
+    batch.forEach(entry => savedIdsRef.current.add(entry.client_id));
+    savedRef.current = {
+      lines: savedRef.current.lines + batch.length,
+      userWords: savedRef.current.userWords + userWords(batch),
+    };
+    setSaved(savedRef.current);
+    if (conversation) onSavedRef.current?.(conversation, savedRef.current);
+  }, []);
+
+  /**
+   * Save every finished, unsaved line (serialised; retried with backoff).
+   * `source` pins the lines to save (hanging up snapshots them, because the
+   * page may clear the visible transcript while the save is in flight).
+   */
+  const saveLines = useCallback(async (source?: TranscriptEntry[]): Promise<void> => {
+    if (saveRunRef.current) await saveRunRef.current.catch(() => undefined);
+    const target = saveTargetRef.current;
+    const lines = () => unsavedLines(source ?? transcriptRef.current);
+    if (!target || saveStoppedRef.current || !lines().length) return;
+    const run = (async () => {
+      for (let round = 0; round < 40; round += 1) {
+        const batch = lines().slice(0, SAVE_BATCH);
+        if (!batch.length || saveTargetRef.current !== target) return;
+        try {
+          const res = await api.post<ApiBody>(`/rev/live/session/${target.sessionId}/transcript`,
+            { entries: batch }, { timeoutMs: 10000 });
+          const data = res?.data?.data as { conversation_id?: string | null } | undefined;
+          saveFailuresRef.current = 0;
+          markSaved(batch, data?.conversation_id ?? target.conversationId);
+        } catch (err) {
+          const status = err instanceof ApiError ? err.status : 0;
+          if (status === 400) {
+            // A malformed line can never succeed; skip it rather than loop.
+            batch.forEach(entry => savedIdsRef.current.add(entry.client_id));
+            continue;
+          }
+          if (status === 404 || status === 409) {
+            // The call or its conversation is gone (deleted, or long over).
+            saveStoppedRef.current = true;
+            return;
+          }
+          saveFailuresRef.current += 1;
+          const delay = Math.min(15_000, 1000 * 2 ** Math.min(saveFailuresRef.current, 4));
+          window.clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = window.setTimeout(() => { void saveLines(); }, delay);
+          return;
+        }
+      }
+    })();
+    saveRunRef.current = run;
+    try { await run; } finally { if (saveRunRef.current === run) saveRunRef.current = null; }
+  }, [markSaved, unsavedLines]);
+
+  /** Lines finish in bursts (speaker change, turn end): save shortly after. */
+  const scheduleSave = useCallback(() => {
+    if (!saveTargetRef.current) return;
+    window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => { void saveLines(); }, SAVE_DEBOUNCE_MS);
+  }, [saveLines]);
 
   const setPhaseBoth = useCallback((next: CallPhase) => { phaseRef.current = next; setPhase(next); }, []);
 
@@ -147,22 +299,44 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
     if (current === "idle" || current === "ended" || current === "error" || current === "ending") return;
     setPhaseBoth("ending");
     teardown();
-    setTranscript(entries => finalizeTranscript(entries));
+    updateTranscript(finalizeTranscript);
     setActivity("listening");
     setView("chat");
     const session = sessionRef.current;
+    const target = saveTargetRef.current;
+    let keptConversation: string | null = target?.conversationId ?? null;
+    // Save what was said before hanging up; anything still unsaved rides
+    // along with the hang-up so it lands before the server tidies up.
+    const said = transcriptRef.current;
+    window.clearTimeout(saveTimerRef.current);
+    await settleWithin(saveLines(said), FINAL_SAVE_MS);
     if (session && notifyServer) {
+      const leftovers = saveStoppedRef.current ? [] : unsavedLines(said).slice(-SAVE_BATCH);
       try {
-        await api.post(`/rev/live/session/${session.session_id}/end`, {
+        const res = await api.post<ApiBody>(`/rev/live/session/${session.session_id}/end`, {
           reason, turn_count: countsRef.current.turns, ask_count: countsRef.current.asks,
-          ...(conversationRef.current ? { conversation_id: conversationRef.current } : {}),
+          ...(leftovers.length ? { entries: leftovers } : {}),
         }, { timeoutMs: 8000 });
+        const data = res?.data?.data as { conversation_id?: string | null } | undefined;
+        if (data && "conversation_id" in data) keptConversation = data.conversation_id ?? null;
+        if (leftovers.length && keptConversation) markSaved(leftovers, keptConversation);
       } catch { /* the server reaps calls that stop heartbeating */ }
     }
+    window.clearTimeout(saveTimerRef.current);
+    saveTargetRef.current = null;
     sessionRef.current = null;
     setNotice(END_MESSAGES[reason] ?? null);
     setPhaseBoth("ended");
-  }, [setPhaseBoth, teardown]);
+    if (target) {
+      if (!keptConversation) setCallConversationId(null);
+      onEndedRef.current?.({
+        conversationId: keptConversation,
+        callConversationId: target.conversationId,
+        created: target.created,
+        saved: savedRef.current,
+      });
+    }
+  }, [markSaved, saveLines, setPhaseBoth, teardown, unsavedLines, updateTranscript]);
 
   const end = useCallback((reason: CallEndReason = "hangup") => { void finish(reason); }, [finish]);
 
@@ -185,9 +359,14 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
         clientRef.current?.sendToolResponse(call.id, call.name, voiceToolResult(outcome), "WHEN_IDLE");
       };
       if (!question) { respond({ ok: false, reason: "failed", message: "No question was given." }); continue; }
-      onAskRef.current(question).then(respond, () => respond({ ok: false, reason: "failed" }));
+      // What the merchant just said is saved first, so the conversation reads
+      // in the order it was spoken (their words, then the investigated answer).
+      updateTranscript(finalizeTranscript);
+      void settleWithin(saveLines(), SAVE_BEFORE_ASK_MS)
+        .then(() => onAskRef.current(question))
+        .then(respond, () => respond({ ok: false, reason: "failed" }));
     }
-  }, [finish]);
+  }, [finish, saveLines, updateTranscript]);
 
   const connect = useCallback((session: LiveSession, resumeHandle: string | null) => {
     clientRef.current?.close();
@@ -219,18 +398,20 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
             countsRef.current.turns += 1;
           }
           lastInputAtRef.current = at;
-          setTranscript(entries => appendTranscript(entries, "user", text, at));
+          updateTranscript(entries => appendTranscript(entries, "user", text, at));
         },
         onOutputTranscript: (text) => {
           lastOutputAtRef.current = Date.now();
-          setTranscript(entries => appendTranscript(entries, "rev", text));
+          updateTranscript(entries => appendTranscript(entries, "rev", text));
         },
         onInterrupted: () => {
           audioRef.current?.flush();
-          setTranscript(entries => markInterrupted(entries));
+          updateTranscript(markInterrupted);
+          scheduleSave();
         },
         onTurnComplete: () => {
-          setTranscript(entries => finalizeTranscript(entries));
+          updateTranscript(finalizeTranscript);
+          scheduleSave();
           if (goAwayRef.current) reconnect();
         },
         onToolCall: handleToolCalls,
@@ -282,7 +463,7 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
       setPhaseBoth("reconnecting");
       connect(current, handleRef.current);
     }
-  }, [createClient, finish, handleToolCalls, setPhaseBoth]);
+  }, [createClient, finish, handleToolCalls, scheduleSave, setPhaseBoth, updateTranscript]);
 
   const startLoops = useCallback((session: LiveSession) => {
     const interval = Math.max(5000, session.heartbeat_interval_ms ?? 15000);
@@ -291,7 +472,6 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
       try {
         const res = await api.post<ApiBody>(`/rev/live/session/${session.session_id}/heartbeat`, {
           turn_count: countsRef.current.turns, ask_count: countsRef.current.asks,
-          ...(conversationRef.current ? { conversation_id: conversationRef.current } : {}),
         }, { timeoutMs: 8000 });
         const data = res?.data?.data as { status?: string; end_reason?: CallEndReason } | undefined;
         if (data?.status === "ended") void finish(data.end_reason ?? "limit", { notifyServer: false });
@@ -353,6 +533,16 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
     startedAtRef.current = null;
     setStartedAt(null);
     setActivity("listening");
+    // A new call starts a fresh transcript (the previous call's lines are saved).
+    transcriptRef.current = [];
+    setTranscript([]);
+    saveTargetRef.current = null;
+    savedIdsRef.current = new Set();
+    savedRef.current = { lines: 0, userWords: 0 };
+    setSaved(savedRef.current);
+    saveFailuresRef.current = 0;
+    saveStoppedRef.current = false;
+    window.clearTimeout(saveTimerRef.current);
     setPhaseBoth("starting");
 
     const audio = (createAudio ?? ((onChunk: (pcm: string) => void) => new LiveAudio({ onChunk })))((pcm) => {
@@ -373,6 +563,13 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
         return;
       }
       sessionRef.current = session;
+      const callConversation = typeof session.conversation_id === "string" && session.conversation_id
+        ? session.conversation_id : null;
+      saveTargetRef.current = {
+        sessionId: session.session_id, conversationId: callConversation, created: session.conversation_created === true,
+      };
+      setCallConversationId(callConversation);
+      if (callConversation) onConversationRef.current?.(callConversation, session.conversation_created === true);
       setMaxSeconds(session.max_seconds);
       setPhaseBoth("connecting");
       connect(session, null);
@@ -392,7 +589,10 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
     if (next) clientRef.current?.sendAudioStreamEnd();
   }, []);
 
-  const clearTranscript = useCallback(() => setTranscript([]), []);
+  const clearTranscript = useCallback(() => {
+    transcriptRef.current = [];
+    setTranscript([]);
+  }, []);
   const dismiss = useCallback(() => {
     setError(null);
     setNotice(null);
@@ -404,14 +604,34 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
     const onHide = () => {
       const session = sessionRef.current;
       if (!session) return;
+      // Unsaved lines (including the one being spoken) ride along with the
+      // hang-up; keepalive bodies are capped (~64 KB) so the newest fit.
+      const lines = finalizeTranscript(transcriptRef.current)
+        .filter(entry => !savedIdsRef.current.has(entry.id))
+        .map(transcriptWire)
+        .filter((entry): entry is TranscriptWire => entry !== null)
+        .slice(-SAVE_BATCH);
+      let budget = KEEPALIVE_TEXT_BUDGET;
+      const entries: TranscriptWire[] = [];
+      const encoder = new TextEncoder();
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        budget -= encoder.encode(JSON.stringify(lines[i])).length + 4;
+        if (budget < 0) break;
+        entries.unshift(lines[i]);
+      }
       try {
         void fetch(`${getApiBaseUrl()}/rev/live/session/${session.session_id}/end`, {
           method: "POST", keepalive: true, credentials: "include",
           headers: { "Content-Type": "application/json", ...authRef.current },
-          body: JSON.stringify({ reason: "unload", turn_count: countsRef.current.turns, ask_count: countsRef.current.asks }),
+          body: JSON.stringify({
+            reason: "unload", turn_count: countsRef.current.turns, ask_count: countsRef.current.asks,
+            ...(entries.length && !saveStoppedRef.current ? { entries } : {}),
+          }),
         }).catch(() => undefined);
       } catch { /* best effort; the server reaps silent calls */ }
       sessionRef.current = null;
+      saveTargetRef.current = null;
+      window.clearTimeout(saveTimerRef.current);
       teardown();
     };
     window.addEventListener("pagehide", onHide);
@@ -423,10 +643,20 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
   // Unmount (leaving Rev) hangs up.
   useEffect(() => () => {
     const session = sessionRef.current;
+    window.clearTimeout(saveTimerRef.current);
     if (session) {
-      void api.post(`/rev/live/session/${session.session_id}/end`, { reason: "hangup" }).catch(() => undefined);
+      const entries = saveStoppedRef.current ? [] : finalizeTranscript(transcriptRef.current)
+        .filter(entry => !savedIdsRef.current.has(entry.id))
+        .map(transcriptWire)
+        .filter((entry): entry is TranscriptWire => entry !== null)
+        .slice(-SAVE_BATCH);
+      void api.post(`/rev/live/session/${session.session_id}/end`, {
+        reason: "hangup", turn_count: countsRef.current.turns, ask_count: countsRef.current.asks,
+        ...(entries.length ? { entries } : {}),
+      }).catch(() => undefined);
       sessionRef.current = null;
     }
+    saveTargetRef.current = null;
     teardown();
     phaseRef.current = "idle";
   }, [teardown]);
@@ -437,7 +667,7 @@ export function useRevLiveCall({ conversationId, onAsk, createAudio, createClien
 
   return {
     supported, phase, activity, muted, view, transcript, startedAt, elapsedMs, remainingSeconds,
-    error, notice, inCall, levelsRef,
+    error, notice, inCall, levelsRef, conversationId: callConversationId, saved,
     start, end, toggleMute, setView, clearTranscript, dismiss,
   };
 }
