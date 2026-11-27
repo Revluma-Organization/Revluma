@@ -279,7 +279,7 @@ test('Scenario 7: partial evaluation surfaces verified findings alongside explic
     activeProducts: 2,
     totalProducts: 10,
     abandonedCarts: [
-      { status: 'abandoned', cart_value: 250, currency: 'USD', abandoned_at: new Date('2026-11-22T09:00:00Z') },
+      { status: 'abandoned', cart_value: 250, currency: 'USD', abandoned_at: new Date('2026-11-22T09:00:00Z'), source_resource: 'abandonedCheckouts', source_state: 'available', recovered_at: null, completed_at: null },
     ],
     inventoryLevels: [
       { quantities: { available: 0 }, synced_at: RECENT_SYNC },
