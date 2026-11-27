@@ -1458,6 +1458,7 @@ async function checkPythonHealth() {
 /* -------------------------------------------------------------------------- */
 
 const INVESTIGATION_CONTRACT = 'rev-investigation-v1';
+const TITLE_TIMEOUT_MS = parseInt(process.env.ML_TITLE_TIMEOUT_MS || '9000', 10);
 const STREAM_TIMEOUT_MS = parseInt(process.env.ML_STREAM_TIMEOUT_MS || String(TIMEOUT_POLICY_MS.overallInvestigation), 10);
 
 function authorizedContextStoreIds(contextPayload) {
@@ -2035,6 +2036,31 @@ async function streamInvestigation({
   return { success: true, data: finalPayload };
 }
 
+/**
+ * Ask the intelligence service for a short, model-written conversation title
+ * from the first exchange (python /rev/title). Small and bounded: a slow or
+ * missing title must never hold anything else up, so failures are returned,
+ * not thrown, and the caller keeps its deterministic draft title.
+ */
+async function generateConversationTitle({ message, reply = '', intent = null, correlationId } = {}) {
+  const result = await pythonRequest({
+    path: '/rev/title',
+    body: {
+      message: String(message || '').slice(0, 1000),
+      reply: String(reply || '').slice(0, 1200),
+      intent: typeof intent === 'string' ? intent.slice(0, 60) : null,
+    },
+    correlationId: getCorrelationId(correlationId),
+    timeout: TITLE_TIMEOUT_MS,
+  });
+  if (!result.success) return result;
+  const title = result.data && typeof result.data.title === 'string' ? result.data.title : null;
+  if (!title) {
+    return { success: false, error: { code: ML_ERRORS.INVALID_RESPONSE, message: 'Title unavailable.' } };
+  }
+  return { success: true, data: { title } };
+}
+
 async function getToolCatalog({ correlationId } = {}) {
   const result = await pythonRequest({
     method: 'GET', path: '/rev/tools', correlationId: getCorrelationId(correlationId),
@@ -2056,6 +2082,7 @@ module.exports = {
     investigate,
     streamInvestigation,
     getToolCatalog,
+    generateConversationTitle,
     rfmSync,
     computeFeatures,
     predictAbandonment,

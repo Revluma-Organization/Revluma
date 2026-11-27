@@ -30,6 +30,7 @@ const { validateSubmission, acceptSubmission, replayBody } = require('../service
 const revSequence = require('../services/revSequence');
 const { parsePageCursor, nextPageCursor } = require('../services/revConversationPaging');
 const revMetrics = require('../services/revOperationalMetrics');
+const { draftConversationTitle, isAutomaticTitle, sanitizeModelTitle } = require('../services/revConversationTitle');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -79,23 +80,6 @@ function sanitiseMessage(text) {
 }
 
 
-// Generate a short meaningful title from user message
-function _generateTitle(message) {
-  const msg = message.trim();
-  // Strip common conversational openers
-  const stripped = msg
-    .replace(/^(hi|hello|hey|good morning|morning|thanks|thank you|ok|okay|can you|could you|i want to|i need|please|can we)\s+/i, '')
-    .trim();
-  const title = stripped.length > 5 ? stripped : msg;
-  // Capitalise first letter, truncate at word boundary
-  const words = title.split(' ');
-  let out = '';
-  for (const w of words) {
-    if ((out + ' ' + w).length > 55) break;
-    out = out ? out + ' ' + w : w;
-  }
-  return out.charAt(0).toUpperCase() + out.slice(1);
-}
 
 // ── Authenticated Rev evidence retrieval ─────────────────────────────────────
 // Tenant identity is resolved exclusively from the verified JWT and membership.
@@ -479,8 +463,11 @@ exports.chat = async (req, res, next) => {
     persistenceStage = 'finding_context_write';
     await _persistFindingContext(activeConvId, org.id, mlResult.data);
 
-    // Generate intelligent title from first meaningful user message
-    const titleHint = _generateTitle(message);
+    // Draft title for a new conversation: varied for small talk, topical for
+    // store questions, never just the opening words. The dashboard upgrades
+    // it to a model-written title after the first answer.
+    const titleHint = draftConversationTitle(message, activeConvId,
+      mlResult.data?.intent || mlResult.data?.investigation?.intent || null);
     persistenceStage = 'conversation_update';
     await prisma.$executeRaw`
       UPDATE conversations
@@ -1042,6 +1029,94 @@ exports.renameConversation = async (req, res, next) => {
 
     logger.info('conversation_renamed', { orgId: org.id, conversationId: id });
     return res.status(200).json({ success: true, data: { id, title: cleanTitle } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── POST /api/v1/rev/conversation/:id/title/generate ────────────────────────
+// ChatGPT-style naming: after the first answer the dashboard asks for a short,
+// model-written title. It replaces the title only while that title is still
+// automatic (the draft, a legacy first-words title, or empty), so a
+// merchant's own rename is never overwritten. When the model is unavailable
+// the draft title is kept and returned (source "draft").
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function _parsedContent(content) {
+  if (typeof content !== 'string') return content;
+  try { return JSON.parse(content); } catch { return content; }
+}
+
+function _messageText(content) {
+  const value = _parsedContent(content);
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return typeof value.text === 'string' ? value.text : '';
+  }
+  return typeof value === 'string' ? value : '';
+}
+
+function _messageIntent(content) {
+  const value = _parsedContent(content);
+  if (!value || typeof value !== 'object') return null;
+  const intent = value.investigation?.intent || value.intent || null;
+  return typeof intent === 'string' ? intent : null;
+}
+
+exports.generateConversationTitle = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id || !UUID_PATTERN.test(id)) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A valid conversation ID is required.' } });
+    }
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    const conv = await verifyConversationOwnership(id, org.id);
+
+    const turns = await prisma.$queryRaw`
+      SELECT cm.role, cm.content, cm.has_error
+      FROM conversation_messages cm
+      JOIN conversations cv ON cv.id = cm.conversation_id
+      WHERE cm.conversation_id = ${id}::uuid
+        AND cv.organization_id = ${org.id}::uuid
+      ORDER BY cm.sequence_number ASC, cm.id ASC
+      LIMIT 6
+    `;
+    const firstUser = turns.find(turn => turn.role === 'user');
+    const firstMessage = firstUser ? _messageText(firstUser.content).trim() : '';
+    if (!firstMessage) {
+      return res.status(409).json({ success: false, error: { code: 'NO_MESSAGES', message: 'This conversation has no question to title yet.' } });
+    }
+    const firstAnswer = turns.find(turn => turn.role === 'rev' && !turn.has_error);
+    const reply = firstAnswer ? _messageText(firstAnswer.content) : '';
+    const intent = firstAnswer ? _messageIntent(firstAnswer.content) : null;
+    const current = typeof conv.title === 'string' ? conv.title : null;
+
+    if (!isAutomaticTitle(current, firstMessage, id, intent)) {
+      return res.status(200).json({ success: true, data: { id, title: current, source: 'existing' } });
+    }
+
+    const draft = draftConversationTitle(firstMessage, id, intent);
+    const generated = await mlService.generateConversationTitle({
+      message: firstMessage, reply, intent, correlationId: req.get?.('X-Correlation-ID'),
+    });
+    const modelTitle = generated.success ? sanitizeModelTitle(generated.data.title) : null;
+    const title = modelTitle || draft;
+
+    // Only the automatic title read above is replaced; a rename that landed
+    // in the meantime wins.
+    const updated = await prisma.$executeRaw`
+      UPDATE conversations SET title = ${title}, updated_at = NOW()
+      WHERE id = ${id}::uuid AND organization_id = ${org.id}::uuid
+        AND (title IS NULL OR btrim(title) = '' OR title = ${current ?? ''})
+    `;
+    if (!updated) {
+      const fresh = await verifyConversationOwnership(id, org.id);
+      return res.status(200).json({ success: true, data: { id, title: fresh.title, source: 'existing' } });
+    }
+    if (!modelTitle) {
+      logger.info('rev_title_model_unavailable', { conversationId: id, errorCode: generated.error?.code || 'INVALID_TITLE' });
+    }
+    return res.status(200).json({ success: true, data: { id, title, source: modelTitle ? 'model' : 'draft' } });
   } catch (error) {
     next(error);
   }
@@ -1915,7 +1990,7 @@ exports.chatStream = async (req, res, next) => {
       });
       persistenceStage = 'conversation_update';
       await _touchConversation(activeConvId, {
-        titleHint: _generateTitle(validated.message),
+        titleHint: draftConversationTitle(validated.message, activeConvId, data?.investigation?.intent || null),
         increment: reuseUserMessage ? 1 : 2,
       });
       persistenceStage = 'finding_context_write';
@@ -1951,7 +2026,7 @@ exports.chatStream = async (req, res, next) => {
         latencyMs: Date.now() - startedAt,
       });
       await _touchConversation(activeConvId, {
-        titleHint: _generateTitle(validated.message), increment: reuseUserMessage ? 1 : 2,
+        titleHint: draftConversationTitle(validated.message, activeConvId), increment: reuseUserMessage ? 1 : 2,
       });
       finished = true;
       sse.send('cancelled', { conversation_id: activeConvId, message_id: null });
@@ -1977,7 +2052,7 @@ exports.chatStream = async (req, res, next) => {
     });
     persistenceStage = 'conversation_update';
     await _touchConversation(activeConvId, {
-      titleHint: _generateTitle(validated.message), increment: reuseUserMessage ? 1 : 2,
+      titleHint: draftConversationTitle(validated.message, activeConvId), increment: reuseUserMessage ? 1 : 2,
     });
     persistenceStage = null;
     finished = true;
@@ -2020,7 +2095,7 @@ exports.chatStream = async (req, res, next) => {
           latencyMs: Date.now() - startedAt,
         });
         await _touchConversation(activeConvId, {
-          titleHint: _generateTitle(validated.message), increment: reuseUserMessage ? 1 : 2,
+          titleHint: draftConversationTitle(validated.message, activeConvId), increment: reuseUserMessage ? 1 : 2,
         });
       } catch (persistenceError) {
         revMetrics.record('rev_persistence_failures_total', 1, { stage: 'failed_turn_write' });

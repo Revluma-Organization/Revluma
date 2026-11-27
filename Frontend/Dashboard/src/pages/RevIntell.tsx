@@ -36,6 +36,8 @@ import { explainWorkspaceError, isKnownWorkspaceCode, merchantMessage } from "@/
 import { workspaceDesign } from "@/lib/workspaceDesign";
 import { RevOrb } from "@/components/rev/RevOrb";
 import { RevDotLoader } from "@/components/rev/RevDotLoader";
+import { RevAnimatedTitle } from "@/components/rev/RevAnimatedTitle";
+import { requestConversationTitle } from "@/lib/revTitle";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
 import api, { ApiError } from "@/lib/api";
@@ -880,17 +882,19 @@ function ConversationHistoryList({
 // Phase 5E: one header for every Rev screen: the context badge, the conversation title and conversation
 // controls, plus the finding under investigation when one is attached. The
 // badge is derived from real state only: "Finding context" when a finding is
-// attached, "General" otherwise, with an "Investigating…" status while a
-// turn is in flight. No invented statuses, no invented titles, no invented
-// severity — unknown severities render as neutral raw text.
+// attached, "General" otherwise, with an "Investigating…" status only while
+// a turn is actually running store checks (it has investigation steps). A
+// greeting or casual exchange runs no checks, so it shows no status. No
+// invented statuses, no invented severity: unknown severities render as
+// neutral raw text. The title types in when it changes (RevAnimatedTitle).
 
 const KNOWN_SEVERITIES = ["critical", "high", "medium", "low"] as const;
 
 function InvestigationHeader({
-  contextual, ongoing, title, findingId, findingContext, findingLoading,
+  contextual, investigating, title, findingId, findingContext, findingLoading,
   findingError, onNewChat, onRetryFinding, isDark, card, border, t1, t2, historyToggle,
 }: {
-  contextual: boolean; ongoing: boolean; title: string;
+  contextual: boolean; investigating: boolean; title: string;
   findingId: string | null; findingContext: FindingContext | null;
   findingLoading: boolean; findingError: string | null;
   onNewChat: () => void; onRetryFinding: () => void;
@@ -914,7 +918,7 @@ function InvestigationHeader({
             : { color: t2, background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)" }}>
           {contextual ? "Finding context" : "General"}
         </span>
-        {ongoing && (
+        {investigating && (
           <span role="status" className="inline-flex items-center gap-1.5 text-xs font-semibold"
             style={{ color: isDark ? "#b4a8ff" : "#1F06AC" }}>
             <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full animate-pulse"
@@ -922,7 +926,7 @@ function InvestigationHeader({
             Investigating…
           </span>
         )}
-        <p className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: t1 }} title={title}>{title}</p>
+        <RevAnimatedTitle text={title} className="flex-1 text-sm font-semibold" style={{ color: t1 }} />
         <div className="flex items-center gap-2">
           <button onClick={onNewChat} aria-label="Start a new conversation"
             className={`rev-pill-btn inline-flex min-h-11 items-center gap-1.5 rounded-full border px-4 text-[13px] font-semibold transition-colors duration-200 ${isDark ? "hover:border-[#B4ABFF]" : "hover:border-[#0C0A1D]"}`}
@@ -1029,6 +1033,13 @@ export default function RevIntell() {
   } | null>(null);
 
   const [thinking,       setThinking]       = useState(false);
+  // ChatGPT-style naming: a new conversation shows "New conversation" while
+  // its title is generated after the first answer, then the title types in.
+  // Generated titles are kept here so a history reload that raced the
+  // generation cannot put the draft title back.
+  const [namingId,       setNamingId]       = useState<string | null>(null);
+  const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>({});
+  const titleOverridesRef = useRef<Record<string, string>>({});
   const [menuOpen,       setMenuOpen]       = useState(false);
   const [copied,         setCopied]         = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -1276,7 +1287,8 @@ export default function RevIntell() {
       const page = res.data.data;
       historyOffset.current = offset + page.length;
       setHistoryMore(page.length === HISTORY_PAGE_SIZE);
-      setConversations(previous => [...new Map([...(append ? previous : []), ...page].map(item => [item.id, item])).values()]);
+      const named = page.map(item => titleOverridesRef.current[item.id] ? { ...item, title: titleOverridesRef.current[item.id] } : item);
+      setConversations(previous => [...new Map([...(append ? previous : []), ...named].map(item => [item.id, item])).values()]);
     } catch {
       if (request === historyRequestRef.current) {
         if (append) setHistoryMoreError("More conversations could not be loaded. Please try again.");
@@ -1611,6 +1623,20 @@ export default function RevIntell() {
     return { content: revResponse, payload };
   }
 
+  // ── Conversation naming ───────────────────────────────────────────────────
+  // After the first turn of a new conversation, ask for a model-written title
+  // (the server keeps its varied draft title when the model is unavailable).
+  const nameConversation = useCallback(async (id: string) => {
+    setNamingId(id);
+    const title = await requestConversationTitle(id);
+    if (title) {
+      titleOverridesRef.current = { ...titleOverridesRef.current, [id]: title };
+      setTitleOverrides(titleOverridesRef.current);
+      setConversations(previous => previous.map(conversation => conversation.id === id ? { ...conversation, title } : conversation));
+    }
+    setNamingId(current => current === id ? null : current);
+  }, []);
+
   // ── Send message (streamed) ───────────────────────────────────────────────
   // Streams plan/step/evidence frames so the merchant watches the
   // investigation happen; the final frame is the persisted, validated turn.
@@ -1633,9 +1659,11 @@ export default function RevIntell() {
       if (isCurrent() && turnFindingId && code && FINDING_ERRORS.includes(code)) setFindingError(cleanError(code));
     };
     let turnConversationId = activeId;
+    const startedNewConversation = !activeId;
     const adoptConversation = (id?: string | null) => {
       if (!isCurrent() || !id || id === turnConversationId) return;
       turnConversationId = id;
+      if (startedNewConversation) setNamingId(id);
       conversationRequestRef.current += 1;
       justCreatedIdRef.current = id;
       justCreatedFindingRef.current = turnFindingId ?? null;
@@ -1744,6 +1772,7 @@ export default function RevIntell() {
           turnPendingRef.current = false;
           setThinking(false);
         }
+        if (startedNewConversation && turnConversationId) void nameConversation(turnConversationId);
       }
       return;
     }
@@ -1848,6 +1877,7 @@ export default function RevIntell() {
           persistence: message.persistence !== "persisted" && FINDING_ERRORS.includes(code) ? "not-persisted" : message.persistence }));
       }
     } finally {
+      if (startedNewConversation && turnConversationId) void nameConversation(turnConversationId);
       if (isCurrent()) {
         if (abortRef.current === controller) abortRef.current = null;
         turnPendingRef.current = false;
@@ -1857,7 +1887,7 @@ export default function RevIntell() {
         }
       }
     }
-  }, [activeId, convLoading, convError, convNotFound, findingId, findingContext, findingLoading, findingError, findingRetryDraft, navigate, imageAttachment, loadConversations, returnHint]);
+  }, [activeId, convLoading, convError, convNotFound, findingId, findingContext, findingLoading, findingError, findingRetryDraft, navigate, imageAttachment, loadConversations, returnHint, nameConversation]);
 
   // ── Stop generation ───────────────────────────────────────────────────────
   const stopGeneration = useCallback(() => {
@@ -2206,6 +2236,11 @@ export default function RevIntell() {
     setRenameStatus("saving");
     try {
       await api.patch(`/rev/conversation/${encodeURIComponent(id)}/title`, { title });
+      if (titleOverridesRef.current[id]) {
+        const { [id]: _renamed, ...rest } = titleOverridesRef.current;
+        titleOverridesRef.current = rest;
+        setTitleOverrides(rest);
+      }
       void loadConversations();
       setConversations(prev => prev.map(c => c.id === id ? { ...c, title } : c));
       setRenameStatus("saved");
@@ -2243,13 +2278,14 @@ export default function RevIntell() {
   // The newest Rev turn keeps its action dock visible (older ones reveal on hover).
   const latestRevId = useMemo(() => [...messages].reverse().find(message => message.role === "rev")?.id ?? null, [messages]);
   const starters = useMemo(() => buildStarters(storeContext), [storeContext]);
-  // Phase 5E header: the title is the active conversation's own title from
-  // the history list (never generated), and "ongoing" is the real in-flight
-  // state — never an invented status.
-  const activeTitle = activeId
-    ? (conversations.find(entry => entry.id === activeId)?.title?.trim() || "Untitled conversation")
-    : "New conversation";
-  const ongoing = thinking || messages.some(message => message.isStreaming);
+  // Phase 5E header: the title is the active conversation's stored title (a
+  // model-written or draft title from the server, or the merchant's rename).
+  // A brand-new conversation reads "New conversation" until it is named.
+  const activeTitle = !activeId || namingId === activeId
+    ? "New conversation"
+    : (titleOverrides[activeId] || conversations.find(entry => entry.id === activeId)?.title?.trim() || "Untitled conversation");
+  // "Investigating…" only while a turn is really running store checks.
+  const investigating = messages.some(message => message.isStreaming && (message.steps?.length ?? 0) > 0);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -2283,7 +2319,7 @@ export default function RevIntell() {
 
       <InvestigationHeader
         contextual={findingId !== null || findingContext !== null}
-        ongoing={ongoing}
+        investigating={investigating}
         title={activeTitle}
         findingId={findingId}
         findingContext={findingContext}
