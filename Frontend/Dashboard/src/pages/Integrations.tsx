@@ -599,7 +599,7 @@ export default function Integrations() {
           return (
             <div
               key={platform.id}
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gray-50 shadow-sm transition-colors hover:border-slate-400 hover:bg-white dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-600 dark:hover:bg-slate-900"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gray-50 shadow-sm transition-colors hover:border-slate-400 hover:bg-white dark:border-neutral-800 dark:bg-neutral-950 dark:hover:border-neutral-600 dark:hover:bg-neutral-900"
             >
               <div
                 className="h-[3px] w-full shrink-0"
@@ -687,9 +687,9 @@ export default function Integrations() {
                     const rowState = (topic: string) => rowDetail(topic)?.status ?? "unknown";
                     return (
                       <Fragment key={store.id}>
-                        <div key={store.id} className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-5 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:px-6">
+                        <div key={store.id} className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-5 text-slate-900 shadow-sm dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 sm:px-6">
                           <div className="flex items-center justify-between gap-3">
-                            <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{store.shop_domain}</p>
+                            <p className="truncate text-xs font-medium text-slate-500 dark:text-neutral-400">{store.shop_domain}</p>
                             <IntegrationStatusBadge status={storeState} size="sm" />
                           </div>
                           <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{heading}</h3>
@@ -699,9 +699,9 @@ export default function Integrations() {
                               <p className="mt-1 text-xs opacity-80">Reason: {store.diagnostic.reason_code}. {store.diagnostic.reconnect_eligible ? "Merchant reconnect is available." : store.diagnostic.retry_eligible ? "A bounded retry is available." : "No automatic recovery is claimed."}</p>
                             </div>
                           )}
-                          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{setupDone ? "Your store is connected, all required webhooks are registered, and initial synchronization is complete." : permissionAction ? `Rev needs read access to ${(permissionAction.capabilities ?? []).map(capabilityLabel).join(", ")}. Revluma asks Shopify only for what is missing and resumes automatically after you approve.` : recovering ? "Shopify did not return some data on the last attempt. Revluma is retrying automatically — nothing is needed from you, and Rev's answers say which data is affected." : isRetrying ? "Connecting your store and configuring its webhook subscriptions." : store.setup_status === "failed" || failedCount > 0 ? "Webhook registration or initial synchronization needs attention." : "Store setup is in progress or awaiting verification."}</p>
+                          <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">{setupDone ? "Your store is connected, all required webhooks are registered, and initial synchronization is complete." : permissionAction ? `Rev needs read access to ${(permissionAction.capabilities ?? []).map(capabilityLabel).join(", ")}. Revluma asks Shopify only for what is missing and resumes automatically after you approve.` : recovering ? "Shopify did not return some data on the last attempt. Revluma is retrying automatically. Nothing is needed from you, and Rev's answers say which data is affected." : isRetrying ? "Connecting your store and configuring its webhook subscriptions." : store.setup_status === "failed" || failedCount > 0 ? "Webhook registration or initial synchronization needs attention." : "Store setup is in progress or awaiting verification."}</p>
                           {setupDone && store.sync_status === "complete_with_limitations" && (health?.limitations?.length ?? 0) > 0 && (
-                            <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300">
+                            <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600 dark:border-neutral-800 dark:bg-neutral-900/40 dark:text-neutral-300">
                               <summary className="cursor-pointer font-medium">Data Rev can't use yet ({health?.limitations?.length})</summary>
                               <ul className="mt-2 list-disc space-y-0.5 pl-4">
                                 {health?.limitations?.slice(0, 12).map((item) => <li key={item}>{item}</li>)}
@@ -710,7 +710,7 @@ export default function Integrations() {
                             </details>
                           )}
                           {setupDone && optionalPermissions.length > 0 && (
-                            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                            <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
                               Optional: approve read access to {optionalPermissions.map(capabilityLabel).join(", ")} to let Rev answer questions about them.{" "}
                               <button type="button" disabled={reconnectingStoreIds.includes(store.id)} onClick={() => void handleApproveCapabilities(store, optionalPermissions)} className="font-semibold text-[#007FFF] underline underline-offset-2 disabled:opacity-60">Review in Shopify</button>
                             </p>
@@ -728,11 +728,11 @@ export default function Integrations() {
                                 {reconnectingStoreIds.includes(store.id) ? "Starting secure reconnect…" : "Reconnect Shopify"}
                               </button>
                             )}
-                            <button type="button" onClick={() => setWebhookDetailsStoreId(store.id)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">View diagnostics</button>
+                            <button type="button" onClick={() => setWebhookDetailsStoreId(store.id)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100">View diagnostics</button>
                           </div>
                           {!setupDone && !needsReconnect && !permissionAction && !recovering && store.connection_status === "connected" && (
                             <button type="button" onClick={() => { setWebhookDetailsStoreId(store.id); void handleRetryStoreSetup(store.id); }} disabled={isRetrying}
-                              className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800">
+                              className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800">
                               {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
                               {isRetrying ? "Setup running" : "Retry setup"}
                             </button>
@@ -743,23 +743,23 @@ export default function Integrations() {
                           <SyncProgressCard
                             storeId={store.id}
                             onReconnect={() => void handleReconnect(store)}
-                            className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-900/30"
+                            className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 dark:border-neutral-800 dark:bg-neutral-900/30"
                           />
                         </div>
                         {webhookDetailsStoreId === store.id && createPortal(
                           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Shopify setup details">
                             <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto">
-                              <button type="button" onClick={() => setWebhookDetailsStoreId(null)} aria-label="Cancel and close setup details" className="mb-3 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+                              <button type="button" onClick={() => setWebhookDetailsStoreId(null)} aria-label="Cancel and close setup details" className="mb-3 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800">
                                 <X className="h-4 w-4" /> Cancel
                               </button>
-                              <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:px-6">
+                              <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-slate-900 shadow-sm dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 sm:px-6">
                         <div className="mx-auto w-full max-w-xl">
-                          <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{store.shop_domain}</p>
+                          <p className="truncate text-xs font-medium text-slate-500 dark:text-neutral-400">{store.shop_domain}</p>
                           <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{heading}</h3>
-                          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                          <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
                             {setupDone ? "Your Shopify store is connected and synchronized." : "Connecting your store and configuring its webhook subscriptions."}
                           </p>
-                          <div className="mt-5 mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                          <div className="mt-5 mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-neutral-400">
                             <span>{registeredCount} of {store.webhooks_required ?? 12} webhooks provider-verified</span>
                             <span>Initial sync: {store.diagnostics?.synchronization.status || (store.last_synced_at ? "historical completion recorded" : "pending")}</span>
                             {runningCount > 0 && <span className="font-medium text-teal-700 dark:text-teal-400">{runningCount} in progress</span>}
@@ -777,14 +777,14 @@ export default function Integrations() {
                               return (
                                 <li key={topic} className="relative flex min-h-[66px] gap-3 sm:gap-4">
                                   {index < topics.length - 1 && (
-                                    <span aria-hidden="true" className={cn("absolute left-[13px] top-7 h-[calc(100%-7px)] w-px", lineDone ? "bg-emerald-500/60" : "bg-slate-200 dark:bg-slate-700")} />
+                                    <span aria-hidden="true" className={cn("absolute left-[13px] top-7 h-[calc(100%-7px)] w-px", lineDone ? "bg-emerald-500/60" : "bg-slate-200 dark:bg-neutral-700")} />
                                   )}
-                                  <span aria-label={registered ? "Successful" : failed ? "Failed" : running ? "Running" : notAttempted ? "Not attempted" : "Pending"} className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-slate-50 dark:bg-slate-950", registered ? "border-emerald-600 bg-emerald-600 text-white dark:bg-emerald-600" : failed ? "border-red-500 text-red-600 dark:text-red-400" : running ? "border-teal-600 text-teal-700 dark:text-teal-400" : "border-slate-300 text-slate-400 dark:border-slate-600")}>
+                                  <span aria-label={registered ? "Successful" : failed ? "Failed" : running ? "Running" : notAttempted ? "Not attempted" : "Pending"} className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-slate-50 dark:bg-neutral-950", registered ? "border-emerald-600 bg-emerald-600 text-white dark:bg-emerald-600" : failed ? "border-red-500 text-red-600 dark:text-red-400" : running ? "border-teal-600 text-teal-700 dark:text-teal-400" : "border-slate-300 text-slate-400 dark:border-neutral-600")}>
                                     {registered ? <CheckCircle2 className="h-4 w-4" /> : failed ? <X className="h-4 w-4" /> : running ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <span className="h-2 w-2 rounded-full bg-current opacity-50" />}
                                   </span>
                                   <div className="min-w-0 flex-1 pb-5">
-                                    <p className={cn("text-sm font-medium", registered ? "text-emerald-700 dark:text-emerald-400" : failed ? "text-red-700 dark:text-red-400" : running ? "font-semibold text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400")}>{label}</p>
-                                    <p className={cn("mt-0.5 break-words text-xs", registered ? "text-emerald-700/80 dark:text-emerald-400/80" : failed ? "text-red-600 dark:text-red-400" : running ? "text-teal-700 dark:text-teal-400" : "text-slate-400 dark:text-slate-500")}>
+                                    <p className={cn("text-sm font-medium", registered ? "text-emerald-700 dark:text-emerald-400" : failed ? "text-red-700 dark:text-red-400" : running ? "font-semibold text-slate-900 dark:text-white" : "text-slate-500 dark:text-neutral-400")}>{label}</p>
+                                    <p className={cn("mt-0.5 break-words text-xs", registered ? "text-emerald-700/80 dark:text-emerald-400/80" : failed ? "text-red-600 dark:text-red-400" : running ? "text-teal-700 dark:text-teal-400" : "text-slate-400 dark:text-neutral-500")}>
                                       {registered ? `Provider registration verified. Delivery: ${detail?.delivery?.status || "no evidence"}.` : failed ? (detail?.error || "Registration failed. Check server diagnostics and retry setup.") : running ? "Registration in progress" : notAttempted ? "Missing or not attempted" : "Provider verification unavailable; registration is not claimed healthy"}
                                     </p>
                                   </div>
@@ -792,16 +792,16 @@ export default function Integrations() {
                               );
                             })}
                             <li className="relative flex gap-3 sm:gap-4">
-                              <span aria-hidden="true" className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-slate-50 dark:bg-slate-950", store.last_synced_at ? "border-emerald-600 bg-emerald-600 text-white dark:bg-emerald-600" : syncFailed ? "border-red-500 text-red-600 dark:text-red-400" : syncRunning ? "border-teal-600 text-teal-700 dark:text-teal-400" : "border-slate-300 text-slate-400 dark:border-slate-600")}>
+                              <span aria-hidden="true" className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-slate-50 dark:bg-neutral-950", store.last_synced_at ? "border-emerald-600 bg-emerald-600 text-white dark:bg-emerald-600" : syncFailed ? "border-red-500 text-red-600 dark:text-red-400" : syncRunning ? "border-teal-600 text-teal-700 dark:text-teal-400" : "border-slate-300 text-slate-400 dark:border-neutral-600")}>
                                 {store.last_synced_at ? <CheckCircle2 className="h-4 w-4" /> : syncFailed ? <X className="h-4 w-4" /> : syncRunning ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Clock className="h-4 w-4" />}
                               </span>
                               <div className="min-w-0 flex-1 pb-2">
-                                <p className={cn("text-sm font-medium", store.last_synced_at ? "text-emerald-700 dark:text-emerald-400" : syncFailed ? "text-red-700 dark:text-red-400" : syncRunning ? "font-semibold text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400")}>Synchronizing store data</p>
-                                <p className={cn("mt-0.5 break-words text-xs", syncFailed ? "text-red-600 dark:text-red-400" : "text-slate-400 dark:text-slate-500")}>{store.last_synced_at ? `Completed ${new Date(store.last_synced_at).toLocaleString()}` : syncFailed ? "Initial synchronization failed. Check server diagnostics." : syncRunning ? "Initial synchronization in progress" : "Initial sync pending"}</p>
+                                <p className={cn("text-sm font-medium", store.last_synced_at ? "text-emerald-700 dark:text-emerald-400" : syncFailed ? "text-red-700 dark:text-red-400" : syncRunning ? "font-semibold text-slate-900 dark:text-white" : "text-slate-500 dark:text-neutral-400")}>Synchronizing store data</p>
+                                <p className={cn("mt-0.5 break-words text-xs", syncFailed ? "text-red-600 dark:text-red-400" : "text-slate-400 dark:text-neutral-500")}>{store.last_synced_at ? `Completed ${new Date(store.last_synced_at).toLocaleString()}` : syncFailed ? "Initial synchronization failed. Check server diagnostics." : syncRunning ? "Initial synchronization in progress" : "Initial sync pending"}</p>
                               </div>
                             </li>
                           </ol>
-                          <section aria-label="Resource synchronization" className="mt-5 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                          <section aria-label="Resource synchronization" className="mt-5 rounded-xl border border-slate-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
                             <h4 className="text-sm font-semibold">Resource coverage</h4>
                             <p className="mt-1 text-xs text-slate-500">Counts are recorded execution results, not progress estimates. Required resources must complete pagination before initial sync is complete.</p>
                             <ul className="mt-3 space-y-2">
@@ -814,14 +814,14 @@ export default function Integrations() {
                             </ul>
                           </section>
                           {retryFeedback?.storeId === store.id && (
-                            <p role={retryFeedback.state === "failed" ? "alert" : "status"} className={cn("mt-4 rounded-lg border p-3 text-xs leading-relaxed", retryFeedback.state === "success" ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300" : retryFeedback.state === "failed" ? "border-red-500/25 bg-red-500/5 text-red-700 dark:text-red-300" : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300")}>{retryFeedback.message}</p>
+                            <p role={retryFeedback.state === "failed" ? "alert" : "status"} className={cn("mt-4 rounded-lg border p-3 text-xs leading-relaxed", retryFeedback.state === "success" ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300" : retryFeedback.state === "failed" ? "border-red-500/25 bg-red-500/5 text-red-700 dark:text-red-300" : "border-slate-200 bg-white text-slate-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300")}>{retryFeedback.message}</p>
                           )}
                           {!setupDone && store.connection_status === "connected" && (
                             <button
                               type="button"
                               onClick={() => void handleRetryStoreSetup(store.id)}
                               disabled={isRetrying}
-                              className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                              className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
                             >
                               {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
                               {isRetrying ? "Setup running" : "Retry setup"}
@@ -913,7 +913,7 @@ export default function Integrations() {
           {COMING_SOON.map((p) => (
             <div
               key={p.name}
-              className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-gray-50 px-4 py-3.5 shadow-sm transition-all hover:border-slate-400 hover:bg-white dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-600 dark:hover:bg-slate-900"
+              className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-gray-50 px-4 py-3.5 shadow-sm transition-all hover:border-slate-400 hover:bg-white dark:border-neutral-800 dark:bg-neutral-950 dark:hover:border-neutral-600 dark:hover:bg-neutral-900"
             >
               {p.logo ? (
                 <LogoTile src={p.logo} alt={p.name} size={10} />

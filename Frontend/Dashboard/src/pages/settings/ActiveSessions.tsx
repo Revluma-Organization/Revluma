@@ -102,14 +102,14 @@ export const ActiveSessions: FC = () => {
   const otherSessionsCount = sessions.filter((sess) => !sess.current).length;
 
   return (
-    <div className="w-full max-w-5xl space-y-8 text-slate-900 dark:text-slate-100">
+    <div className="w-full max-w-5xl space-y-8 text-slate-900 dark:text-neutral-100">
       {/* Page Header */}
-      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-6 dark:border-slate-800 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-6 dark:border-neutral-800 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
             Active Sessions
           </h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          <p className="mt-1 text-sm text-slate-600 dark:text-neutral-400">
             Manage signed-in devices across your Revluma workspace account and revoke suspicious logins.
           </p>
         </div>
@@ -120,7 +120,7 @@ export const ActiveSessions: FC = () => {
             variant="outline"
             onClick={fetchSessions}
             disabled={isLoading}
-            className="border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white sm:text-sm"
+            className="border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-white sm:text-sm"
           >
             <RefreshCw className={`mr-2 h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
             <span>Refresh</span>
@@ -155,7 +155,7 @@ export const ActiveSessions: FC = () => {
             <button
               type="button"
               onClick={() => setFeedbackMessage(null)}
-              className="rounded p-1 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+              className="rounded p-1 text-slate-500 hover:text-slate-900 dark:text-neutral-400 dark:hover:text-white"
               aria-label="Dismiss notification"
             >
               <X className="h-4 w-4" />
@@ -165,7 +165,7 @@ export const ActiveSessions: FC = () => {
       </AnimatePresence>
 
       {/* Security Tip Banner */}
-      <div className="flex items-start gap-3 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 text-xs text-slate-700 dark:text-slate-300 sm:text-sm">
+      <div className="flex items-start gap-3 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 text-xs text-slate-700 dark:text-neutral-300 sm:text-sm">
         <AlertTriangle className="h-5 w-5 shrink-0 text-sky-400 mt-0.5" />
         <p className="leading-relaxed">
           If you spot a device or location you do not recognize, revoke its session immediately and update your workspace account password.
@@ -178,15 +178,15 @@ export const ActiveSessions: FC = () => {
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
             Signed-in Devices ({sessions.length})
           </h2>
-          <span className="text-xs text-slate-500 dark:text-slate-500">
+          <span className="text-xs text-slate-500 dark:text-neutral-500">
             Current session highlighted in emerald
           </span>
         </div>
 
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-100/40 py-16 dark:border-slate-800 dark:bg-slate-900/40">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-100/40 py-16 dark:border-neutral-800 dark:bg-neutral-900/40">
             <Loader2 className="h-8 w-8 animate-spin text-sky-400" />
-            <p className="mt-3 text-sm font-medium text-slate-500 dark:text-slate-400">
+            <p className="mt-3 text-sm font-medium text-slate-500 dark:text-neutral-400">
               Fetching active device sessions...
             </p>
           </div>
@@ -203,13 +203,13 @@ export const ActiveSessions: FC = () => {
                   transition={{ duration: 0.25 }}
                   className={`flex flex-col justify-between gap-4 rounded-2xl border p-5 shadow-xl transition-all duration-300 sm:flex-row sm:items-center ${
                     session.current
-                      ? "border-emerald-500/40 bg-white shadow-emerald-500/5 dark:bg-slate-900/80"
-                      : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900/50 dark:hover:border-slate-700/80"
+                      ? "border-emerald-500/40 bg-white shadow-emerald-500/5 dark:bg-neutral-900/80"
+                      : "border-slate-200 bg-white hover:border-slate-300 dark:border-neutral-800 dark:bg-neutral-900/50 dark:hover:border-neutral-700/80"
                   }`}
                 >
                   {/* Left Device Info */}
                   <div className="flex items-start gap-4 sm:items-center">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-950">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 dark:border-neutral-800 dark:bg-neutral-950">
                       {getDeviceIcon(session.device)}
                     </div>
 
@@ -218,14 +218,14 @@ export const ActiveSessions: FC = () => {
                         <span className="font-bold text-slate-900 dark:text-white">
                           {session.device}
                         </span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                        <span className="text-xs text-slate-500 dark:text-neutral-400">
                           — {session.browser} ({session.os})
                         </span>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-neutral-400">
                         <span className="inline-flex items-center gap-1">
-                          <MapPin className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+                          <MapPin className="h-3.5 w-3.5 text-slate-400 dark:text-neutral-500" />
                           <span>{session.location}</span>
                         </span>
 
@@ -262,7 +262,7 @@ export const ActiveSessions: FC = () => {
                         onClick={() =>
                           handleRevokeSession(session.id, session.device)
                         }
-                        className="border-slate-300 bg-white text-xs font-semibold text-slate-700 transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-red-500/30 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                        className="border-slate-300 bg-white text-xs font-semibold text-slate-700 transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-600 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-300 dark:hover:border-red-500/30 dark:hover:bg-red-500/10 dark:hover:text-red-300"
                       >
                         <span>Revoke</span>
                       </Button>
@@ -274,11 +274,11 @@ export const ActiveSessions: FC = () => {
 
             {/* Empty state if no extra devices are found */}
             {(sessions.length === 0 || otherSessionsCount === 0) && (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-100/50 p-8 text-center dark:border-slate-800 dark:bg-slate-900/30">
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-100/50 p-8 text-center dark:border-neutral-800 dark:bg-neutral-900/30">
+                <p className="text-sm font-medium text-slate-700 dark:text-neutral-300">
                   No other active device sessions found.
                 </p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-neutral-500">
                   You are only logged in on this current device.
                 </p>
               </div>

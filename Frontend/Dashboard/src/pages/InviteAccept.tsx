@@ -34,7 +34,7 @@ const InviteAccept: FC = () => {
   // No token provided
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950 px-4">
         <div className="max-w-sm w-full text-center space-y-6">
           <div className="h-16 w-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto">
             <AlertCircle className="h-7 w-7 text-red-500" />
@@ -59,7 +59,7 @@ const InviteAccept: FC = () => {
   // Waiting for hydration
   if (!isHydrated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950">
         <Loader2 className="h-6 w-6 animate-spin text-t3" />
       </div>
     );
@@ -68,7 +68,7 @@ const InviteAccept: FC = () => {
   // Not logged in — prompt to log in
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950 px-4">
         <div className="max-w-sm w-full text-center space-y-6">
           <div className="h-16 w-16 rounded-full bg-[hsl(var(--accent)/0.1)] border border-[hsl(var(--accent)/0.2)] flex items-center justify-center mx-auto">
             <span className="text-2xl font-bold text-[hsl(var(--accent))]">R</span>
@@ -112,7 +112,7 @@ const InviteAccept: FC = () => {
   // Loading
   if (status === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950">
         <div className="text-center space-y-4">
           <Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--accent))] mx-auto" />
           <p className="text-sm text-t3">Accepting your invitation...</p>
@@ -124,7 +124,7 @@ const InviteAccept: FC = () => {
   // Success
   if (status === "success") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950 px-4">
         <div className="max-w-sm w-full text-center space-y-6">
           <div className="h-16 w-16 rounded-full bg-[#007FFF]/10 border border-[#007FFF]/20 flex items-center justify-center mx-auto">
             <CheckCircle2 className="h-7 w-7 text-[#007FFF]" />
@@ -148,7 +148,7 @@ const InviteAccept: FC = () => {
 
   // Error
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950 px-4">
       <div className="max-w-sm w-full text-center space-y-6">
         <div className="h-16 w-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto">
           <AlertCircle className="h-7 w-7 text-red-500" />

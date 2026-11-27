@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { Sheet, SheetTrigger } from "@/components/ui/sheet";
 import { FindingDetailsDrawer } from "./FindingDetailsDrawer";
 import { StateBadge } from "./StateBadge";
-import { cc, palette } from "./tokens";
+import { cc, palette, roleColor } from "./tokens";
 import {
   categoryLabelFor,
   confidenceLabelFor,
@@ -121,7 +121,7 @@ function ImpactMeter({ level, severity }: { level: number; severity: SeverityMet
             style={
               bar <= level
                 ? { background: `linear-gradient(90deg, ${severity.base}, ${severity.deep})` }
-                : { backgroundColor: palette.line.DEFAULT }
+                : { backgroundColor: roleColor("line") }
             }
           />
         ))}
@@ -205,8 +205,8 @@ export function PriorityFindingCard({
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase leading-4 tracking-[0.06em]"
                     style={{
-                      borderColor: severity.border,
-                      background: severity.softBg,
+                      borderColor: roleColor("severityBorder", finding.severity),
+                      background: roleColor("severitySoft", finding.severity),
                       color: severity.deep,
                     }}
                   >

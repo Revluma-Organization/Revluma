@@ -5,7 +5,7 @@ import { ArrowRight, ShieldAlert, ShieldCheck, Sparkles, X } from "lucide-react"
 import { cn } from "@/lib/utils";
 import { SheetOverlay, SheetPortal, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { StateBadge } from "./StateBadge";
-import { cc, palette } from "./tokens";
+import { cc, palette, roleColor } from "./tokens";
 import {
   categoryLabelFor,
   confidenceTextFor,
@@ -115,15 +115,16 @@ export function FindingDetailsDrawer({
     <SheetPortal>
       <SheetOverlay className="bg-scrim/45 backdrop-blur-[2px] motion-reduce:animate-none" />
       <SheetPrimitive.Content
+        data-cc-drawer=""
         aria-label={`Full details for priority ${rank}: ${finding.title}`}
         style={{
           background:
             `radial-gradient(420px 200px at 90% -60px, ${severity.glowRgba}, transparent 70%), ` +
             "radial-gradient(480px 200px at 12% -40px, rgba(68, 56, 232, 0.10), transparent 65%), " +
             "radial-gradient(360px 180px at 100% 30%, rgba(20, 184, 166, 0.08), transparent 60%), " +
-            "linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(247,248,255,0.9) 100%)",
+            "linear-gradient(180deg, rgb(var(--rv-surface-panel) / 0.94) 0%, rgb(var(--rv-surface-veil) / 0.9) 100%)",
           boxShadow:
-            "0 0 60px -12px rgba(31, 6, 172, 0.25), inset 1px 0 0 rgba(255, 255, 255, 0.9)",
+            "0 0 60px -12px rgba(31, 6, 172, 0.25), inset 1px 0 0 rgb(var(--rv-surface-panel) / 0.9)",
         }}
         className={cn(
           "fixed inset-y-0 right-0 z-50 flex h-full w-[min(560px,94vw)] flex-col border-l border-white/60 bg-white/85 backdrop-blur-2xl outline-none",
@@ -137,7 +138,7 @@ export function FindingDetailsDrawer({
         <div
           className="relative shrink-0 border-b border-white/60 bg-white/50 px-5 pb-4 pt-5 backdrop-blur-md sm:px-6"
           style={{
-            background: `radial-gradient(420px 150px at 90% -50px, ${severity.glowRgba}, transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.2) 100%)`,
+            background: `radial-gradient(420px 150px at 90% -50px, ${severity.glowRgba}, transparent 70%), linear-gradient(180deg, rgb(var(--rv-surface-panel) / 0.55) 0%, rgb(var(--rv-surface-panel) / 0.2) 100%)`,
           }}
         >
           <div className="flex items-center justify-between gap-3 pr-10">
@@ -154,9 +155,9 @@ export function FindingDetailsDrawer({
               aria-hidden="true"
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
               style={{
-                borderColor: severity.border,
-                background: `linear-gradient(140deg, white 0%, ${severity.softBg} 100%)`,
-                boxShadow: `0 6px 14px -8px ${severity.glowRgba}, inset 0 1px 0 rgba(255, 255, 255, 0.9)`,
+                borderColor: roleColor("severityBorder", finding.severity),
+                background: `linear-gradient(140deg, ${roleColor("surface", "panel")} 0%, ${roleColor("severitySoft", finding.severity)} 100%)`,
+                boxShadow: `0 6px 14px -8px ${severity.glowRgba}, inset 0 1px 0 ${roleColor("surface", "panel", 0.9)}`,
                 color: severity.deep,
               }}
             >
@@ -236,9 +237,9 @@ export function FindingDetailsDrawer({
                     className="min-w-0 rounded-xl border border-white/60 bg-white/70 px-3.5 py-3 backdrop-blur-md"
                     style={{
                       background:
-                        "linear-gradient(180deg, rgba(240, 237, 255, 0.6) 0%, rgba(255, 255, 255, 0.75) 100%)",
+                        "linear-gradient(180deg, rgb(var(--rv-brand-soft) / 0.6) 0%, rgb(var(--rv-surface-panel) / 0.75) 100%)",
                       boxShadow:
-                        "inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
+                        "inset 0 1px 1px rgb(var(--rv-surface-panel) / 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
                     }}
                   >
                     <p className="truncate text-[10.5px] font-semibold uppercase tracking-[0.07em] text-ink-tertiary">
@@ -258,7 +259,7 @@ export function FindingDetailsDrawer({
                 className="mt-2.5 rounded-xl border border-white/60 bg-white/70 px-3.5 py-3 text-[12.5px] text-ink-tertiary backdrop-blur-md"
                 style={{
                   boxShadow:
-                    "inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
+                    "inset 0 1px 1px rgb(var(--rv-surface-panel) / 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
                 }}
               >
                 No verified observations recorded for this finding.
@@ -344,7 +345,7 @@ export function FindingDetailsDrawer({
               className="mt-5 rounded-xl border border-white/60 bg-white/70 px-4 py-4 backdrop-blur-md"
               style={{
                 boxShadow:
-                  "inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
+                  "inset 0 1px 1px rgb(var(--rv-surface-panel) / 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
               }}
             >
               <div className="divide-y divide-slate-200/70">
@@ -398,7 +399,7 @@ export function FindingDetailsDrawer({
             className="mt-5 rounded-xl border border-white/60 bg-white/70 px-4 py-4 backdrop-blur-md"
             style={{
               boxShadow:
-                "inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
+                "inset 0 1px 1px rgb(var(--rv-surface-panel) / 0.9), 0 2px 10px -3px rgba(15, 23, 42, 0.06)",
             }}
           >
             <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] text-ink-tertiary">

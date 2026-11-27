@@ -113,7 +113,7 @@ export function DashboardLayout() {
   return (
     <div className="app-h flex w-full overflow-hidden bg-bg">
       <Sidebar />
-      <main tabIndex={-1} className={`cc-scroll flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden ${commandCenter ? shell.workspace : "bg-bg"}`}>
+      <main tabIndex={-1} className={`cc-scroll flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden ${commandCenter ? `${shell.workspace} dark:bg-black dark:text-ink` : "bg-bg"}`}>
         <Topbar section={resolveSectionTitle(basePath, searchParams.get("section"))} lightWorkspace={commandCenter} />
         <div className={commandCenter ? "px-4 py-6 sm:px-6 sm:py-7 lg:px-10 lg:py-8" : "px-3 py-5 sm:px-6 sm:py-6 lg:px-8"}>
           <AnimatePresence mode="wait">

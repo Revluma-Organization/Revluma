@@ -7,7 +7,7 @@ export function WorkspaceStatus({ state, title, message, onRetry, retryLabel = "
   title: string; message: string; onRetry?: () => void; retryLabel?: string; compact?: boolean; announcementId?: string; retryDisabled?: boolean;
 }) {
   const Icon = state === "loading" ? Loader2 : state === "success" ? CheckCircle2 : state === "partial" ? Clock3 : AlertCircle;
-  return <section aria-label={title} className={cn("rounded-xl border p-4 text-left", state === "error" ? "border-[#FDA29B] bg-[#FFFBFA] text-[#912018]" : state === "success" ? "border-[#A6F4C5] bg-[#F6FEF9] text-[#05603A]" : state === "partial" ? "border-[#FEDF89] bg-[#FFFCF5] text-[#93370D]" : "border-[#8490A3] bg-white text-[#344054]", compact && "p-3")}>
+  return <section data-rv-themed="" aria-label={title} className={cn("rounded-xl border p-4 text-left", state === "error" ? "border-[#FDA29B] bg-[#FFFBFA] text-[#912018]" : state === "success" ? "border-[#A6F4C5] bg-[#F6FEF9] text-[#05603A]" : state === "partial" ? "border-[#FEDF89] bg-[#FFFCF5] text-[#93370D]" : "border-[#8490A3] bg-white text-[#344054]", compact && "p-3")}>
     <div className="flex items-start gap-3">
       <Icon aria-hidden="true" className={cn("mt-0.5 h-5 w-5 shrink-0", state === "loading" && "animate-spin motion-reduce:animate-none")} />
       <div className="min-w-0 flex-1">

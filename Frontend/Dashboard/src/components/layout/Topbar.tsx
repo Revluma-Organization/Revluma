@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useState, useEffect } from 'react';
 import { WorkspaceSelection } from '../WorkspaceSelection';
 import { cn } from '@/lib/utils';
+import { useThemeStore } from '@/store/themeStore';
 
 export function Topbar({ section = 'Overview', lightWorkspace = false }: { section?: string; lightWorkspace?: boolean }) {
   const { mobileSidebarOpen, setMobileSidebarOpen, setCmdOpen, setNotifOpen, notifOpen, startTour } = useUI();
@@ -18,9 +19,13 @@ export function Topbar({ section = 'Overview', lightWorkspace = false }: { secti
   }, []);
 
   const hasUnread = unreadCount !== null && unreadCount > 0;
+  // The light Command Center skin applies only in light mode; in dark mode the
+  // bar uses the shared pure-black tokens like every other dashboard screen.
+  const theme = useThemeStore((state) => state.theme);
+  const lightSkin = lightWorkspace && theme !== 'dark';
 
   return (
-    <header className={`sticky top-0 z-40 flex h-[var(--topbar-h)] shrink-0 items-center justify-between border-b px-4 sm:px-6 lg:px-8 ${lightWorkspace ? "border-[#E7E9EF] bg-white text-[#17191F] [&_.text-t1]:text-[#17191F] [&_.text-t2]:text-[#343844] [&_.text-t3]:text-[#707582] [&_.text-t4]:text-[#98A2B3] [&_.border-border]:border-[#E7E9EF] [&_.bg-bg-3]:bg-[#F4F5F8]" : "border-border bg-bg"}`}>
+    <header className={`sticky top-0 z-40 flex h-[var(--topbar-h)] shrink-0 items-center justify-between border-b px-4 sm:px-6 lg:px-8 ${lightSkin ? "border-[#E7E9EF] bg-white text-[#17191F] [&_.text-t1]:text-[#17191F] [&_.text-t2]:text-[#343844] [&_.text-t3]:text-[#707582] [&_.text-t4]:text-[#98A2B3] [&_.border-border]:border-[#E7E9EF] [&_.bg-bg-3]:bg-[#F4F5F8]" : "border-border bg-bg"}`}>
       
       {/* Left Side: Breadcrumbs & Mobile Menu */}
       <div className="flex items-center gap-3.5">
@@ -61,7 +66,7 @@ export function Topbar({ section = 'Overview', lightWorkspace = false }: { secti
           data-tour="topbar-rev"
           className="flex h-[34px] items-center gap-2 rounded-lg border px-3 text-[0.76rem] font-semibold transition-all hover:opacity-90"
           style={
-            lightWorkspace
+            lightSkin
               ? { background: 'rgba(68,56,232,0.08)', borderColor: 'rgba(68,56,232,0.22)', color: '#4438E8' }
               : { background: 'rgba(88,101,242,0.1)', borderColor: 'rgba(88,101,242,0.25)', color: '#5865f2' }
           }

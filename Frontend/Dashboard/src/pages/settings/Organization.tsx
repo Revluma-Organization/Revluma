@@ -142,9 +142,9 @@ export const Organization: FC = () => {
   };
 
   return (
-    <div className="w-full max-w-4xl space-y-8 text-slate-900 dark:text-slate-100">
+    <div className="w-full max-w-4xl space-y-8 text-slate-900 dark:text-neutral-100">
       {/* Header section */}
-      <div className="border-b border-slate-200 dark:border-slate-800 pb-6">
+      <div className="border-b border-slate-200 dark:border-neutral-800 pb-6">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
             <Building2 className="h-6 w-6" />
@@ -153,7 +153,7 @@ export const Organization: FC = () => {
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
               Organization
             </h1>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            <p className="mt-1 text-sm text-slate-600 dark:text-neutral-400">
               Manage your core workspace identity, logo, and public URL slug.
             </p>
           </div>
@@ -167,13 +167,13 @@ export const Organization: FC = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50 p-6 shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-slate-700/80 sm:p-8"
+          className="rounded-2xl border border-slate-200 bg-white dark:border-neutral-800 dark:bg-neutral-900/50 p-6 shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-neutral-700/80 sm:p-8"
         >
           <div className="space-y-2">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
               Workspace Logo
             </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
+            <p className="text-sm text-slate-600 dark:text-neutral-400">
               This logo will be displayed across dashboard reports, customer communications, and member invites.
             </p>
           </div>
@@ -210,7 +210,7 @@ export const Organization: FC = () => {
                 <Upload className="h-4 w-4 text-sky-400" />
                 <span>Upload Image</span>
               </Button>
-              <p className="text-center text-xs text-slate-500 dark:text-slate-500 sm:text-left">
+              <p className="text-center text-xs text-slate-500 dark:text-neutral-500 sm:text-left">
                 Recommended size: 400x400px. PNG, JPG, or WEBP up to 5MB.
               </p>
             </div>
@@ -222,13 +222,13 @@ export const Organization: FC = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.1 }}
-          className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50 p-6 shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-slate-700/80 sm:p-8"
+          className="rounded-2xl border border-slate-200 bg-white dark:border-neutral-800 dark:bg-neutral-900/50 p-6 shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-neutral-700/80 sm:p-8"
         >
           <div className="space-y-2">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
               Workspace Details
             </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
+            <p className="text-sm text-slate-600 dark:text-neutral-400">
               Configure your organization name, URL slug, and industry classification.
             </p>
           </div>
@@ -238,7 +238,7 @@ export const Organization: FC = () => {
             <div className="space-y-2">
               <Label
                 htmlFor="org-name"
-                className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                className="text-sm font-medium text-slate-700 dark:text-neutral-300"
               >
                 Organization Name
               </Label>
@@ -252,7 +252,7 @@ export const Organization: FC = () => {
                 }}
                 placeholder="e.g. Revluma Inc."
                 required
-                className="h-11 w-full border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-100 dark:placeholder:text-slate-500 focus-visible:border-sky-500 focus-visible:ring-1 focus-visible:ring-sky-500/30"
+                className="h-11 w-full border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 dark:border-neutral-700 dark:bg-neutral-950/80 dark:text-neutral-100 dark:placeholder:text-neutral-500 focus-visible:border-sky-500 focus-visible:ring-1 focus-visible:ring-sky-500/30"
               />
             </div>
 
@@ -260,12 +260,12 @@ export const Organization: FC = () => {
             <div className="space-y-2">
               <Label
                 htmlFor="org-slug"
-                className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                className="text-sm font-medium text-slate-700 dark:text-neutral-300"
               >
                 Workspace Slug
               </Label>
-              <div className="flex h-11 w-full overflow-hidden rounded-lg border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-950/80 transition-all focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/30">
-                <span className="flex select-none items-center border-r border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900/80 px-3 font-mono text-sm text-slate-500 dark:text-slate-400 sm:px-4">
+              <div className="flex h-11 w-full overflow-hidden rounded-lg border border-slate-300 bg-white dark:border-neutral-700 dark:bg-neutral-950/80 transition-all focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/30">
+                <span className="flex select-none items-center border-r border-slate-200 bg-slate-100 dark:border-neutral-800 dark:bg-neutral-900/80 px-3 font-mono text-sm text-slate-500 dark:text-neutral-400 sm:px-4">
                   revluma.com/
                 </span>
                 <input
@@ -275,10 +275,10 @@ export const Organization: FC = () => {
                   onChange={handleSlugChange}
                   placeholder="e.g. my-awesome-store"
                   required
-                  className="flex-1 bg-transparent px-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
+                  className="flex-1 bg-transparent px-3 text-sm text-slate-900 dark:text-neutral-100 placeholder:text-slate-400 dark:placeholder:text-neutral-500 focus:outline-none"
                 />
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-neutral-500">
                 Only lowercase letters, numbers, and hyphens are allowed.
               </p>
             </div>
@@ -287,7 +287,7 @@ export const Organization: FC = () => {
             <div className="space-y-3">
               <Label
                 htmlFor="org-industry"
-                className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                className="text-sm font-medium text-slate-700 dark:text-neutral-300"
               >
                 Industry / Category
               </Label>
@@ -300,7 +300,7 @@ export const Organization: FC = () => {
               >
                 <SelectTrigger
                   id="org-industry"
-                  className="h-11 w-full border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-100 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30"
+                  className="h-11 w-full border-slate-300 bg-white text-slate-900 dark:border-neutral-700 dark:bg-neutral-950/80 dark:text-neutral-100 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30"
                 >
                   <SelectValue placeholder="Select an industry category..." />
                 </SelectTrigger>
@@ -348,7 +348,7 @@ export const Organization: FC = () => {
                         setSaveStatus("idle");
                       }}
                       placeholder="e.g. Aerospace Engineering, Sustainable Energy..."
-                      className="h-11 w-full border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/90 dark:text-slate-100 dark:placeholder:text-slate-500 focus-visible:border-sky-500 focus-visible:ring-1 focus-visible:ring-sky-500/30"
+                      className="h-11 w-full border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 dark:border-neutral-700 dark:bg-neutral-950/90 dark:text-neutral-100 dark:placeholder:text-neutral-500 focus-visible:border-sky-500 focus-visible:ring-1 focus-visible:ring-sky-500/30"
                       autoFocus
                     />
                   </motion.div>
