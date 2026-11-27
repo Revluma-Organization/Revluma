@@ -1459,6 +1459,7 @@ async function checkPythonHealth() {
 
 const INVESTIGATION_CONTRACT = 'rev-investigation-v1';
 const TITLE_TIMEOUT_MS = parseInt(process.env.ML_TITLE_TIMEOUT_MS || '9000', 10);
+const PUNCTUATE_TIMEOUT_MS = parseInt(process.env.ML_PUNCTUATE_TIMEOUT_MS || '9000', 10);
 const STREAM_TIMEOUT_MS = parseInt(process.env.ML_STREAM_TIMEOUT_MS || String(TIMEOUT_POLICY_MS.overallInvestigation), 10);
 
 function authorizedContextStoreIds(contextPayload) {
@@ -2061,6 +2062,23 @@ async function generateConversationTitle({ message, reply = '', intent = null, c
   return { success: true, data: { title } };
 }
 
+// Punctuation for dictated speech (python /rev/punctuate). The caller checks
+// the result with services/dictationPunctuation before using it.
+async function punctuateDictation({ text, correlationId } = {}) {
+  const result = await pythonRequest({
+    path: '/rev/punctuate',
+    body: { text: String(text || '').slice(0, 2000) },
+    correlationId: getCorrelationId(correlationId),
+    timeout: PUNCTUATE_TIMEOUT_MS,
+  });
+  if (!result.success) return result;
+  const punctuated = result.data && typeof result.data.text === 'string' ? result.data.text : null;
+  if (!punctuated) {
+    return { success: false, error: { code: ML_ERRORS.INVALID_RESPONSE, message: 'Punctuation unavailable.' } };
+  }
+  return { success: true, data: { text: punctuated } };
+}
+
 async function getToolCatalog({ correlationId } = {}) {
   const result = await pythonRequest({
     method: 'GET', path: '/rev/tools', correlationId: getCorrelationId(correlationId),
@@ -2083,6 +2101,7 @@ module.exports = {
     streamInvestigation,
     getToolCatalog,
     generateConversationTitle,
+    punctuateDictation,
     rfmSync,
     computeFeatures,
     predictAbandonment,

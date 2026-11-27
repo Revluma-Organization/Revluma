@@ -40,6 +40,7 @@ import { RevAnimatedTitle } from "@/components/rev/RevAnimatedTitle";
 import { RevComposerAttachment, RevSentImage } from "@/components/rev/RevImageAttachment";
 import { RevDictationBar } from "@/components/rev/RevDictationBar";
 import { useDictation, DICTATION_ERROR_MESSAGES } from "@/lib/useDictation";
+import { polishDictation } from "@/lib/dictationPolish";
 import { requestConversationTitle } from "@/lib/revTitle";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
@@ -654,7 +655,7 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, onDictate
 
   // Voice input (ChatGPT-style dictation, words stream into the field live).
   // See lib/useDictation.ts for the engine and RevDictationBar for the UI.
-  const dictation = useDictation({ value, onChange: text => onDictate?.(text), maxLength });
+  const dictation = useDictation({ value, onChange: text => onDictate?.(text), maxLength, polish: polishDictation });
   const dictating = dictation.active;
   const voiceBlocked = Boolean(disabled || thinking || !onDictate);
   const { stop: stopDictation, cancel: cancelDictation, clearError: clearDictationError } = dictation;
@@ -668,9 +669,10 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, onDictate
     });
   }, [inputRef]);
   const finishDictation = useCallback(() => { stopDictation(); focusFieldEnd(); }, [stopDictation, focusFieldEnd]);
+  const haltDictation = useCallback(() => stopDictation({ polish: false }), [stopDictation]);
   const abandonDictation = useCallback(() => { cancelDictation(); focusFieldEnd(); }, [cancelDictation, focusFieldEnd]);
   // Generation starting or the composer locking always ends dictation.
-  useEffect(() => { if (voiceBlocked) stopDictation(); }, [voiceBlocked, stopDictation]);
+  useEffect(() => { if (voiceBlocked) haltDictation(); }, [voiceBlocked, haltDictation]);
   const startDictation = () => {
     void dictation.start();
     // Keep keyboard focus in the field (the mic button is replaced by the
@@ -680,7 +682,8 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, onDictate
   const dictationErrorId = useId();
   const handleFieldKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = event => {
     // Sending mid-dictation keeps what was transcribed, then sends it.
-    if (dictating && event.key === "Enter" && !event.shiftKey) stopDictation();
+    // No polish pass: the question is sent as shown.
+    if (dictating && event.key === "Enter" && !event.shiftKey) stopDictation({ polish: false });
     onKeyDown(event);
   };
   const handleFieldChange: React.ChangeEventHandler<HTMLTextAreaElement> = event => {
@@ -723,7 +726,13 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, onDictate
           {DICTATION_ERROR_MESSAGES[dictation.error]}
         </p>
       )}
-      <span className="sr-only" role="status">{dictation.listening ? "Listening. Your words appear in the message field." : ""}</span>
+      {dictation.polishing && !dictating && (
+        <p data-rev-dictation-polishing="" className="m-0 flex items-center gap-1.5 px-5 pb-1 text-[0.72rem]" style={{ color: t2 }}>
+          <span aria-hidden="true" className="rv-rec-dot h-1.5 w-1.5 rounded-full" style={{ background: isDark ? "#B4A8FF" : "#2B13CF" }} />
+          Adding punctuation…
+        </p>
+      )}
+      <span className="sr-only" role="status">{dictation.listening ? "Listening. Your words appear in the message field." : dictation.polishing ? "Adding punctuation." : ""}</span>
       {dictating ? (
         <RevDictationBar startedAt={dictation.startedAt} stream={dictation.stream}
           activityRef={dictation.activityRef} starting={dictation.starting}

@@ -1615,6 +1615,32 @@ async def rev_conversation_title(req: TitleRequest):
     return {"title": title}
 
 
+class PunctuateRequest(BaseModel):
+    """Raw dictated words from the composer, sent by Node for punctuation."""
+    model_config = ConfigDict(extra="ignore")
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
+@app.post("/rev/punctuate", dependencies=[Depends(verify_internal_caller)])
+async def rev_punctuate_dictation(req: PunctuateRequest):
+    """Punctuate dictated speech without changing its words.
+
+    503 when the model is unavailable, 422 when its output was unusable or
+    changed the words; the dashboard keeps its on-device formatting then.
+    """
+    from src.agents.dictation_punctuation import punctuate_dictation
+
+    try:
+        text = await run_in_threadpool(punctuate_dictation, req.text)
+    except ValueError as exc:
+        logger.info("rev_punctuate_rejected error_type=%s", type(exc).__name__)
+        raise HTTPException(status_code=422, detail="Punctuation unavailable.") from exc
+    except Exception as exc:
+        logger.warning("rev_punctuate_unavailable error_type=%s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Punctuation unavailable.") from exc
+    return {"text": text}
+
+
 @app.get("/internal/rev/metrics", dependencies=[Depends(verify_internal_caller)])
 def rev_operational_metrics():
     """Internal-only low-cardinality metrics snapshot; never exposes request IDs."""

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { appendInterim, appendPhrase, finishSentence } from "./dictationText";
 
 // Live voice dictation for the Rev composer (ChatGPT-style voice input, with
 // words appearing in the field while the merchant speaks).
@@ -20,6 +21,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 //   merchant has not stopped, it is restarted transparently and the words
 //   already captured are kept.
 // - Hard limits: the composer's max length and MAX_DICTATION_MS.
+// - Punctuation: each recognised phrase is formatted as written prose on the
+//   device as it arrives (lib/dictationText.ts). On stop, the optional
+//   `polish` callback (a guarded model pass on the server) may refine it; the
+//   result is applied only if the field still shows the dictated text.
+// - Network drops: Chrome's speech service occasionally fails with "network".
+//   That is retried with backoff (falling back to on-device recognition where
+//   the browser offers it) and only reported after repeated failures. Words
+//   already captured are always kept.
 
 export const MAX_DICTATION_MS = 3 * 60 * 1000;
 
@@ -27,6 +36,7 @@ export type DictationError =
   | "permission"
   | "no-microphone"
   | "network"
+  | "blocked"
   | "language"
   | "unsupported"
   | "failed";
@@ -34,7 +44,8 @@ export type DictationError =
 export const DICTATION_ERROR_MESSAGES: Record<DictationError, string> = {
   permission: "Microphone access is blocked. Allow it for this site in your browser settings, then try again.",
   "no-microphone": "No microphone was found. Connect one and try again.",
-  network: "Voice input couldn't reach your browser's speech service. Check your connection and try again.",
+  network: "Voice input lost its connection to your browser's speech service. Your words are kept. Tap the mic to continue.",
+  blocked: "This browser blocks its speech service. Try Chrome, Edge or Safari.",
   language: "Voice input isn't available for your browser language yet.",
   unsupported: "Voice input isn't supported in this browser. Try Chrome, Edge or Safari.",
   failed: "Voice input stopped unexpectedly. Please try again.",
@@ -48,16 +59,25 @@ interface SpeechEventLike { resultIndex: number; results: SpeechResultListLike }
 interface SpeechErrorEventLike { error: string }
 export interface SpeechRecognitionLike {
   lang: string; continuous: boolean; interimResults: boolean; maxAlternatives: number;
+  /** Chrome 139+: on-device recognition (no network). */
+  processLocally?: boolean;
   onresult: ((event: SpeechEventLike) => void) | null;
   onerror: ((event: SpeechErrorEventLike) => void) | null;
   onend: (() => void) | null;
   onstart: (() => void) | null;
   start: () => void; stop: () => void; abort: () => void;
 }
-type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+type SpeechRecognitionCtor = (new () => SpeechRecognitionLike) & {
+  available?: (options: { langs: string[]; processLocally: boolean }) => Promise<string>;
+};
+
+// Brave exposes webkitSpeechRecognition but blocks Google's speech service, so
+// every session fails with "network". Treat it as unsupported up front.
+const isBrave = () => typeof navigator !== "undefined" && Boolean((navigator as unknown as { brave?: unknown }).brave);
 
 export function getSpeechRecognition(): SpeechRecognitionCtor | null {
   if (typeof window === "undefined") return null;
+  if (isBrave()) return null;
   const w = window as unknown as { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
@@ -68,6 +88,17 @@ export function joinDictation(prefix: string, spoken: string): string {
   if (!words) return prefix;
   if (!prefix.trim()) return words.charAt(0).toUpperCase() + words.slice(1);
   return /\s$/.test(prefix) ? prefix + words : `${prefix} ${words}`;
+}
+
+/** True when the browser can recognise this language on the device (Chrome 139+). */
+async function canRecogniseLocally(lang: string): Promise<boolean> {
+  const Ctor = getSpeechRecognition();
+  if (!Ctor?.available) return false;
+  try {
+    return (await Ctor.available({ langs: [lang], processLocally: true })) === "available";
+  } catch {
+    return false;
+  }
 }
 
 function mapError(code: string): DictationError | null {
@@ -98,10 +129,18 @@ export interface UseDictationOptions {
   onChange: (text: string) => void;
   maxLength: number;
   lang?: string;
+  /** Optional punctuation pass for the dictated text when dictation stops. */
+  polish?: (text: string) => Promise<string | null>;
 }
 
-export function useDictation({ value, onChange, maxLength, lang }: UseDictationOptions) {
+const MAX_NETWORK_RETRIES = 3;
+
+export function useDictation({ value, onChange, maxLength, lang, polish }: UseDictationOptions) {
   const supported = getSpeechRecognition() !== null;
+  const [polishing, setPolishing] = useState(false);
+  const polishRef = useRef(polish);
+  polishRef.current = polish;
+  const polishTokenRef = useRef(0);
   const [listening, setListening] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<DictationError | null>(null);
@@ -117,7 +156,12 @@ export function useDictation({ value, onChange, maxLength, lang }: UseDictationO
   const wantRef = useRef(false);           // merchant still wants to dictate
   const baseRef = useRef("");              // field text before dictation began
   const prefixRef = useRef("");            // base + finals from earlier sessions
-  const sessionFinalRef = useRef("");      // finals in the current session
+  const sessionPhrasesRef = useRef<string[]>([]); // finals in the current session
+  const sessionInterimRef = useRef("");    // unfinished words in the current session
+  const networkFailuresRef = useRef(0);    // consecutive "network" errors
+  const heardRef = useRef(false);          // any words recognised this dictation
+  const localRef = useRef(false);          // use on-device recognition
+  const retryDelayRef = useRef(120);
   const shownRef = useRef("");             // what the field currently shows
   const streamRef = useRef<MediaStream | null>(null);
   const limitTimerRef = useRef<number | null>(null);
@@ -158,15 +202,45 @@ export function useDictation({ value, onChange, maxLength, lang }: UseDictationO
     setStartedAt(null);
   }, [releaseMedia]);
 
-  /** Stop and keep everything the merchant saw in the field. */
-  const stop = useCallback(() => {
+  /** Close the last dictated sentence when dictation ends mid-phrase. */
+  const finishShown = useCallback(() => {
+    const base = baseRef.current;
+    const shown = shownRef.current;
+    if (!heardRef.current || shown === base || !shown.startsWith(base)) return shown;
+    const finished = finishSentence(shown);
+    if (finished !== shown && finished.length <= maxLength) write(finished);
+    return shownRef.current;
+  }, [maxLength, write]);
+
+  /** Stop and keep everything the merchant saw in the field, then polish it. */
+  const stop = useCallback((options?: { polish?: boolean }) => {
     if (!wantRef.current && !recRef.current) return;
+    const base = baseRef.current;
     teardown();
-  }, [teardown]);
+    const shown = finishShown();
+    const runPolish = options?.polish === false ? undefined : polishRef.current;
+    if (!runPolish || !heardRef.current || !shown.startsWith(base)) return;
+    const dictated = shown.slice(base.length).trim();
+    if (dictated.split(/\s+/).length < 2) return;
+    const token = ++polishTokenRef.current;
+    setPolishing(true);
+    runPolish(dictated)
+      .then(polished => {
+        if (token !== polishTokenRef.current || !polished || !polished.trim()) return;
+        // Apply only if the merchant has not edited, sent or re-dictated.
+        if (valueRef.current !== shown) return;
+        const joined = base.trim() ? `${base.replace(/\s+$/, "")} ${polished.trim()}` : polished.trim();
+        write(joined);
+      })
+      .catch(() => undefined)
+      .finally(() => { if (token === polishTokenRef.current) setPolishing(false); });
+  }, [finishShown, teardown, write]);
 
   /** Stop and put the field back exactly as it was before dictation. */
   const cancel = useCallback(() => {
     if (!wantRef.current && !recRef.current) return;
+    polishTokenRef.current += 1;
+    setPolishing(false);
     const base = baseRef.current;
     teardown();
     onChangeRef.current(base);
@@ -174,8 +248,9 @@ export function useDictation({ value, onChange, maxLength, lang }: UseDictationO
 
   const fail = useCallback((reason: DictationError) => {
     teardown();
+    finishShown();
     setError(reason);
-  }, [teardown]);
+  }, [finishShown, teardown]);
 
   const startSession = useCallback((token: number) => {
     const Ctor = getSpeechRecognition();
@@ -185,7 +260,10 @@ export function useDictation({ value, onChange, maxLength, lang }: UseDictationO
     rec.continuous = !isAndroid();
     rec.interimResults = true;
     rec.maxAlternatives = 1;
-    sessionFinalRef.current = "";
+    if (localRef.current) rec.processLocally = true;
+    sessionPhrasesRef.current = [];
+    sessionInterimRef.current = "";
+    retryDelayRef.current = 120;
 
     rec.onstart = () => {
       if (token !== tokenRef.current) return;
@@ -194,22 +272,38 @@ export function useDictation({ value, onChange, maxLength, lang }: UseDictationO
     };
     rec.onresult = event => {
       if (token !== tokenRef.current) return;
-      let finals = "";
+      const phrases: string[] = [];
       let interim = "";
       for (let i = 0; i < event.results.length; i += 1) {
         const result = event.results[i];
         const transcript = result[0]?.transcript ?? "";
-        if (result.isFinal) finals += ` ${transcript}`;
+        if (result.isFinal) phrases.push(transcript);
         else interim += ` ${transcript}`;
       }
-      sessionFinalRef.current = finals;
+      sessionPhrasesRef.current = phrases;
+      sessionInterimRef.current = interim;
       activityRef.current += 1;
-      const full = joinDictation(joinDictation(prefixRef.current, finals), interim);
-      if (write(full)) { wantRef.current = false; teardown(); }
+      networkFailuresRef.current = 0;
+      if (phrases.some(phrase => phrase.trim()) || interim.trim()) heardRef.current = true;
+      // Each finished phrase is written as prose; the live phrase follows it.
+      const finished = phrases.reduce(appendPhrase, prefixRef.current);
+      if (write(appendInterim(finished, interim))) { wantRef.current = false; teardown(); }
     };
     rec.onerror = event => {
       if (token !== tokenRef.current) return;
       const reason = mapError(event.error);
+      if (reason === "network" && wantRef.current) {
+        // Transient drop: onend follows and restarts with backoff. Prefer
+        // on-device recognition for the retry when the browser has it.
+        networkFailuresRef.current += 1;
+        if (networkFailuresRef.current <= MAX_NETWORK_RETRIES) {
+          retryDelayRef.current = 400 * networkFailuresRef.current;
+          void canRecogniseLocally(rec.lang).then(local => { if (local) localRef.current = true; });
+          return;
+        }
+        fail(heardRef.current ? "network" : "blocked");
+        return;
+      }
       if (reason) fail(reason);
     };
     rec.onend = () => {
@@ -218,11 +312,14 @@ export function useDictation({ value, onChange, maxLength, lang }: UseDictationO
       if (!wantRef.current) { teardown(); return; }
       // Ended on its own (silence, Android single-utterance). Keep the finals
       // and resume listening, unless it keeps ending immediately.
-      prefixRef.current = joinDictation(prefixRef.current, sessionFinalRef.current);
+      // Words still being recognised when the session dropped were already on
+      // screen; keep them unfinished so the next session continues the sentence.
+      const finished = sessionPhrasesRef.current.reduce(appendPhrase, prefixRef.current);
+      prefixRef.current = appendInterim(finished, sessionInterimRef.current);
       if (shownRef.current !== prefixRef.current) write(prefixRef.current);
       restartsRef.current += 1;
       if (restartsRef.current > 60) { teardown(); return; }
-      restartTimerRef.current = window.setTimeout(() => startSession(token), 120);
+      restartTimerRef.current = window.setTimeout(() => startSession(token), retryDelayRef.current);
     };
 
     recRef.current = rec;
@@ -241,8 +338,13 @@ export function useDictation({ value, onChange, maxLength, lang }: UseDictationO
     if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
 
     const token = ++tokenRef.current;
+    polishTokenRef.current += 1;
+    setPolishing(false);
     wantRef.current = true;
     restartsRef.current = 0;
+    networkFailuresRef.current = 0;
+    heardRef.current = false;
+    localRef.current = false;
     baseRef.current = valueRef.current;
     prefixRef.current = valueRef.current;
     shownRef.current = valueRef.current;
@@ -278,7 +380,7 @@ export function useDictation({ value, onChange, maxLength, lang }: UseDictationO
     supported,
     /** True from the click until dictation ends (includes the permission prompt). */
     active: listening || starting,
-    listening, starting, error, stream, startedAt, activityRef,
+    listening, starting, polishing, error, stream, startedAt, activityRef,
     start, stop, cancel,
     clearError: useCallback(() => setError(null), []),
   };
