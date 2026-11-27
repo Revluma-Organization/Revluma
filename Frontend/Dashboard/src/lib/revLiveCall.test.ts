@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   activityLabel, appendTranscript, finalizeTranscript, formatCallTime, markInterrupted, mergeTimeline,
-  questionFromArgs, tidyTranscript, voiceToolResult, type TranscriptEntry,
+  isSavedTranscriptRow, questionFromArgs, savedTranscriptEntry, tidyTranscript, transcriptWire, voiceToolResult,
+  type TranscriptEntry,
 } from "./revLiveCall";
 import { base64ToFloat32, levelFromRms, pcmToBase64 } from "./revLiveAudio";
 import { dispatchServerMessage, parseDurationMs } from "./revLiveClient";
@@ -48,6 +49,45 @@ describe("timeline", () => {
 
   it("is a plain message list without a transcript", () => {
     expect(mergeTimeline([message("a", 1)], []).map(item => item.kind)).toEqual(["message"]);
+  });
+
+  it("renders saved spoken lines as transcript lines and shows a line saved mid-call once", () => {
+    const saved = { id: "row-1", timestamp: new Date(100), transcript: line("t100-1", 100) };
+    const items = mergeTimeline([saved, message("q", 200)], [line("t100-1", 100), line("t300-2", 300)]);
+    expect(items.map(item => [item.kind, item.key])).toEqual([
+      ["transcript", "t100-1"], ["message", "q"], ["transcript", "t300-2"],
+    ]);
+    expect(mergeTimeline([saved], []).map(item => item.kind)).toEqual(["transcript"]);
+  });
+});
+
+describe("saving the call", () => {
+  it("sends a finished line with its stable id, tidy text and when it was said", () => {
+    const entry: TranscriptEntry = { id: "t1700000000000-4", speaker: "rev", text: " Up 8 % ,  nice ", at: 1_700_000_000_000, final: true, interrupted: true };
+    expect(transcriptWire(entry)).toEqual({
+      client_id: "t1700000000000-4", speaker: "rev", text: "Up 8 %, nice", interrupted: true,
+      spoken_at: "2023-11-14T22:13:20.000Z",
+    });
+    expect(transcriptWire({ ...entry, speaker: "user" })).not.toHaveProperty("interrupted");
+    expect(transcriptWire({ ...entry, text: "   " })).toBeNull();
+  });
+
+  it("reads saved spoken lines back as transcript lines", () => {
+    const row = {
+      id: "row-9", role: "rev", content: { text: "Revenue was", voice_transcript: true, response_type: "voice" },
+      created_at: "2026-11-18T10:00:00.000Z", voice_kind: "transcript", voice_client_id: "t5-1", voice_interrupted: true,
+    };
+    expect(savedTranscriptEntry(row)).toEqual({
+      id: "t5-1", speaker: "rev", text: "Revenue was", at: Date.parse("2026-11-18T10:00:00.000Z"), final: true, interrupted: true,
+    });
+    expect(savedTranscriptEntry({ ...row, role: "user", voice_client_id: null, content: JSON.stringify({ text: "hi" }) }))
+      .toMatchObject({ id: "saved-row-9", speaker: "user", text: "hi" });
+    expect(savedTranscriptEntry({ ...row, role: "user" })).not.toHaveProperty("interrupted");
+    // Typed and investigated turns (including questions asked by voice) are not transcript.
+    expect(savedTranscriptEntry({ ...row, voice_kind: null, content: { text: "How did sales do?" } })).toBeNull();
+    expect(isSavedTranscriptRow({ voice_kind: null, content: { voice_transcript: true } })).toBe(true);
+    expect(savedTranscriptEntry({ ...row, content: { text: "  " } })).toBeNull();
+    expect(savedTranscriptEntry({ ...row, role: "system" })).toBeNull();
   });
 });
 

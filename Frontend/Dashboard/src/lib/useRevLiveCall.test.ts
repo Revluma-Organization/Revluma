@@ -58,9 +58,12 @@ class FakeClient {
 let audios: FakeAudio[] = [];
 let clients: FakeClient[] = [];
 
-function setup(onAsk = vi.fn(async () => ({ ok: true, answer: "Revenue was $12,400." }))) {
+type Extra = Partial<Pick<Parameters<typeof useRevLiveCall>[0], "onConversation" | "onSaved" | "onEnded" | "conversationId">>;
+
+function setup(onAsk = vi.fn(async () => ({ ok: true, answer: "Revenue was $12,400." })), extra: Extra = {}) {
   return renderHook(() => useRevLiveCall({
     conversationId: null,
+    ...extra,
     onAsk,
     isSupported: () => true,
     createAudio: (onChunk) => { const audio = new FakeAudio(onChunk); audios.push(audio); return audio; },
@@ -68,8 +71,8 @@ function setup(onAsk = vi.fn(async () => ({ ok: true, answer: "Revenue was $12,4
   }));
 }
 
-async function connected(onAsk?: Parameters<typeof setup>[0]) {
-  const hook = setup(onAsk);
+async function connected(onAsk?: Parameters<typeof setup>[0], extra?: Extra) {
+  const hook = setup(onAsk, extra);
   await act(async () => { await hook.result.current.start(); });
   await act(async () => { clients[0].options.handlers.onReady?.(); });
   return hook;
@@ -203,6 +206,185 @@ describe("useRevLiveCall", () => {
     expect(hook.result.current.phase).toBe("error");
     expect(hook.result.current.error).toMatch(/Microphone access is blocked/);
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  describe("saves the call like a typed chat", () => {
+    const CONV = "66666666-6666-4666-8666-666666666666";
+    const transcriptCalls = () => vi.mocked(api.post).mock.calls.filter(([path]) => String(path).endsWith("/transcript"));
+    const endCall = () => vi.mocked(api.post).mock.calls.find(([path]) => String(path).endsWith("/end"));
+    beforeEach(() => {
+      vi.mocked(api.post).mockImplementation(async (path: string) => {
+        if (path === "/rev/live/session") {
+          return { ok: true, status: 201, data: { success: true, data: { ...SESSION, conversation_id: CONV, conversation_created: true } } } as never;
+        }
+        if (path.endsWith("/transcript")) return { ok: true, status: 200, data: { success: true, data: { conversation_id: CONV } } } as never;
+        if (path.endsWith("/end")) return { ok: true, status: 200, data: { success: true, data: { status: "ended", conversation_id: CONV } } } as never;
+        return { ok: true, status: 200, data: { success: true, data: { status: "active" } } } as never;
+      });
+    });
+
+    it("adopts the conversation the server made for the call", async () => {
+      const onConversation = vi.fn();
+      const hook = await connected(undefined, { onConversation });
+      expect(onConversation).toHaveBeenCalledWith(CONV, true);
+      expect(hook.result.current.conversationId).toBe(CONV);
+    });
+
+    it("saves finished lines once each, and never the line still being spoken", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const onSaved = vi.fn();
+      const hook = await connected(undefined, { onSaved });
+      act(() => {
+        clients[0].options.handlers.onInputTranscript?.("How did sales do ");
+        clients[0].options.handlers.onInputTranscript?.("last week ?");
+        clients[0].options.handlers.onOutputTranscript?.("Up eight percent.");
+        clients[0].options.handlers.onTurnComplete?.();
+      });
+      await act(async () => { vi.advanceTimersByTime(800); });
+      await waitFor(() => expect(transcriptCalls()).toHaveLength(1));
+      const [path, body] = transcriptCalls()[0] as [string, { entries: Array<Record<string, unknown>> }];
+      expect(path).toBe(`/rev/live/session/${SESSION.session_id}/transcript`);
+      expect(body.entries).toEqual([
+        expect.objectContaining({ speaker: "user", text: "How did sales do last week?", client_id: hook.result.current.transcript[0].id }),
+        expect.objectContaining({ speaker: "rev", text: "Up eight percent." }),
+      ]);
+      await waitFor(() => expect(onSaved).toHaveBeenCalledWith(CONV, { lines: 2, userWords: 6 }));
+
+      // Another turn: only the new line is sent; an open line waits.
+      act(() => {
+        clients[0].options.handlers.onInputTranscript?.("Thanks");
+        clients[0].options.handlers.onTurnComplete?.();
+        clients[0].options.handlers.onOutputTranscript?.("Any time, and");
+      });
+      await act(async () => { vi.advanceTimersByTime(800); });
+      await waitFor(() => expect(transcriptCalls()).toHaveLength(2));
+      expect((transcriptCalls()[1][1] as { entries: unknown[] }).entries).toEqual([expect.objectContaining({ text: "Thanks" })]);
+      // Heartbeats never carry a conversation: the server owns that link.
+      await act(async () => { vi.advanceTimersByTime(15_100); });
+      const beats = vi.mocked(api.post).mock.calls.filter(([p]) => String(p).endsWith("/heartbeat"));
+      expect(beats.length).toBeGreaterThan(0);
+      beats.forEach(([, beat]) => expect(beat).not.toHaveProperty("conversation_id"));
+    });
+
+    it("keeps an interrupted Rev line, marked as interrupted", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await connected();
+      act(() => {
+        clients[0].options.handlers.onOutputTranscript?.("Revenue was");
+        clients[0].options.handlers.onInterrupted?.();
+      });
+      await act(async () => { vi.advanceTimersByTime(800); });
+      await waitFor(() => expect(transcriptCalls()).toHaveLength(1));
+      expect((transcriptCalls()[0][1] as { entries: unknown[] }).entries).toEqual([
+        expect.objectContaining({ speaker: "rev", text: "Revenue was", interrupted: true }),
+      ]);
+    });
+
+    it("saves what the merchant said before a store question runs, so the chat reads in order", async () => {
+      const order: string[] = [];
+      vi.mocked(api.post).mockImplementation(async (path: string) => {
+        if (path === "/rev/live/session") return { ok: true, status: 201, data: { success: true, data: { ...SESSION, conversation_id: CONV } } } as never;
+        if (path.endsWith("/transcript")) order.push("transcript");
+        return { ok: true, status: 200, data: { success: true, data: { conversation_id: CONV } } } as never;
+      });
+      const onAsk = vi.fn(async () => { order.push("ask"); return { ok: true, answer: "Revenue was $12,400." }; });
+      await connected(onAsk);
+      await act(async () => {
+        clients[0].options.handlers.onInputTranscript?.("How did sales do last week?");
+        clients[0].options.handlers.onToolCall?.([{ id: "a", name: "ask_rev", args: { question: "Sales last week?" } }]);
+      });
+      await waitFor(() => expect(onAsk).toHaveBeenCalled());
+      expect(order).toEqual(["transcript", "ask"]);
+    });
+
+    it("sends unsaved lines with the hang-up and reports the kept conversation", async () => {
+      const onEnded = vi.fn();
+      vi.mocked(api.post).mockImplementation(async (path: string) => {
+        if (path === "/rev/live/session") return { ok: true, status: 201, data: { success: true, data: { ...SESSION, conversation_id: CONV, conversation_created: true } } } as never;
+        if (path.endsWith("/transcript")) throw new Error("offline");
+        if (path.endsWith("/end")) return { ok: true, status: 200, data: { success: true, data: { status: "ended", conversation_id: CONV } } } as never;
+        return { ok: true, status: 200, data: { success: true, data: { status: "active" } } } as never;
+      });
+      const hook = await connected(undefined, { onEnded });
+      act(() => { clients[0].options.handlers.onInputTranscript?.("Bye for now"); });
+      await act(async () => { hook.result.current.end(); });
+      await waitFor(() => expect(hook.result.current.phase).toBe("ended"));
+      const body = endCall()?.[1] as { entries?: Array<Record<string, unknown>>; conversation_id?: string };
+      expect(body.entries).toEqual([expect.objectContaining({ speaker: "user", text: "Bye for now" })]);
+      expect(body).not.toHaveProperty("conversation_id");
+      expect(onEnded).toHaveBeenCalledWith(expect.objectContaining({ conversationId: CONV, created: true, saved: { lines: 1, userWords: 3 } }));
+    });
+
+    it("tells the page when an empty call's conversation was removed", async () => {
+      const onEnded = vi.fn();
+      vi.mocked(api.post).mockImplementation(async (path: string) => {
+        if (path === "/rev/live/session") return { ok: true, status: 201, data: { success: true, data: { ...SESSION, conversation_id: CONV, conversation_created: true } } } as never;
+        if (path.endsWith("/end")) return { ok: true, status: 200, data: { success: true, data: { status: "ended", conversation_id: null } } } as never;
+        return { ok: true, status: 200, data: { success: true, data: { status: "active" } } } as never;
+      });
+      const hook = await connected(undefined, { onEnded });
+      await act(async () => { hook.result.current.end(); });
+      await waitFor(() => expect(onEnded).toHaveBeenCalled());
+      expect(onEnded.mock.calls[0][0]).toMatchObject({ conversationId: null, callConversationId: CONV, created: true });
+      expect(hook.result.current.conversationId).toBeNull();
+      expect(transcriptCalls()).toHaveLength(0);
+    });
+
+    it("stops saving when the conversation is gone, without retrying forever", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const { ApiError } = await import("@/lib/api");
+      vi.mocked(api.post).mockImplementation(async (path: string) => {
+        if (path === "/rev/live/session") return { ok: true, status: 201, data: { success: true, data: { ...SESSION, conversation_id: CONV } } } as never;
+        if (path.endsWith("/transcript")) throw new ApiError(409, "gone", { error: { code: "VOICE_CONVERSATION_GONE" } });
+        return { ok: true, status: 200, data: { success: true, data: { status: "active" } } } as never;
+      });
+      await connected();
+      act(() => { clients[0].options.handlers.onInputTranscript?.("Hello"); clients[0].options.handlers.onTurnComplete?.(); });
+      await act(async () => { vi.advanceTimersByTime(800); });
+      await waitFor(() => expect(transcriptCalls()).toHaveLength(1));
+      act(() => { clients[0].options.handlers.onInputTranscript?.("Again"); clients[0].options.handlers.onTurnComplete?.(); });
+      await act(async () => { vi.advanceTimersByTime(20_000); });
+      expect(transcriptCalls()).toHaveLength(1);
+    });
+
+    it("retries a failed save with backoff", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let fail = true;
+      vi.mocked(api.post).mockImplementation(async (path: string) => {
+        if (path === "/rev/live/session") return { ok: true, status: 201, data: { success: true, data: { ...SESSION, conversation_id: CONV } } } as never;
+        if (path.endsWith("/transcript")) {
+          if (fail) { fail = false; throw new Error("network"); }
+          return { ok: true, status: 200, data: { success: true, data: { conversation_id: CONV } } } as never;
+        }
+        return { ok: true, status: 200, data: { success: true, data: { status: "active" } } } as never;
+      });
+      await connected();
+      act(() => { clients[0].options.handlers.onInputTranscript?.("Hello"); clients[0].options.handlers.onTurnComplete?.(); });
+      await act(async () => { vi.advanceTimersByTime(800); });
+      await waitFor(() => expect(transcriptCalls()).toHaveLength(1));
+      await act(async () => { vi.advanceTimersByTime(2100); });
+      await waitFor(() => expect(transcriptCalls()).toHaveLength(2));
+      expect(transcriptCalls()[1][1]).toEqual(transcriptCalls()[0][1]);
+    });
+
+    it("sends unsaved lines with the keepalive hang-up when the tab closes", async () => {
+      const fetchMock = vi.fn(async () => new Response("{}"));
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        await connected();
+        act(() => { clients[0].options.handlers.onInputTranscript?.("Closing the tab now"); });
+        act(() => { window.dispatchEvent(new Event("pagehide")); });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        expect(url).toBe(`https://api.example.test/api/v1/rev/live/session/${SESSION.session_id}/end`);
+        expect(init.keepalive).toBe(true);
+        const body = JSON.parse(String(init.body));
+        expect(body.reason).toBe("unload");
+        expect(body.entries).toEqual([expect.objectContaining({ speaker: "user", text: "Closing the tab now" })]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
   });
 
   it("hangs up after Rev says goodbye with end_call", async () => {

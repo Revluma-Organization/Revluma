@@ -15,7 +15,19 @@
  * One live call per user. Starting a new call (another tab, a reload) ends
  * the previous one with reason 'replaced'; its next heartbeat sees that and
  * the old tab hangs up.
+ *
+ * Every call belongs to a conversation, like a typed chat. A call started
+ * outside one gets a conversation created by the server (owns_conversation),
+ * and every finished spoken line is saved into it as an ordinary
+ * conversation_messages row (metadata.voice_kind = 'transcript'). The
+ * conversation is always the one recorded on the session row: the browser
+ * can never point a call at a different conversation. An owned conversation
+ * that is still empty when its call ends is deleted, so silent calls leave
+ * nothing behind.
  */
+
+const { v4: uuidv4, v5: uuidv5 } = require('uuid');
+const revSequence = require('./revSequence');
 
 const DEFAULT_DAILY_SECONDS = 1800;          // 30 minutes per organization per UTC day
 const MAX_CALL_SECONDS = 3600;               // token ceiling enforced by python too
@@ -25,6 +37,15 @@ const STALE_AFTER_MS = 45_000;
 const END_REASONS = new Set([
   'hangup', 'assistant', 'limit', 'error', 'replaced', 'stale', 'unavailable', 'unload',
 ]);
+
+// Spoken-turn persistence.
+const CALL_CONVERSATION_NAMESPACE = '0d6c2f4e-7b1a-4c8e-9f3d-5a2b8e1c7d40';
+const TRANSCRIPT_ENTRY_NAMESPACE = '9e3b5a71-2c4d-4f86-b0a9-1d7e6c3f8b25';
+const MAX_TRANSCRIPT_BATCH = 25;
+const MAX_TRANSCRIPT_TEXT = 4000;
+// Lines that finish while the call is hanging up are still accepted.
+const TRANSCRIPT_GRACE_MS = 10 * 60 * 1000;
+const CLIENT_ENTRY_ID = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 function voiceError(status, code, message, extra = {}) {
   const error = new Error(message);
@@ -127,6 +148,8 @@ async function startSession(prisma, {
     WHERE user_id = ${userId}::uuid AND status = 'active'
   `;
 
+  await cleanupEmptyCallConversations(prisma, { organizationId, userId }).catch(() => 0);
+
   const allowance = await getAllowance(prisma, organizationId, { now, env });
   if (allowance.remaining_seconds < MIN_START_SECONDS) {
     throw voiceError(429, 'VOICE_LIMIT_REACHED',
@@ -156,8 +179,8 @@ async function startSession(prisma, {
 
 async function loadOwnedSession(prisma, { sessionId, organizationId, userId }) {
   const rows = await prisma.$queryRaw`
-    SELECT id, organization_id, user_id, conversation_id, status, end_reason,
-           max_seconds, seconds_used, turn_count, ask_count, started_at, last_seen_at
+    SELECT id, organization_id, user_id, conversation_id, owns_conversation, status, end_reason,
+           max_seconds, seconds_used, turn_count, ask_count, started_at, last_seen_at, ended_at
     FROM rev_voice_sessions
     WHERE id = ${sessionId}::uuid
     LIMIT 1
@@ -189,7 +212,7 @@ function sessionView(row, now, secondsUsed) {
  * allowance is spent the session is ended with reason 'limit'.
  */
 async function heartbeat(prisma, {
-  sessionId, organizationId, userId, turnCount = 0, askCount = 0, conversationId = null, now = new Date(),
+  sessionId, organizationId, userId, turnCount = 0, askCount = 0, now = new Date(),
 }) {
   const row = await loadOwnedSession(prisma, { sessionId, organizationId, userId });
   if (row.status !== 'active') {
@@ -205,7 +228,6 @@ async function heartbeat(prisma, {
         seconds_used = GREATEST(seconds_used, ${used}),
         turn_count = GREATEST(turn_count, ${turns}),
         ask_count = GREATEST(ask_count, ${asks}),
-        conversation_id = COALESCE(conversation_id, ${conversationId}::uuid),
         status = CASE WHEN ${overLimit}::boolean THEN 'ended' ELSE status END,
         end_reason = CASE WHEN ${overLimit}::boolean THEN 'limit' ELSE end_reason END,
         ended_at = CASE WHEN ${overLimit}::boolean THEN ${now}::timestamptz ELSE ended_at END
@@ -219,11 +241,11 @@ async function heartbeat(prisma, {
 
 /** Hang up. Idempotent: ending an ended call returns its final state. */
 async function endSession(prisma, {
-  sessionId, organizationId, userId, reason = 'hangup', turnCount = 0, askCount = 0, conversationId = null,
+  sessionId, organizationId, userId, reason = 'hangup', turnCount = 0, askCount = 0,
   now = new Date(),
 }) {
   const row = await loadOwnedSession(prisma, { sessionId, organizationId, userId });
-  if (row.status !== 'active') return sessionView(row, now, Number(row.seconds_used));
+  if (row.status !== 'active') return { ...sessionView(row, now, Number(row.seconds_used)), conversation_id: row.conversation_id || null };
   const endReason = END_REASONS.has(reason) ? reason : 'hangup';
   const used = Math.max(Number(row.seconds_used) || 0, elapsedSeconds(row.started_at, now, row.max_seconds));
   await prisma.$executeRaw`
@@ -234,11 +256,189 @@ async function endSession(prisma, {
         last_seen_at = ${now}::timestamptz,
         seconds_used = GREATEST(seconds_used, ${used}),
         turn_count = GREATEST(turn_count, ${clampInt(turnCount, 0, 100_000)}),
-        ask_count = GREATEST(ask_count, ${clampInt(askCount, 0, 10_000)}),
-        conversation_id = COALESCE(conversation_id, ${conversationId}::uuid)
+        ask_count = GREATEST(ask_count, ${clampInt(askCount, 0, 10_000)})
     WHERE id = ${sessionId}::uuid AND status = 'active'
   `;
-  return sessionView({ ...row, status: 'ended', end_reason: endReason }, now, used);
+  // A call where nothing was said leaves no empty conversation behind. Not
+  // when the tab is closing or reloading: the page may be about to open that
+  // conversation again, so it is tidied up when the next call starts.
+  const removed = endReason === 'unload' ? 0
+    : await cleanupEmptyCallConversations(prisma, { organizationId, userId }).catch(() => 0);
+  let conversationId = row.conversation_id || null;
+  if (conversationId && Number(removed) > 0 && !(await conversationExists(prisma, conversationId))) {
+    conversationId = null;
+  }
+  return { ...sessionView({ ...row, status: 'ended', end_reason: endReason }, now, used), conversation_id: conversationId };
+}
+
+async function conversationExists(prisma, conversationId) {
+  const rows = await prisma.$queryRaw`SELECT 1 AS present FROM conversations WHERE id = ${conversationId}::uuid LIMIT 1`;
+  return Boolean(rows?.[0]);
+}
+
+/**
+ * Give a call that started outside a conversation its own conversation, and
+ * record it on the session. Deterministic per session, so a retried request
+ * never creates a second one. Like a typed chat's first turn, the row stays
+ * out of history until it has a message.
+ */
+async function createCallConversation(prisma, { sessionId, organizationId, userId }) {
+  const conversationId = uuidv5(String(sessionId), CALL_CONVERSATION_NAMESPACE);
+  await prisma.$transaction([
+    prisma.$executeRaw`
+      INSERT INTO conversations (id, organization_id, user_id, status, message_count, last_activity_at)
+      VALUES (${conversationId}::uuid, ${organizationId}::uuid, ${userId}::uuid, 'active', 0, NOW())
+      ON CONFLICT (id) DO NOTHING
+    `,
+    prisma.$executeRaw`
+      UPDATE rev_voice_sessions
+      SET conversation_id = ${conversationId}::uuid, owns_conversation = true
+      WHERE id = ${sessionId}::uuid AND organization_id = ${organizationId}::uuid
+    `,
+  ]);
+  return conversationId;
+}
+
+/**
+ * Delete conversations created by this user's ended calls that never got a
+ * message. A conversation still used by a live call is never touched.
+ */
+async function cleanupEmptyCallConversations(prisma, { organizationId, userId = null }) {
+  return prisma.$executeRaw`
+    DELETE FROM conversations c
+    USING rev_voice_sessions s
+    WHERE s.conversation_id = c.id
+      AND s.owns_conversation = true
+      AND s.status = 'ended'
+      AND s.organization_id = ${organizationId}::uuid
+      AND c.organization_id = ${organizationId}::uuid
+      AND (${userId}::uuid IS NULL OR s.user_id = ${userId}::uuid)
+      AND NOT EXISTS (SELECT 1 FROM conversation_messages m WHERE m.conversation_id = c.id)
+      AND NOT EXISTS (
+        SELECT 1 FROM rev_voice_sessions live
+        WHERE live.conversation_id = c.id AND live.status = 'active'
+      )
+  `;
+}
+
+// ── Spoken turns ─────────────────────────────────────────────────────────────
+
+/**
+ * Validate finished transcript lines from the browser. Each line has a
+ * client id (stable for the call, so a resend is idempotent), a speaker and
+ * its text. Empty lines are dropped; anything malformed rejects the batch.
+ */
+function normaliseTranscriptEntries(raw) {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) {
+    throw voiceError(400, 'VOICE_INVALID_TRANSCRIPT', 'entries must be an array.');
+  }
+  if (raw.length > MAX_TRANSCRIPT_BATCH) {
+    throw voiceError(400, 'VOICE_INVALID_TRANSCRIPT', `Send at most ${MAX_TRANSCRIPT_BATCH} transcript lines at a time.`);
+  }
+  const seen = new Set();
+  const entries = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw voiceError(400, 'VOICE_INVALID_TRANSCRIPT', 'Each transcript line must be an object.');
+    }
+    const clientId = typeof entry.client_id === 'string' ? entry.client_id.trim() : '';
+    if (!CLIENT_ENTRY_ID.test(clientId)) {
+      throw voiceError(400, 'VOICE_INVALID_TRANSCRIPT', 'Each transcript line needs a valid client_id.');
+    }
+    if (entry.speaker !== 'user' && entry.speaker !== 'rev') {
+      throw voiceError(400, 'VOICE_INVALID_TRANSCRIPT', "speaker must be 'user' or 'rev'.");
+    }
+    const text = typeof entry.text === 'string'
+      ? entry.text.replace(/\0/g, '').replace(/\s+/g, ' ').replace(/\s+([,.!?;:])/g, '$1').trim()
+      : '';
+    if (!text || seen.has(clientId)) continue;
+    seen.add(clientId);
+    let spokenAt = null;
+    if (typeof entry.spoken_at === 'string') {
+      const parsed = new Date(entry.spoken_at);
+      if (!Number.isNaN(parsed.getTime())) spokenAt = parsed.toISOString();
+    }
+    entries.push({
+      clientId,
+      speaker: entry.speaker,
+      text: text.length > MAX_TRANSCRIPT_TEXT ? `${text.slice(0, MAX_TRANSCRIPT_TEXT - 1).trimEnd()}\u2026` : text,
+      interrupted: entry.speaker === 'rev' && entry.interrupted === true,
+      spokenAt,
+    });
+  }
+  return entries;
+}
+
+/**
+ * Save finished spoken lines into the call's conversation, in order, under
+ * the conversation write lock (same single-writer rule as typed turns).
+ * Idempotent per (call, client id). Returns how many new rows were written.
+ */
+async function saveTranscript(prisma, {
+  session, organizationId, userId, entries, titleHint = null, now = new Date(),
+}) {
+  const conversationId = session.conversation_id || null;
+  if (!entries.length) return { saved: 0, conversationId };
+  if (session.status !== 'active') {
+    const endedAt = session.ended_at ? new Date(session.ended_at).getTime() : 0;
+    if (!endedAt || now.getTime() - endedAt > TRANSCRIPT_GRACE_MS) {
+      throw voiceError(409, 'VOICE_SESSION_CLOSED', 'This call has ended.');
+    }
+  }
+  if (!conversationId) {
+    throw voiceError(409, 'VOICE_CONVERSATION_GONE', "This call's conversation no longer exists.");
+  }
+  const saved = await revSequence.withSequenceAllocationRetry(() => prisma.$transaction(async (tx) => {
+    const owned = await tx.$queryRaw`
+      SELECT 1 AS present FROM conversations
+      WHERE id = ${conversationId}::uuid AND organization_id = ${organizationId}::uuid
+      LIMIT 1
+    `;
+    if (!owned?.[0]) throw voiceError(409, 'VOICE_CONVERSATION_GONE', "This call's conversation no longer exists.");
+    await revSequence.acquireConversationWriteLock(tx, conversationId);
+    let written = 0;
+    for (const entry of entries) {
+      const role = entry.speaker === 'user' ? 'user' : 'rev';
+      const content = role === 'user'
+        ? { text: entry.text, voice_transcript: true }
+        : { text: entry.text, voice_transcript: true, response_type: 'voice', read_only: true };
+      const metadata = {
+        input_mode: 'voice',
+        voice_kind: 'transcript',
+        voice_session_id: String(session.id),
+        voice_client_id: entry.clientId,
+        ...(entry.interrupted ? { interrupted: true } : {}),
+        ...(entry.spokenAt ? { spoken_at: entry.spokenAt } : {}),
+      };
+      const correlationId = uuidv5(`${session.id}:${entry.clientId}`, TRANSCRIPT_ENTRY_NAMESPACE);
+      const inserted = await tx.$executeRaw`
+        INSERT INTO conversation_messages (
+          id, conversation_id, organization_id, user_id, role, content,
+          sequence_number, correlation_id, has_error, agent_name, metadata
+        )
+        SELECT ${uuidv4()}::uuid, ${conversationId}::uuid, ${organizationId}::uuid, ${userId}::uuid,
+               ${role}, ${JSON.stringify(content)}::jsonb, COALESCE(MAX(sequence_number), 0) + 1,
+               ${correlationId}::uuid, false, ${role === 'rev' ? 'rev_voice' : null}, ${JSON.stringify(metadata)}::jsonb
+        FROM conversation_messages
+        WHERE conversation_id = ${conversationId}::uuid
+        ON CONFLICT (organization_id, conversation_id, role, correlation_id) DO NOTHING
+      `;
+      written += Number(inserted) || 0;
+    }
+    if (written > 0) {
+      await tx.$executeRaw`
+        UPDATE conversations
+        SET last_activity_at = NOW(),
+            message_count = message_count + ${written},
+            title = COALESCE(NULLIF(btrim(title), ''), ${titleHint}),
+            updated_at = NOW()
+        WHERE id = ${conversationId}::uuid AND organization_id = ${organizationId}::uuid
+      `;
+    }
+    return written;
+  }));
+  return { saved, conversationId };
 }
 
 // ── Conversation excerpt for the voice model ─────────────────────────────────
@@ -298,6 +498,16 @@ function buildVoiceExcerpt(rows) {
 
 module.exports = {
   buildVoiceExcerpt,
+  MAX_TRANSCRIPT_BATCH,
+  MAX_TRANSCRIPT_TEXT,
+  TRANSCRIPT_GRACE_MS,
+  CALL_CONVERSATION_NAMESPACE,
+  TRANSCRIPT_ENTRY_NAMESPACE,
+  loadOwnedSession,
+  createCallConversation,
+  cleanupEmptyCallConversations,
+  normaliseTranscriptEntries,
+  saveTranscript,
   DEFAULT_DAILY_SECONDS,
   MAX_CALL_SECONDS,
   MIN_START_SECONDS,

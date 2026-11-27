@@ -21,7 +21,10 @@ function fakePrisma(answers = {}) {
     }
     return kind === 'execute' ? 1 : [];
   };
-  return { calls, $queryRaw: run('query'), $executeRaw: run('execute') };
+  const db = { calls, $queryRaw: run('query'), $executeRaw: run('execute') };
+  // Callback transactions run against the same recorder; array form awaits.
+  db.$transaction = async (work) => (typeof work === 'function' ? work(db) : Promise.all(work));
+  return db;
 }
 
 (async () => {
@@ -55,10 +58,11 @@ function fakePrisma(answers = {}) {
     assert.match(order[0], /end_reason = 'stale'/, 'stale calls are reaped first');
     assert.match(order[1], /end_reason = 'replaced'/, 'the user\'s previous live call is replaced');
     assert.ok(db.calls[1].values.includes(USER));
-    assert.match(order[2], /SUM/);
-    assert.ok(db.calls[2].values.some(v => v instanceof Date && v.toISOString() === '2026-11-18T00:00:00.000Z'),
+    assert.match(order[2], /DELETE FROM conversations/, 'empty conversations of ended calls are cleaned up');
+    assert.match(order[3], /SUM/);
+    assert.ok(db.calls[3].values.some(v => v instanceof Date && v.toISOString() === '2026-11-18T00:00:00.000Z'),
       'usage is counted from midnight UTC');
-    assert.match(order[3], /INSERT INTO rev_voice_sessions/);
+    assert.match(order[4], /INSERT INTO rev_voice_sessions/);
   }
   {
     const db = fakePrisma({ 'AS used': [{ used: 1790 }] });
@@ -92,6 +96,7 @@ function fakePrisma(answers = {}) {
     const update = db.calls.find(c => c.kind === 'execute');
     assert.ok(update.values.includes(120) && update.values.includes(4) && update.values.includes(1));
     assert.ok(update.values.includes(false), 'not over the limit yet');
+    assert.doesNotMatch(update.sql, /conversation_id/, 'a heartbeat can never re-point the call at another conversation');
   }
   {
     const db = fakePrisma({ 'FROM rev_voice_sessions WHERE id': [activeRow({ started_at: new Date(now.getTime() - 400_000) })] });
@@ -121,6 +126,37 @@ function fakePrisma(answers = {}) {
     assert.equal(view.status, 'ended');
     assert.equal(view.end_reason, 'hangup');
     assert.equal(view.seconds_used, 120);
+    const end = db.calls.find(c => c.kind === 'execute' && c.sql.includes("SET status = 'ended'"));
+    assert.doesNotMatch(end.sql, /conversation_id/, 'hanging up can never re-point the call at another conversation');
+    assert.ok(db.calls.some(c => c.sql.startsWith('DELETE FROM conversations')), 'a silent call leaves no empty conversation');
+  }
+  {
+    const CONV = '44444444-4444-4444-8444-444444444444';
+    // The owned conversation was empty and is gone after cleanup.
+    const db = fakePrisma({
+      'FROM rev_voice_sessions WHERE id': [activeRow({ conversation_id: CONV, owns_conversation: true })],
+      'DELETE FROM conversations': 1,
+      'FROM conversations WHERE id': [],
+    });
+    const view = await voice.endSession(db, { sessionId: SESSION, organizationId: ORG, userId: USER, now });
+    assert.equal(view.conversation_id, null, 'the dashboard learns the empty conversation was removed');
+  }
+  {
+    const CONV = '44444444-4444-4444-8444-444444444444';
+    const db = fakePrisma({
+      'FROM rev_voice_sessions WHERE id': [activeRow({ conversation_id: CONV, owns_conversation: true })],
+      'DELETE FROM conversations': 0,
+    });
+    const view = await voice.endSession(db, { sessionId: SESSION, organizationId: ORG, userId: USER, now });
+    assert.equal(view.conversation_id, CONV, 'a call with saved lines keeps its conversation');
+  }
+  {
+    const CONV = '44444444-4444-4444-8444-444444444444';
+    const db = fakePrisma({ 'FROM rev_voice_sessions WHERE id': [activeRow({ conversation_id: CONV, owns_conversation: true })] });
+    const view = await voice.endSession(db, { sessionId: SESSION, organizationId: ORG, userId: USER, reason: 'unload', now });
+    assert.equal(view.end_reason, 'unload');
+    assert.equal(view.conversation_id, CONV);
+    assert.ok(!db.calls.some(c => c.sql.startsWith('DELETE FROM conversations')), 'a reloading page can still open its conversation');
   }
   {
     const db = fakePrisma({ 'FROM rev_voice_sessions WHERE id': [activeRow()] });
@@ -156,16 +192,130 @@ function fakePrisma(answers = {}) {
     assert.equal(voice.buildVoiceExcerpt([]), '');
   }
 
-  // ── 6. Wiring ─────────────────────────────────────────────────────────────
+  // ── 6. Calls are conversations: spoken lines are saved ───────────────────
+  {
+    const db = fakePrisma();
+    const first = await voice.createCallConversation(db, { sessionId: SESSION, organizationId: ORG, userId: USER });
+    const again = await voice.createCallConversation(fakePrisma(), { sessionId: SESSION, organizationId: ORG, userId: USER });
+    assert.match(first, /^[0-9a-f-]{36}$/);
+    assert.equal(first, again, 'one conversation per call, even when the request is retried');
+    assert.match(db.calls[0].sql, /INSERT INTO conversations .* ON CONFLICT \(id\) DO NOTHING/);
+    assert.ok(db.calls[0].values.includes(ORG) && db.calls[0].values.includes(USER));
+    assert.match(db.calls[1].sql, /SET conversation_id = \?::uuid, owns_conversation = true/);
+    assert.ok(db.calls[1].values.includes(ORG), 'only the organization\'s own session is updated');
+  }
+  {
+    const db = fakePrisma();
+    await voice.cleanupEmptyCallConversations(db, { organizationId: ORG, userId: USER });
+    const sql = db.calls[0].sql;
+    assert.match(sql, /s\.owns_conversation = true/, 'only conversations a call created');
+    assert.match(sql, /s\.status = 'ended'/);
+    assert.match(sql, /NOT EXISTS \(SELECT 1 FROM conversation_messages m WHERE m\.conversation_id = c\.id\)/, 'never one with messages');
+    assert.match(sql, /live\.status = 'active'/, 'never one a live call is using');
+    assert.match(sql, /c\.organization_id = \?::uuid/);
+  }
+  {
+    const entries = voice.normaliseTranscriptEntries([
+      { client_id: 't1-1', speaker: 'user', text: '  How did   sales do , last week ? ', spoken_at: '2026-11-18T22:29:00Z' },
+      { client_id: 't1-2', speaker: 'rev', text: 'Let me check.', interrupted: true },
+      { client_id: 't1-3', speaker: 'user', text: '   ' },
+      { client_id: 't1-1', speaker: 'user', text: 'duplicate id' },
+      { client_id: 't1-4', speaker: 'user', text: 'x'.repeat(5000), interrupted: true },
+    ]);
+    assert.equal(entries.length, 3, 'blank and repeated lines are dropped');
+    assert.deepEqual(entries[0], { clientId: 't1-1', speaker: 'user', text: 'How did sales do, last week?',
+      interrupted: false, spokenAt: '2026-11-18T22:29:00.000Z' });
+    assert.equal(entries[1].interrupted, true);
+    assert.equal(entries[2].interrupted, false, 'only Rev can be interrupted');
+    assert.equal(entries[2].text.length, voice.MAX_TRANSCRIPT_TEXT);
+    for (const bad of [
+      'nope', [{ client_id: 'bad id!', speaker: 'user', text: 'x' }], [{ client_id: 'a', speaker: 'system', text: 'x' }],
+      [null], Array.from({ length: voice.MAX_TRANSCRIPT_BATCH + 1 }, (_, i) => ({ client_id: `t${i}`, speaker: 'user', text: 'x' })),
+    ]) {
+      assert.throws(() => voice.normaliseTranscriptEntries(bad),
+        (error) => error.statusCode === 400 && error.code === 'VOICE_INVALID_TRANSCRIPT');
+    }
+    assert.deepEqual(voice.normaliseTranscriptEntries(undefined), []);
+  }
+  {
+    const CONV = '44444444-4444-4444-8444-444444444444';
+    const session = activeRow({ conversation_id: CONV, owns_conversation: true });
+    const entries = voice.normaliseTranscriptEntries([
+      { client_id: 't1-1', speaker: 'user', text: 'How did sales do?' },
+      { client_id: 't1-2', speaker: 'rev', text: 'Up 8 percent.', interrupted: true },
+    ]);
+    const db = fakePrisma({ 'SELECT 1 AS present FROM conversations': [{ present: 1 }] });
+    const result = await voice.saveTranscript(db, { session, organizationId: ORG, userId: USER, entries, titleHint: 'Weekly sales check', now });
+    assert.deepEqual(result, { saved: 2, conversationId: CONV });
+    const sqls = db.calls.map(c => c.sql);
+    assert.ok(sqls[0].includes('organization_id = ?::uuid') && db.calls[0].values.includes(ORG), 'the conversation must belong to the org');
+    assert.match(sqls[1], /pg_advisory_xact_lock/, 'same single-writer lock as typed turns');
+    const inserts = db.calls.filter(c => c.sql.startsWith('INSERT INTO conversation_messages'));
+    assert.equal(inserts.length, 2);
+    assert.match(inserts[0].sql, /COALESCE\(MAX\(sequence_number\), 0\) \+ 1/);
+    assert.match(inserts[0].sql, /ON CONFLICT \(organization_id, conversation_id, role, correlation_id\) DO NOTHING/, 'resending a line is harmless');
+    assert.ok(inserts[0].values.includes('user') && inserts[1].values.includes('rev'));
+    const userContent = JSON.parse(inserts[0].values.find(v => typeof v === 'string' && v.includes('"text"')));
+    assert.deepEqual(userContent, { text: 'How did sales do?', voice_transcript: true });
+    const revMeta = JSON.parse(inserts[1].values.find(v => typeof v === 'string' && v.includes('voice_kind')));
+    assert.equal(revMeta.voice_kind, 'transcript');
+    assert.equal(revMeta.input_mode, 'voice');
+    assert.equal(revMeta.voice_client_id, 't1-2');
+    assert.equal(revMeta.interrupted, true);
+    // Correlation ids are deterministic per (call, line) so a retry dedupes.
+    const replay = fakePrisma({ 'SELECT 1 AS present FROM conversations': [{ present: 1 }] });
+    await voice.saveTranscript(replay, { session, organizationId: ORG, userId: USER, entries, now });
+    const ids = (calls) => calls.filter(c => c.sql.startsWith('INSERT INTO conversation_messages'))
+      .map(c => c.values.find((v, i) => i > 4 && typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v) && v !== CONV && v !== ORG && v !== USER));
+    assert.deepEqual(ids(replay.calls), ids(db.calls));
+    const touch = db.calls.find(c => c.sql.startsWith('UPDATE conversations'));
+    assert.match(touch.sql, /last_activity_at = NOW\(\)/, 'the call moves to the top of history');
+    assert.ok(touch.values.includes(2) && touch.values.includes('Weekly sales check'));
+  }
+  {
+    const CONV = '44444444-4444-4444-8444-444444444444';
+    const entries = voice.normaliseTranscriptEntries([{ client_id: 'a', speaker: 'user', text: 'hello' }]);
+    await assert.rejects(voice.saveTranscript(fakePrisma(), {
+      session: activeRow({ conversation_id: null }), organizationId: ORG, userId: USER, entries, now,
+    }), (error) => error.statusCode === 409 && error.code === 'VOICE_CONVERSATION_GONE');
+    await assert.rejects(voice.saveTranscript(fakePrisma(), {
+      session: activeRow({ conversation_id: CONV }), organizationId: ORG, userId: USER, entries, now,
+    }), (error) => error.code === 'VOICE_CONVERSATION_GONE', 'a deleted or foreign conversation is refused');
+    await assert.rejects(voice.saveTranscript(fakePrisma({ 'SELECT 1 AS present FROM conversations': [{ present: 1 }] }), {
+      session: activeRow({ conversation_id: CONV, status: 'ended', ended_at: new Date(now.getTime() - voice.TRANSCRIPT_GRACE_MS - 1000) }),
+      organizationId: ORG, userId: USER, entries, now,
+    }), (error) => error.statusCode === 409 && error.code === 'VOICE_SESSION_CLOSED');
+    const late = await voice.saveTranscript(fakePrisma({ 'SELECT 1 AS present FROM conversations': [{ present: 1 }] }), {
+      session: activeRow({ conversation_id: CONV, status: 'ended', ended_at: new Date(now.getTime() - 5000) }),
+      organizationId: ORG, userId: USER, entries, now,
+    });
+    assert.equal(late.saved, 1, 'lines that finish while hanging up are still saved');
+    const none = await voice.saveTranscript(fakePrisma(), { session: activeRow({ conversation_id: CONV }), organizationId: ORG, userId: USER, entries: [], now });
+    assert.deepEqual(none, { saved: 0, conversationId: CONV });
+  }
+
+  // ── 7. Wiring ─────────────────────────────────────────────────────────────
   const route = fs.readFileSync(path.join(__dirname, '../route/revRoute.js'), 'utf8');
   assert.match(route, /router\.post\('\/live\/session',\s*authenticateToken, voiceStartLimiter,\s*revController\.startVoiceSession\)/);
   assert.match(route, /router\.post\('\/live\/session\/:id\/heartbeat',\s*authenticateToken, voiceSessionLimiter, revController\.voiceSessionHeartbeat\)/);
   assert.match(route, /router\.post\('\/live\/session\/:id\/end',\s*authenticateToken, voiceSessionLimiter,\s*revController\.endVoiceSession\)/);
+  assert.match(route, /router\.post\('\/live\/session\/:id\/transcript',\s*authenticateToken, voiceTranscriptLimiter, revController\.saveVoiceTranscript\)/);
   assert.match(route, /router\.get\('\/live\/allowance',\s*authenticateToken, voiceSessionLimiter, revController\.getVoiceAllowance\)/);
   const controller = fs.readFileSync(path.join(__dirname, '../controller/revController.js'), 'utf8');
   assert.match(controller, /mlService\.mintLiveToken\(/);
   assert.match(controller, /reason: 'unavailable'/, 'a failed mint releases the reserved call');
   assert.match(controller, /inputMode: validated\.inputMode/);
+  assert.match(controller, /revVoice\.createCallConversation\(/, 'a call outside a conversation gets one');
+  assert.match(controller, /conversation_id: callConversationId/);
+  assert.doesNotMatch(controller.slice(controller.indexOf('function _voiceCounters'), controller.indexOf('async function _saveVoiceTranscript')),
+    /conversation_id/, 'the browser cannot choose the call\'s conversation after it starts');
+  assert.equal((controller.match(/cm\.metadata->>'voice_client_id' AS voice_client_id/g) || []).length, 3, 'every history page says which rows were spoken');
+  const retry = controller.slice(controller.indexOf('exports.retryConversation'));
+  assert.equal((retry.match(/<> 'transcript'/g) || []).length, 2, 'retry ignores spoken lines');
+  const ownership = fs.readFileSync(path.join(__dirname,
+    '../../prisma/migrations/20261203000000_rev_voice_session_conversation/migration.sql'), 'utf8').replace(/--[^\n]*/g, '');
+  assert.match(ownership, /ADD COLUMN IF NOT EXISTS owns_conversation boolean NOT NULL DEFAULT false/);
+  assert.doesNotMatch(ownership, /\bDROP\b|\bGRANT\b|CREATE POLICY/i, 'additive only');
   const migration = fs.readFileSync(path.join(__dirname,
     '../../prisma/migrations/20261201000000_rev_voice_sessions/migration.sql'), 'utf8');
   assert.match(migration, /ENABLE ROW LEVEL SECURITY/);

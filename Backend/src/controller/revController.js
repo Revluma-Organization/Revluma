@@ -702,6 +702,9 @@ exports.getConversation = async (req, res, next) => {
           cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
           cm.created_at, cm.metadata->'client_context' AS client_context,
           cm.metadata->>'input_mode' AS input_mode,
+          cm.metadata->>'voice_kind' AS voice_kind,
+          cm.metadata->>'voice_client_id' AS voice_client_id,
+          COALESCE(cm.metadata->'interrupted' = 'true'::jsonb, false) AS voice_interrupted,
           fb.rating AS feedback_rating
         FROM conversation_messages cm
         JOIN conversations cv ON cv.id = cm.conversation_id
@@ -719,6 +722,9 @@ exports.getConversation = async (req, res, next) => {
           cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
           cm.created_at, cm.metadata->'client_context' AS client_context,
           cm.metadata->>'input_mode' AS input_mode,
+          cm.metadata->>'voice_kind' AS voice_kind,
+          cm.metadata->>'voice_client_id' AS voice_client_id,
+          COALESCE(cm.metadata->'interrupted' = 'true'::jsonb, false) AS voice_interrupted,
           fb.rating AS feedback_rating
         FROM conversation_messages cm
         JOIN conversations cv ON cv.id = cm.conversation_id
@@ -737,6 +743,9 @@ exports.getConversation = async (req, res, next) => {
           cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
           cm.created_at, cm.metadata->'client_context' AS client_context,
           cm.metadata->>'input_mode' AS input_mode,
+          cm.metadata->>'voice_kind' AS voice_kind,
+          cm.metadata->>'voice_client_id' AS voice_client_id,
+          COALESCE(cm.metadata->'interrupted' = 'true'::jsonb, false) AS voice_interrupted,
           fb.rating AS feedback_rating
         FROM conversation_messages cm
         JOIN conversations cv ON cv.id = cm.conversation_id
@@ -1068,6 +1077,33 @@ function _messageIntent(content) {
   return typeof intent === 'string' ? intent : null;
 }
 
+// The merchant's opening lines of a voice call (up to ~40 words or 4 lines),
+// and Rev's first spoken replies, as the title model's input.
+function _spokenOpening(turns) {
+  const lines = [];
+  let words = 0;
+  for (const turn of turns) {
+    if (turn.role !== 'user') continue;
+    const text = _messageText(turn.content).replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    lines.push(text);
+    words += text.split(' ').length;
+    if (lines.length >= 4 || words >= 40) break;
+  }
+  return lines.join(' ').slice(0, 600).trim();
+}
+
+function _spokenReply(turns) {
+  const lines = [];
+  for (const turn of turns) {
+    if (turn.role !== 'rev' || turn.has_error) continue;
+    const text = _messageText(turn.content).replace(/\s+/g, ' ').trim();
+    if (text) lines.push(text);
+    if (lines.length >= 3) break;
+  }
+  return lines.join(' ').slice(0, 1200).trim();
+}
+
 exports.generateConversationTitle = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -1078,25 +1114,31 @@ exports.generateConversationTitle = async (req, res, next) => {
     const conv = await verifyConversationOwnership(id, org.id);
 
     const turns = await prisma.$queryRaw`
-      SELECT cm.role, cm.content, cm.has_error
+      SELECT cm.role, cm.content, cm.has_error, cm.metadata->>'voice_kind' AS voice_kind
       FROM conversation_messages cm
       JOIN conversations cv ON cv.id = cm.conversation_id
       WHERE cm.conversation_id = ${id}::uuid
         AND cv.organization_id = ${org.id}::uuid
       ORDER BY cm.sequence_number ASC, cm.id ASC
-      LIMIT 6
+      LIMIT 12
     `;
     const firstUser = turns.find(turn => turn.role === 'user');
-    const firstMessage = firstUser ? _messageText(firstUser.content).trim() : '';
+    const firstLine = firstUser ? _messageText(firstUser.content).trim() : '';
+    // A voice call opens with small talk more often than a typed chat, so a
+    // spoken start is titled from the first few things the merchant said.
+    const spoken = firstUser?.voice_kind === 'transcript';
+    const firstMessage = spoken ? _spokenOpening(turns) : firstLine;
     if (!firstMessage) {
       return res.status(409).json({ success: false, error: { code: 'NO_MESSAGES', message: 'This conversation has no question to title yet.' } });
     }
     const firstAnswer = turns.find(turn => turn.role === 'rev' && !turn.has_error);
-    const reply = firstAnswer ? _messageText(firstAnswer.content) : '';
+    const reply = spoken ? _spokenReply(turns) : (firstAnswer ? _messageText(firstAnswer.content) : '');
     const intent = firstAnswer ? _messageIntent(firstAnswer.content) : null;
     const current = typeof conv.title === 'string' ? conv.title : null;
 
-    if (!isAutomaticTitle(current, firstMessage, id, intent)) {
+    const automatic = isAutomaticTitle(current, firstMessage, id, intent)
+      || (spoken && isAutomaticTitle(current, firstLine, id, intent));
+    if (!automatic) {
       return res.status(200).json({ success: true, data: { id, title: current, source: 'existing' } });
     }
 
@@ -1173,13 +1215,27 @@ function _voiceErrorResponse(res, error) {
   return null;
 }
 
+// The call's conversation is the one recorded on the session row when the
+// call started; the browser can never re-point a call at another one.
 function _voiceCounters(body) {
   return {
     turnCount: Number(body?.turn_count) || 0,
     askCount: Number(body?.ask_count) || 0,
-    conversationId: typeof body?.conversation_id === 'string' && VOICE_UUID.test(body.conversation_id)
-      ? body.conversation_id.toLowerCase() : null,
   };
+}
+
+// Save finished spoken lines into the call's conversation. The draft title
+// comes from the first thing the merchant said (the dashboard asks for a
+// model-written title once there is enough to summarise).
+async function _saveVoiceTranscript(session, org, userId, rawEntries) {
+  const entries = revVoice.normaliseTranscriptEntries(rawEntries);
+  if (!entries.length) return { saved: 0, conversationId: session.conversation_id || null };
+  const firstUser = entries.find((entry) => entry.speaker === 'user');
+  const titleHint = firstUser && session.conversation_id
+    ? draftConversationTitle(firstUser.text, session.conversation_id) : null;
+  return revVoice.saveTranscript(prisma, {
+    session, organizationId: org.id, userId, entries, titleHint,
+  });
 }
 
 async function _voiceExcerpt(conversationId, organizationId) {
@@ -1230,6 +1286,11 @@ exports.startVoiceSession = async (req, res, next) => {
       organizationId: org.id, userId: req.user.id, conversationId,
       model: process.env.REV_LIVE_MODEL || 'gemini-3.8-live',
     });
+    // A call is a conversation, like a typed chat: one started outside a
+    // conversation gets its own, so every spoken line has somewhere to live.
+    const callConversationId = conversationId || await revVoice.createCallConversation(prisma, {
+      sessionId: reserved.sessionId, organizationId: org.id, userId: req.user.id,
+    });
 
     const [user, excerpt] = await Promise.all([
       prisma.users.findUnique({ where: { id: req.user.id }, select: { full_name: true } }).catch(() => null),
@@ -1277,7 +1338,8 @@ exports.startVoiceSession = async (req, res, next) => {
         max_seconds: reserved.maxSeconds,
         remaining_seconds: reserved.allowance.remaining_seconds,
         heartbeat_interval_ms: revVoice.HEARTBEAT_INTERVAL_MS,
-        conversation_id: conversationId,
+        conversation_id: callConversationId,
+        conversation_created: !conversationId,
         started_at: reserved.startedAt.toISOString(),
       },
     });
@@ -1301,7 +1363,7 @@ function _voiceSessionId(req, res) {
   return id;
 }
 
-// POST /api/v1/rev/live/session/:id/heartbeat  { turn_count, ask_count, conversation_id? }
+// POST /api/v1/rev/live/session/:id/heartbeat  { turn_count, ask_count }
 exports.voiceSessionHeartbeat = async (req, res, next) => {
   try {
     const sessionId = _voiceSessionId(req, res);
@@ -1317,8 +1379,29 @@ exports.voiceSessionHeartbeat = async (req, res, next) => {
   }
 };
 
-// POST /api/v1/rev/live/session/:id/end  { reason, turn_count, ask_count, conversation_id? }
-// The dashboard also sends this with fetch keepalive when the tab closes.
+// POST /api/v1/rev/live/session/:id/transcript  { entries: [{ client_id, speaker, text, interrupted?, spoken_at? }] }
+// Finished spoken lines, saved as ordinary messages of the call's conversation.
+exports.saveVoiceTranscript = async (req, res, next) => {
+  try {
+    const sessionId = _voiceSessionId(req, res);
+    if (!sessionId) return undefined;
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    const session = await revVoice.loadOwnedSession(prisma, { sessionId, organizationId: org.id, userId: req.user.id });
+    const result = await _saveVoiceTranscript(session, org, req.user.id, req.body?.entries);
+    return res.status(200).json({
+      success: true,
+      data: { conversation_id: result.conversationId, saved: result.saved },
+    });
+  } catch (error) {
+    if (_voiceErrorResponse(res, error)) return undefined;
+    return next(error);
+  }
+};
+
+// POST /api/v1/rev/live/session/:id/end  { reason, turn_count, ask_count, entries? }
+// The dashboard also sends this with fetch keepalive when the tab closes;
+// `entries` carries any spoken lines that were not saved yet, so they land
+// before an empty call's conversation would be cleaned up.
 exports.endVoiceSession = async (req, res, next) => {
   try {
     const sessionId = _voiceSessionId(req, res);
@@ -1326,6 +1409,17 @@ exports.endVoiceSession = async (req, res, next) => {
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
     const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    if (Array.isArray(body?.entries) && body.entries.length) {
+      try {
+        const session = await revVoice.loadOwnedSession(prisma, { sessionId, organizationId: org.id, userId: req.user.id });
+        await _saveVoiceTranscript(session, org, req.user.id, body.entries.slice(0, revVoice.MAX_TRANSCRIPT_BATCH));
+      } catch (saveError) {
+        // Hanging up must never fail because of the last lines.
+        logger.warn('rev_voice_transcript_final_save_failed', {
+          orgId: org.id, sessionId, errorCode: saveError?.code || saveError?.name || 'UNKNOWN',
+        });
+      }
+    }
     const view = await revVoice.endSession(prisma, {
       sessionId, organizationId: org.id, userId: req.user.id,
       reason: typeof body?.reason === 'string' ? body.reason : 'hangup',
@@ -2402,6 +2496,7 @@ exports.retryConversation = async (req, res, next) => {
       WHERE conversation_id = ${id}::uuid
         AND organization_id = ${org.id}::uuid
         AND role = 'user'
+        AND COALESCE(metadata->>'voice_kind', '') <> 'transcript'
       ORDER BY sequence_number DESC
       LIMIT 1
     `;
@@ -2419,6 +2514,7 @@ exports.retryConversation = async (req, res, next) => {
       WHERE conversation_id = ${id}::uuid
         AND organization_id = ${org.id}::uuid
         AND role = 'rev' AND sequence_number > ${lastUser[0].sequence_number}
+        AND COALESCE(metadata->>'voice_kind', '') <> 'transcript'
       ORDER BY sequence_number DESC LIMIT 1
     `;
     const ineligible = _retryEligibility({
