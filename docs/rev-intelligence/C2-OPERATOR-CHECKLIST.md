@@ -6,17 +6,19 @@ by production evidence — not repeated here.
 
 ## Task 1 — Run the verification script (Windows, no token needed)
 
-File: `docs/rev-intelligence/C2-verify-production.ps1` (this repo).
-It GETs Node `/ready` and Python `/health`, compares build SHAs against the
-accepted C2-identical commits (`9a133438` = #519, `48957cc` = #522
-waitlist-only), and prints PASS/FAIL plus a results block.
+File: `docs/rev-intelligence/C2-verify-production.ps1` (this repo, pull
+latest main first). It GETs Node `/ready`, Python `/health`, and the live
+main HEAD (public GitHub API, no token), compares build SHAs against live
+HEAD plus the accepted C2-identical commits (`9a133438`/`48957cc`/
+`c455084`/`4e1f47c`), and prints PASS/FAIL plus a results block.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File C2-verify-production.ps1
 ```
 
-- Expect `OVERALL: PASS`. Accepted SHAs start with `9a133438` or `48957cc`;
-  both services must agree (short-vs-full prefix match is fine).
+- Expect `OVERALL: PASS`. Accepted SHAs match live main HEAD or start with
+  one of `9a133438`/`48957cc`/`c455084`/`4e1f47c`; both services must
+  agree (short-vs-full prefix match is fine).
 - On `OVERALL: FAIL`, paste the results block AND the full output.
 - Pre-maintenance SHA gate (binding): at window start the script must PASS
   with both SHAs accepted and agreeing. Any other SHA, `unknown`, or
