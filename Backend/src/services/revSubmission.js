@@ -38,7 +38,24 @@ function validateSubmission(body) {
   if (!UUID.test(requestId)) {
     throw submissionError(400, 'INVALID_REQUEST_ID', 'request_id must be a valid UUID.');
   }
-  return { message, requestId, clientContext: validateClientContext(body?.client_context) };
+  return {
+    message, requestId,
+    clientContext: validateClientContext(body?.client_context),
+    inputMode: validateInputMode(body?.input_mode),
+  };
+}
+
+// How the merchant asked: typed (default, stored as nothing) or spoken during
+// a live voice call. Annotative only, like client_context: it never changes
+// routing, evidence scope or idempotency. Kept separate from client_context,
+// which is reserved for scripted-traffic tags (HISTORY-HYGIENE-POLICY).
+const INPUT_MODES = new Set(['voice']);
+function validateInputMode(value) {
+  if (value == null || value === 'text') return null;
+  if (!INPUT_MODES.has(value)) {
+    throw submissionError(400, 'INVALID_INPUT_MODE', "input_mode must be 'text' or 'voice'.");
+  }
+  return value;
 }
 
 function validateClientContext(value) {
@@ -111,7 +128,7 @@ function ensureSameSubmission(accepted, message, requestedConversationId) {
  * per-conversation advisory lock, and the whole accept transaction retries
  * (bounded) on a unique violation from a non-cooperating writer.
  */
-async function acceptSubmission({ prisma, organizationId, userId, message, requestId, requestedConversationId = null, imageAssisted = false, clientContext = null }) {
+async function acceptSubmission({ prisma, organizationId, userId, message, requestId, requestedConversationId = null, imageAssisted = false, clientContext = null, inputMode = null }) {
   const existing = await findAcceptedSubmission(prisma, organizationId, requestId);
   if (existing) {
     ensureSameSubmission(existing, message, requestedConversationId);
@@ -148,7 +165,12 @@ async function acceptSubmission({ prisma, organizationId, userId, message, reque
 
     // Stage 1 (H2): scripted-traffic annotation rides in the existing metadata
     // column. No schema change; ordinary merchant turns store NULL as before.
-    const clientMetadata = clientContext == null ? null : JSON.stringify({ client_context: clientContext });
+    // Spoken questions from a live call add input_mode alongside it.
+    const metadataObject = {
+      ...(clientContext == null ? {} : { client_context: clientContext }),
+      ...(inputMode == null ? {} : { input_mode: inputMode }),
+    };
+    const clientMetadata = Object.keys(metadataObject).length ? JSON.stringify(metadataObject) : null;
     // Phase 5D: an image-assisted question is marked so a later retry refuses
     // to re-run it imageless (the bytes are never persisted). This comment
     // must stay outside the SQL template: PostgreSQL has no // comments.

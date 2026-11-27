@@ -1641,6 +1641,39 @@ async def rev_punctuate_dictation(req: PunctuateRequest):
     return {"text": text}
 
 
+class LiveTokenRequest(BaseModel):
+    """Context for a Rev voice call, sent by Node after it checked the allowance."""
+    model_config = ConfigDict(extra="ignore")
+    max_seconds: int = Field(..., ge=1, le=3600)
+    merchant_name: str | None = Field(None, max_length=120)
+    store_name: str | None = Field(None, max_length=120)
+    conversation_excerpt: str | None = Field(None, max_length=6000)
+
+
+@app.post("/rev/live/token", dependencies=[Depends(verify_internal_caller)])
+async def rev_live_token(req: LiveTokenRequest):
+    """Mint a short-lived Gemini Live token locked to Rev's voice-call setup.
+
+    503 when voice is not configured or Gemini refused; the dashboard shows
+    voice calls as unavailable then.
+    """
+    from src.agents.rev_live import LiveUnavailable, mint_live_token
+
+    try:
+        return await run_in_threadpool(
+            mint_live_token,
+            max_seconds=req.max_seconds,
+            merchant_name=req.merchant_name,
+            store_name=req.store_name,
+            conversation_excerpt=req.conversation_excerpt,
+        )
+    except LiveUnavailable as exc:
+        logger.warning("rev_live_token_unavailable reason=%s", str(exc)[:120])
+        raise HTTPException(status_code=503, detail="Voice calls are unavailable.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid voice call request.") from exc
+
+
 @app.get("/internal/rev/metrics", dependencies=[Depends(verify_internal_caller)])
 def rev_operational_metrics():
     """Internal-only low-cardinality metrics snapshot; never exposes request IDs."""
