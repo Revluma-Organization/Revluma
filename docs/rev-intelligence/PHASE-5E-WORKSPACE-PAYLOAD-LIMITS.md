@@ -68,9 +68,10 @@ mode/gate, never inferred from incidental fields.
 
 ## Responsive / accessibility contract
 
-- ≥1024px: persistent dark history rail + workspace; below: hamburger +
-  modal drawer (unchanged). One history surface at a time — widening closes
-  the drawer.
+- All widths: conversation history is a modal drawer opened from the
+  top-right menu button (updated 2026-11-27; the earlier persistent dark rail
+  at 1024px and wider was removed at the merchant's request). One history
+  surface, one control, and the workspace keeps its full width.
 - Ledger rows and disclosures are native-labelled expand/collapse
   (`aria-expanded`); sections are labelled regions; citations expose
   "Citation N … — open evidence"; header controls are native links/buttons.
