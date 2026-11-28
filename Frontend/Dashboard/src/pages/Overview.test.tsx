@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { api } from "@/lib/api";
 import Overview from "./Overview";
@@ -58,7 +58,9 @@ describe("Task 216 Command Center", () => {
     window.HTMLElement.prototype.scrollIntoView = function (this: Element) { scrolled = this; };
     try {
       await renderPageAt("/dashboard/overview?section=priority", fixture());
-      expect(scrolled).not.toBeNull();
+      // The deep-link scroll runs in an effect after data lands; under load it
+      // can trail the first render, so wait for it rather than racing it.
+      await waitFor(() => expect(scrolled).not.toBeNull());
       expect((scrolled as unknown as Element).id).toBe("priority-finding");
     } finally {
       delete (window.HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
@@ -76,7 +78,9 @@ describe("Task 216 Command Center", () => {
     };
     try {
       await renderPageAt("/dashboard/overview?section=signals", fixture({ findings: [finding() as CommandCenterData["findings"][number]], signal_evaluation: evaluation } as Partial<CommandCenterData>));
-      expect(scrolled).not.toBeNull();
+      // The deep-link scroll runs in an effect after data lands; under load it
+      // can trail the first render, so wait for it rather than racing it.
+      await waitFor(() => expect(scrolled).not.toBeNull());
       expect((scrolled as unknown as Element).id).toBe("signals-activity");
     } finally {
       delete (window.HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
@@ -88,7 +92,9 @@ describe("Task 216 Command Center", () => {
     window.HTMLElement.prototype.scrollIntoView = function (this: Element) { scrolled = this; };
     try {
       await renderPageAt("/dashboard/overview?section=signals", fixture());
-      expect(scrolled).not.toBeNull();
+      // The deep-link scroll runs in an effect after data lands; under load it
+      // can trail the first render, so wait for it rather than racing it.
+      await waitFor(() => expect(scrolled).not.toBeNull());
       expect((scrolled as unknown as Element).id).toBe("signals-activity");
     } finally {
       delete (window.HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
