@@ -21,9 +21,11 @@ jobs:
       - run: npm ci
       - run: |
           set -o pipefail
-          npm test -- --run 2>&1 | tee /tmp/test.log || {
-            tail -c 60000 /tmp/test.log | sed -r 's/\x1b\[[0-9;]*m//g' | grep -vE "^\s*$|✓" | tail -120 > /tmp/tail.log
+          npm test -- --run > /tmp/test.log 2>&1; code=$?
+          if [ $code -ne 0 ]; then
+            sed -r 's/\x1b\[[0-9;]*m//g' /tmp/test.log | grep -vE "^\s*$|✓|act\(|fire events|assert on the output|This ensures|^\s+at |^\}\);|Warning: An update|When testing|^stderr \|" | tail -45 > /tmp/tail.log
+            echo "exit=$code" >> /tmp/tail.log; free -m | head -2 >> /tmp/tail.log
             echo "::error title=vitest tail::$(sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g' /tmp/tail.log)"
             exit 1
-          }
+          fi
       - run: npm run build
