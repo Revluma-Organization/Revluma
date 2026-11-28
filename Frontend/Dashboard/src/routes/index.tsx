@@ -12,7 +12,7 @@ import AcceptInvite from "../pages/auth/AcceptInvite";
 
 
 // Settings Pages
-import SettingsLayout from "../pages/settings/SettingsLayout";
+import SettingsLayout, { SettingsIndex } from "../pages/settings/SettingsLayout";
 import Profile from "../pages/settings/Profile";
 import TeamManagement from "../pages/settings/TeamManagement";
 import DangerZone from "../pages/settings/DangerZone";
@@ -49,7 +49,7 @@ export function DashboardRoutes() {
         
         {/* Settings Routes */}
         <Route path="settings" element={<SettingsLayout />}>
-          <Route index element={<Navigate to="profile" replace />} />
+          <Route index element={<SettingsIndex />} />
           <Route path="profile" element={<Profile />} />
           
           {/* Account */}

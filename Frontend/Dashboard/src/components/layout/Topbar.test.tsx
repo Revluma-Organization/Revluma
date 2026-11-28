@@ -29,4 +29,12 @@ describe("Topbar theme", () => {
     expect(header).not.toContain("bg-white");
     expect(header).toContain("bg-bg");
   });
+
+  it("renders a custom breadcrumb trail with the last crumb as the current page", () => {
+    vi.spyOn(api, "get").mockResolvedValue({ ok: true, status: 200, data: { data: { count: 0 } } } as never);
+    render(<MemoryRouter><Topbar crumbs={[{ label: "Dashboard", to: "/dashboard/overview" }, { label: "Settings", to: "/dashboard/settings" }, { label: "Profile" }]} /></MemoryRouter>);
+    const trail = document.querySelector('nav[aria-label="Breadcrumb"]')!;
+    expect(trail.querySelector('a[href="/dashboard/settings"]')).toHaveTextContent("Settings");
+    expect(trail.querySelector('[aria-current="page"]')).toHaveTextContent("Profile");
+  });
 });

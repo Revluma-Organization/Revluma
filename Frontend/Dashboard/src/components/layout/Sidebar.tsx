@@ -11,32 +11,10 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import revlumaIcon from "@/assets/brand/revluma-icon.png";
 import { RevOrbVideo } from "@/components/rev/RevOrb";
+import { isSettingsPath, rememberAppRoute } from "@/data/settingsNav";
+import { side } from "./sidebarTokens";
+import { SettingsNav } from "./SettingsNav";
 
-/**
- * Sidebar design tokens: the landing and auth system (auth-theme.css) on the
- * dashboard shell. Light is the warm #FBFAF8 canvas with ink #0C0A1D type and
- * #E8E6E1 hairlines; dark is neutral pure black (#000 canvas, #0D0D0D cards,
- * #262626 hairlines), never navy. The current page is a Revluma blue pill
- * (#2B13CF, the auth accent) in both themes. Literal class strings so
- * Tailwind's scanner and the tests can read them.
- */
-const side = {
-  surface: "bg-[#FBFAF8] text-[#0C0A1D] border-[#E8E6E1] dark:bg-black dark:text-[#F5F5F5] dark:border-[#1F1F1F]",
-  text: "text-[#0C0A1D] dark:text-[#F5F5F5]",
-  muted: "text-[#5E5C6B] dark:text-[#A3A3A3]",
-  faint: "text-[#6B6977] dark:text-[#8A8A8A]",
-  icon: "text-[#6B6977] group-hover:text-[#0C0A1D] dark:text-[#8A8A8A] dark:group-hover:text-white",
-  item: "text-[#3F3D4E] hover:bg-[#F1EFEA] hover:text-[#0C0A1D] dark:text-[#D4D4D4] dark:hover:bg-[#141414] dark:hover:text-white",
-  active: "bg-[#2B13CF] text-white shadow-[0_10px_22px_-12px_rgba(43,19,207,0.7)] hover:bg-[#1F06AC] dark:shadow-[0_10px_24px_-12px_rgba(43,19,207,0.9)]",
-  badge: "bg-[#EEEBFF] text-[#2B13CF] dark:bg-[#16142B] dark:text-[#B9B3FF]",
-  badgeActive: "bg-white/20 text-white",
-  iconButton: "shrink-0 items-center justify-center rounded-full border border-[#E8E6E1] bg-white text-[#3F3D4E] transition-colors duration-200 hover:border-[#0C0A1D] hover:text-[#0C0A1D] dark:border-[#262626] dark:bg-[#0D0D0D] dark:text-[#D4D4D4] dark:hover:border-[#525252] dark:hover:text-white flex",
-  card: "border-[#E8E6E1] bg-white shadow-[0_1px_2px_rgba(12,10,29,0.04),0_18px_36px_-26px_rgba(12,10,29,0.28)] dark:border-[#262626] dark:bg-[#0D0D0D] dark:shadow-none",
-  pop: "border-[#E8E6E1] bg-white shadow-[0_18px_36px_-14px_rgba(12,10,29,0.28),0_4px_10px_-4px_rgba(12,10,29,0.1)] dark:border-[#262626] dark:bg-[#0D0D0D] dark:shadow-[0_18px_36px_-14px_rgba(0,0,0,0.9)]",
-  rowHover: "hover:bg-[#F4F2EE] dark:hover:bg-[#161616]",
-  divider: "border-[#E8E6E1] dark:border-[#262626]",
-  focus: "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2B13CF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#FBFAF8] dark:focus-visible:ring-[#8E87FF] dark:focus-visible:ring-offset-black",
-} as const;
 
 function initials(name: string | null | undefined) {
   return name?.split(" ").filter(Boolean).map(part => part[0]).join("").slice(0, 2).toUpperCase() || "--";
@@ -88,11 +66,16 @@ function isNavItemActive(
 }
 
 export function Sidebar() {
-  const { sidebarCollapsed, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen } = useUI();
+  const { sidebarCollapsed: collapsedPreference, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen } = useUI();
   const theme = useThemeStore(state => state.theme);
   const toggleTheme = useThemeStore(state => state.toggleTheme);
   const { user, logout } = useAuth();
   const { pathname, search } = useLocation();
+  // Settings mode swaps the workspace links for the settings menu in this same
+  // rail (one sidebar, never two). The rail is always expanded there: icon-only
+  // settings links would be unreadable.
+  const settingsMode = isSettingsPath(pathname);
+  const sidebarCollapsed = collapsedPreference && !settingsMode;
   const overviewParams = pathname === "/dashboard/overview" ? new URLSearchParams(search) : null;
   const overviewSection = overviewParams?.get("section") ?? null;
   const findingDeepLink = overviewParams !== null && overviewParams.has("finding");
@@ -103,6 +86,7 @@ export function Sidebar() {
   const isMobileDrawer = mobileSidebarOpen;
 
   useEffect(() => { setMobileSidebarOpen(false); setUserOpen(false); }, [pathname, setMobileSidebarOpen]);
+  useEffect(() => { if (!settingsMode) rememberAppRoute(`${pathname}${search}`); }, [settingsMode, pathname, search]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") { setMobileSidebarOpen(false); setUserOpen(false); }
@@ -195,12 +179,12 @@ export function Sidebar() {
         <button
           type="button"
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className={cn(side.iconButton, "hidden h-8 w-8 md:flex", sidebarCollapsed && "md:hidden", side.focus)}
+          className={cn(side.iconButton, "hidden h-8 w-8 md:flex", (sidebarCollapsed || settingsMode) && "md:hidden", side.focus)}
           aria-label="Collapse sidebar"
         ><ChevronLeft className="h-4 w-4" /></button>
       </div>
 
-      <nav className={cn("flex-1 overflow-y-auto px-3 pb-4 pt-2", sidebarCollapsed && "md:px-2")} aria-label="Workspace">
+      {settingsMode ? <SettingsNav key="settings" pathname={pathname} role={user?.role} onNavigate={() => setMobileSidebarOpen(false)} /> : <nav className={cn("flex-1 overflow-y-auto px-3 pb-4 pt-2", sidebarCollapsed && "md:px-2")} aria-label="Workspace">
         {Object.entries(groups).map(([group, items]) => <div key={group} className="rv-side-rise">
           {!sidebarCollapsed && <p className={cn("mb-2 px-3.5 text-[11px] font-semibold uppercase tracking-[0.14em]", side.faint)}>{group}</p>}
           <ul className="space-y-1">{items.map(item => {
@@ -231,7 +215,7 @@ export function Sidebar() {
             </Link></li>;
           })}</ul>
         </div>)}
-      </nav>
+      </nav>}
 
       <div className={cn("shrink-0 p-3", sidebarCollapsed && "md:px-2")}>
         {sidebarCollapsed && <button
