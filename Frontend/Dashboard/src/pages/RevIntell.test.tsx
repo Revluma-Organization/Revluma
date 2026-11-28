@@ -2689,19 +2689,44 @@ describe('turn chrome (ChatGPT-UI study §5, honest "Worked for")', () => {
   });
 });
 
+describe('compact conversation history', () => {
+  it('lists conversations as single title lines under Recents, older ones under 30+ days ago', async () => {
+    const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+    replies.set('/rev/conversations', Promise.resolve(reply([
+      { id: 'A', title: 'Conversation A', message_count: 4, last_activity_at: daysAgo(0) },
+      { id: 'B', title: 'Conversation B', message_count: 2, last_activity_at: daysAgo(3) },
+      { id: 'C', title: 'Conversation C', message_count: 6, last_activity_at: daysAgo(45) },
+    ])));
+    renderPage('/dashboard/rev-intell/A');
+    openHistory();
+    const row = await screen.findByRole('button', { name: 'Conversation A' });
+    const drawer = historyDialog()!;
+    const sections = within(drawer).getAllByRole('region');
+    expect(sections.map(section => section.getAttribute('aria-label'))).toEqual(['Recents', '30+ days ago']);
+    expect(within(sections[0]).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(sections[1]).getByRole('button', { name: 'Conversation C' })).toBeInTheDocument();
+    // No timestamps or message counts in the list.
+    expect(row).toHaveTextContent(/^Conversation A$/);
+    expect(within(drawer).queryByText(/messages/)).not.toBeInTheDocument();
+    expect(within(drawer).queryByText(/Today|Yesterday|Previous 7 days/)).not.toBeInTheDocument();
+  });
+});
+
 describe('historyGroupLabel', () => {
   const now = new Date(2026, 10, 18, 15, 0);
   it.each([
-    [new Date(2026, 10, 18, 0, 5), 'Today'],
-    [new Date(2026, 10, 17, 23, 59), 'Yesterday'],
-    [new Date(2026, 10, 13, 9, 0), 'Previous 7 days'],
-    [new Date(2026, 9, 25, 9, 0), 'Previous 30 days'],
-    [new Date(2026, 6, 1, 9, 0), 'Older'],
+    [new Date(2026, 10, 18, 0, 5), 'Recents'],
+    [new Date(2026, 10, 17, 23, 59), 'Recents'],
+    [new Date(2026, 10, 13, 9, 0), 'Recents'],
+    [new Date(2026, 9, 20, 9, 0), 'Recents'],
+    [new Date(2026, 9, 19, 9, 0), '30+ days ago'],
+    [new Date(2026, 6, 1, 9, 0), '30+ days ago'],
+    [new Date(2026, 10, 19, 9, 0), 'Recents'],
   ])('groups %s as %s', (time, label) => {
     expect(historyGroupLabel(time.toISOString(), now)).toBe(label);
   });
-  it('files an unreadable timestamp under Older', () => {
-    expect(historyGroupLabel('not a date', now)).toBe('Older');
+  it('keeps an unreadable timestamp with Recents', () => {
+    expect(historyGroupLabel('not a date', now)).toBe('Recents');
   });
 });
 
