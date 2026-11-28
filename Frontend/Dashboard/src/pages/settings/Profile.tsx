@@ -1,478 +1,606 @@
-import { FC, useState, useRef, useEffect } from "react";
-import { useAuth } from "@/context/AuthContext";
-import { useAuthStore } from "@/store/authStore";
-import { ChangePasswordForm } from "./components/ChangePasswordForm";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Upload, X, Crown, Shield, User as UserIcon, ShieldCheck, Copy, Check, Loader2, QrCode } from "lucide-react";
-import { DESIGN_TOKENS } from "@/lib/DesignConstants";
-import { motion, AnimatePresence } from "framer-motion";
-import { PageTransition, StaggeredList, StaggeredItem } from "@/components/MotionWrappers";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type FC, type FormEvent } from "react";
+import { Link } from "react-router-dom";
+import {
+  AlertCircle,
+  AlertTriangle,
+  BadgeCheck,
+  Camera,
+  Check,
+  ChevronRight,
+  Copy,
+  Crown,
+  Loader2,
+  RefreshCw,
+  Shield,
+  ShieldCheck,
+  User as UserIcon,
+} from "lucide-react";
+import { toast } from "sonner";
+import { useAuthStore, type OrgMembership, type User } from "@/store/authStore";
 import { api } from "@/lib/api";
+import {
+  AVATAR_ACCEPT,
+  AVATAR_HINT,
+  NAME_MAX_LENGTH,
+  apiErrorMessage,
+  formatAccountDate,
+  initialsFor,
+  joinFullName,
+  namesEqual,
+  roleMetaFor,
+  splitFullName,
+  validateAvatarFile,
+  validateNamePart,
+  type NameParts,
+} from "@/lib/profileSettings";
+import { settingsUi as ui } from "@/lib/settingsStyles";
+import { cn } from "@/lib/utils";
+import { SettingsRow, SettingsSection } from "./components/SettingsSection";
+import { ChangePasswordForm } from "./components/ChangePasswordForm";
+import { TwoFactorDisableDialog, TwoFactorSetupDialog } from "./components/TwoFactorDialogs";
 
-const MotionButton = motion.create(Button);
+interface ProfilePayload {
+  id?: string;
+  full_name?: string | null;
+  email?: string | null;
+  email_verified?: boolean;
+  profile_picture_url?: string | null;
+  two_factor_enabled?: boolean;
+  created_at?: string | null;
+  active_organization_id?: string | null;
+  role?: string | null;
+  organization_members?: OrgMembership[];
+}
+
+type LoadState = "loading" | "ready" | "error";
+type AvatarBusy = "upload" | "remove" | null;
+
+/** Patch the persisted auth user so the sidebar account menu updates at once. */
+function patchAuthUser(patch: Partial<User>) {
+  const { user, setUser } = useAuthStore.getState();
+  if (user) setUser({ ...user, ...patch });
+}
+
+const RoleIcon: FC<{ role: string; className?: string }> = ({ role, className }) => {
+  if (role === "owner") return <Crown className={className} aria-hidden="true" />;
+  if (role === "admin") return <Shield className={className} aria-hidden="true" />;
+  return <UserIcon className={className} aria-hidden="true" />;
+};
 
 const Profile: FC = () => {
-  const { user } = useAuth();
-  const userRole = useAuthStore((s) => s.user?.role?.toLowerCase());
-  const memberships = useAuthStore((s) => s.user?.organization_memberships);
-  const [showChangePassword, setShowChangePassword] = useState(false);
-  const [isEditingNames, setIsEditingNames] = useState(false);
-  const [is2FAModalOpen, setIs2FAModalOpen] = useState(false);
-  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
-  const [otpCode, setOtpCode] = useState("");
-  const [isVerifying2FA, setIsVerifying2FA] = useState(false);
-  const [copiedSecret, setCopiedSecret] = useState(false);
+  const storeUser = useAuthStore((s) => s.user);
+  const initialName = useMemo(() => splitFullName(storeUser?.full_name), [storeUser?.full_name]);
 
-  // New state for backend 2FA data
-  const [setupSecret, setSetupSecret] = useState("");
-  const [qrCodeUrl, setQrCodeUrl] = useState("");
-  const [isFetching2FA, setIsFetching2FA] = useState(false);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [profile, setProfile] = useState<ProfilePayload | null>(null);
 
-  // Updated to use dynamic secret
-  const handleCopySecret = () => {
-    navigator.clipboard.writeText(setupSecret);
-    setCopiedSecret(true);
-    setTimeout(() => setCopiedSecret(false), 2000);
-  };
+  // Name form: `saved` is the server baseline, `draft` what the user typed.
+  const [savedName, setSavedName] = useState<NameParts>(initialName);
+  const [draft, setDraft] = useState<NameParts>(initialName);
+  const [touched, setTouched] = useState({ firstName: false, lastName: false });
+  const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
+  const draftRef = useRef(draft);
+  const savedRef = useRef(savedName);
+  draftRef.current = draft;
+  savedRef.current = savedName;
 
-  // New fetch function for the Setup button
-  const handleSetup2FA = async () => {
-    setIsFetching2FA(true);
-    try {
-      const res = await api.post("/auth/2fa/setup");
-      setQrCodeUrl(res.data.qrCode);
-      setSetupSecret(res.data.secret);
-      setIs2FAModalOpen(true);
-    } catch (err) {
-      console.error("Failed to fetch 2FA setup data", err);
-    } finally {
-      setIsFetching2FA(false);
-    }
-  };
-
-  const handleVerify2FA = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpCode || otpCode.length < 6) return;
-    setIsVerifying2FA(true);
-    try {
-      await api.post("/auth/2fa/verify", { code: otpCode }, { skipAuthRedirect: true });
-      setIs2FAEnabled(true);
-      setIs2FAModalOpen(false);
-      setOtpCode("");
-    } catch (err) {
-      console.error("2FA verification API call failed:", err);
-      setOtpCode(""); 
-    } finally {
-      setIsVerifying2FA(false);
-    }
-  };
-  const handleDisable2FA = async () => {
-    try {
-      await api.post("/auth/2fa/disable");
-      setIs2FAEnabled(false);
-    } catch (err) {
-      console.error("Failed to disable 2FA:", err);
-    }
-  };
-  const nameParts = user?.full_name?.split(" ") || ["", ""];
-  const initialFirstName = nameParts[0];
-  const initialLastName = nameParts.slice(1).join(" ");
-
-  const [firstName, setFirstName] = useState(initialFirstName);
-  const [lastName, setLastName] = useState(initialLastName);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(storeUser?.profile_picture_url ?? null);
+  const [avatarBusy, setAvatarBusy] = useState<AvatarBusy>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const objectUrlRef = useRef<string | null>(null);
 
-    useEffect(() => {
-        const fetchProfile = async () => {
-      try {
-        const res = await api.get("/auth/getProfile");
-        
-        // Target the nested 'data' object backend sends back
-        const userData = res.data?.data;
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState<boolean>(Boolean(storeUser?.two_factor_enabled));
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [disableOpen, setDisableOpen] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
 
-        if (userData) {
-          // Fetch the nested profile picture
-          if (userData.profile_picture_url) {
-            setAvatarPreview(userData.profile_picture_url);
-          }
-          // Backend returns 'full_name', so we split it back into first and last
-          if (userData.full_name) {
-            const nameParts = userData.full_name.split(" ");
-            setFirstName(nameParts[0] || "");
-            setLastName(nameParts.slice(1).join(" ") || "");
-          }
-          // Read the nested 2FA status
-          if (userData.two_factor_enabled !== undefined) {
-            setIs2FAEnabled(userData.two_factor_enabled);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch profile data:", err);
-        // Fallback to auth store if fetch fails
-        setFirstName(initialFirstName);
-        setLastName(initialLastName);
-      }
-    };
-
-    fetchProfile();
-  }, [initialFirstName, initialLastName]);
-
-      const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Instantly show the local preview in the UI
-      const url = URL.createObjectURL(file);
-      setAvatarPreview(url);
-
-      // Prepare the file as multipart/form-data with the exact name "image[span_2](start_span)"[span_2](end_span)
-      const formData = new FormData();
-      formData.append("image", file);
-
-      // Send it without manually setting the Content-Type header[span_3](start_span)[span_3](end_span)!
-      try {
-        await api.put("/auth/profile/picture", formData);
-        console.log("Profile picture uploaded successfully!");
-      } catch (err) {
-        console.error("Failed to upload profile picture:", err);
-      }
-    }
+  const firstNameRef = useRef<HTMLInputElement>(null);
+  const lastNameRef = useRef<HTMLInputElement>(null);
+  const formId = useId();
+  const ids = {
+    first: `${formId}-first`,
+    last: `${formId}-last`,
+    firstError: `${formId}-first-error`,
+    lastError: `${formId}-last-error`,
+    nameLabel: `${formId}-name-label`,
+    photoHint: `${formId}-photo-hint`,
   };
 
-    const handleSaveNames = async () => {
+  const loadProfile = useCallback(async () => {
+    setLoadState("loading");
     try {
-      await api.patch("/auth/profile", { firstName, lastName });
-      setIsEditingNames(false);
-    } catch (err) {
-      console.error("Failed to update profile names:", err);
+      const res = await api.get<{ data?: ProfilePayload }>("/auth/me");
+      const data = res.data?.data;
+      if (!data) throw new Error("empty profile");
+      setProfile(data);
+      const serverName = splitFullName(data.full_name);
+      // Never clobber edits the user started while the request was in flight.
+      if (namesEqual(draftRef.current, savedRef.current)) setDraft(serverName);
+      setSavedName(serverName);
+      if (!objectUrlRef.current) setAvatarUrl(data.profile_picture_url ?? null);
+      if (typeof data.two_factor_enabled === "boolean") setTwoFactorEnabled(data.two_factor_enabled);
+      setLoadState("ready");
+    } catch {
+      setLoadState("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  useEffect(() => () => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+  }, []);
+
+  // ── Name form ────────────────────────────────────────────────────────────
+  const dirty = !namesEqual(draft, savedName);
+  const firstError = validateNamePart(draft.firstName, "First name");
+  const lastError = validateNamePart(draft.lastName, "Last name");
+  const showFirstError = Boolean(firstError) && (touched.firstName || submitted);
+  const showLastError = Boolean(lastError) && (touched.lastName || submitted);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  useEffect(() => {
+    if (!justSaved) return;
+    const timer = window.setTimeout(() => setJustSaved(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [justSaved]);
+
+  const updateDraft = (field: keyof NameParts) => (event: ChangeEvent<HTMLInputElement>) => {
+    setDraft((current) => ({ ...current, [field]: event.target.value }));
+    setSaveError(null);
+    setJustSaved(false);
+  };
+
+  const discardChanges = () => {
+    setDraft(savedName);
+    setTouched({ firstName: false, lastName: false });
+    setSubmitted(false);
+    setSaveError(null);
+  };
+
+  const handleSaveName = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!dirty || saving) return;
+    setSubmitted(true);
+    if (firstError || lastError) {
+      (firstError ? firstNameRef : lastNameRef).current?.focus();
+      return;
+    }
+    const next = { firstName: draft.firstName.trim(), lastName: draft.lastName.trim() };
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await api.patch<{ data?: { full_name?: string } }>("/auth/profile", next);
+      const fullName = res.data?.data?.full_name ?? joinFullName(next);
+      const confirmed = splitFullName(fullName);
+      setSavedName(confirmed);
+      setDraft(confirmed);
+      setTouched({ firstName: false, lastName: false });
+      setSubmitted(false);
+      setJustSaved(true);
+      patchAuthUser({ full_name: fullName });
+      toast.success("Profile updated");
+    } catch (error) {
+      setSaveError(apiErrorMessage(error, "We couldn't save your name. Try again."));
+    } finally {
+      setSaving(false);
     }
   };
+
+  // ── Photo ────────────────────────────────────────────────────────────────
+  const releaseObjectUrl = () => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    objectUrlRef.current = null;
+  };
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const invalid = validateAvatarFile(file);
+    if (invalid) {
+      setAvatarError(invalid);
+      return;
+    }
+    const previous = avatarUrl;
+    releaseObjectUrl();
+    const preview = URL.createObjectURL(file);
+    objectUrlRef.current = preview;
+    setAvatarUrl(preview);
+    setAvatarError(null);
+    setAvatarBusy("upload");
+    const formData = new FormData();
+    formData.append("image", file);
+    try {
+      const res = await api.put<{ data?: { profile_picture_url?: string | null } }>("/auth/profile/picture", formData);
+      const uploaded = res.data?.data?.profile_picture_url ?? null;
+      if (uploaded) {
+        releaseObjectUrl();
+        setAvatarUrl(uploaded);
+      }
+      patchAuthUser({ profile_picture_url: uploaded ?? previous });
+      toast.success("Profile photo updated");
+    } catch (error) {
+      releaseObjectUrl();
+      setAvatarUrl(previous);
+      setAvatarError(apiErrorMessage(error, "We couldn't upload that photo. Try again."));
+    } finally {
+      setAvatarBusy(null);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!avatarUrl || avatarBusy) return;
+    setAvatarBusy("remove");
+    setAvatarError(null);
+    try {
+      await api.delete("/auth/profile/picture");
+      releaseObjectUrl();
+      setAvatarUrl(null);
+      patchAuthUser({ profile_picture_url: null });
+      toast.success("Profile photo removed");
+    } catch (error) {
+      setAvatarError(apiErrorMessage(error, "We couldn't remove your photo. Try again."));
+    } finally {
+      setAvatarBusy(null);
+    }
+  };
+
+  const openFilePicker = () => {
+    if (!avatarBusy) fileInputRef.current?.click();
+  };
+
+  // ── Derived identity / workspace facts (never invented) ─────────────────
+  const email = profile?.email ?? storeUser?.email ?? "";
+  const emailVerified = profile?.email_verified ?? storeUser?.email_verified;
+  const userId = profile?.id ?? storeUser?.id ?? "";
+  const memberSince = formatAccountDate(profile?.created_at ?? storeUser?.created_at);
+  const memberships = profile?.organization_members ?? storeUser?.organization_memberships ?? [];
+  const activeOrgId = profile?.active_organization_id ?? storeUser?.active_organization_id ?? storeUser?.tenant_id ?? null;
+  const activeMembership = memberships.find((item) => item.organization_id === activeOrgId) ?? memberships[0];
+  const rawRole = profile?.role && profile.role !== "unknown" ? profile.role : activeMembership?.role ?? storeUser?.role;
+  const role = roleMetaFor(rawRole);
+  const workspaceName = activeMembership?.organizations?.company_name ?? null;
+  const otherWorkspaces = Math.max(0, memberships.length - 1);
+  const joinedWorkspace = formatAccountDate(activeMembership?.joined_at);
+  const initials = initialsFor(joinFullName(savedName), email);
+
+  const handleCopyId = async () => {
+    if (!userId) return;
+    try {
+      await navigator.clipboard.writeText(userId);
+      setCopiedId(true);
+      window.setTimeout(() => setCopiedId(false), 2000);
+    } catch {
+      toast.error("Couldn't copy. Select the ID and copy it manually.");
+    }
+  };
+
+  const footerStatus = saving
+    ? "Saving your changes…"
+    : saveError
+      ? null
+      : dirty
+        ? "You have unsaved changes."
+        : justSaved
+          ? "All changes saved."
+          : "Photo changes save as soon as you upload.";
 
   return (
-    <PageTransition className="max-w-4xl space-y-8 relative">
-      <motion.div layout className="flex items-center justify-between">
-        <div>
-          <motion.h1 layout className={`text-2xl font-bold tracking-tight display ${DESIGN_TOKENS.primaryText}`}>Account</motion.h1>
-          <motion.p layout className={`text-[0.85rem] mt-1 ${DESIGN_TOKENS.secondaryText}`}>Manage your personal profile and account settings.</motion.p>
+    <div className="w-full min-w-0 space-y-6 pb-8">
+      <header className="flex flex-col gap-1">
+        <h1 className="text-[22px] font-semibold leading-8 tracking-[-0.02em] text-ink">Profile</h1>
+        <p className="text-[13.5px] leading-5 text-ink-muted">
+          Manage your personal details, how you sign in, and how teammates see you across Revluma.
+        </p>
+      </header>
+
+      {loadState === "error" ? (
+        <div role="alert" className="flex flex-col gap-3 rounded-xl border border-warning-line bg-warning-soft px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-start gap-2 text-[13px] font-medium text-warning">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            We couldn't load your latest profile. You're seeing the details saved on this device.
+          </p>
+          <button type="button" onClick={() => void loadProfile()} className={cn(ui.secondaryButton, "h-8 self-start sm:self-auto")}>
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Retry
+          </button>
         </div>
-        <MotionButton whileTap={{ scale: 0.98 }} variant="ghost" size="icon" onClick={() => window.history.back()} className="rounded-full hover:bg-slate-200 dark:hover:bg-neutral-800 transition-colors">
-          <X className="h-5 w-5 text-slate-500 hover:text-slate-900 dark:text-neutral-400 dark:hover:text-white" />
-        </MotionButton>
-      </motion.div>
+      ) : null}
 
-      <StaggeredList className={`space-y-0 shadow-sm relative overflow-hidden ${DESIGN_TOKENS.card}`}>
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-glass/[0.015] to-transparent" />
-
-        {/* Profile Picture Section */}
-        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-neutral-800">
-          <motion.h3 layout className="font-semibold text-[0.85rem] text-slate-800 dark:text-neutral-200 mb-4">Profile Picture</motion.h3>
-          <motion.div layout className="flex flex-col sm:flex-row sm:items-center gap-6">
-            <motion.div layout className="h-16 w-16 rounded-full bg-bg-3 overflow-hidden flex items-center justify-center border border-border shrink-0">
-              {avatarPreview ? (
-                <img src={avatarPreview} alt="Avatar" className="h-full w-full object-cover" />
-              ) : (
-                <div className="text-xl font-bold text-[#007FFF]">
-                  {((firstName?.[0] || "") + (lastName?.[0] || "")).toUpperCase() || "?"}
-                </div>
-              )}
-            </motion.div>
-            <motion.div layout className="flex flex-col gap-2">
-              <div className="flex items-center gap-3">
-                <input type="file" accept="image/png, image/jpeg, image/gif" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
-                <MotionButton whileTap={{ scale: 0.98 }} onClick={() => fileInputRef.current?.click()} className="bg-[hsl(var(--accent))] hover:bg-[hsl(var(--accent-2))] !text-white border-none font-bold shadow-[0_0_15px_hsl(var(--accent)/0.3)] flex items-center gap-2 rounded-lg text-xs h-8 px-4">
-                  <Upload className="h-3.5 w-3.5" />
-                  Upload Image
-                </MotionButton>
-                <MotionButton whileTap={{ scale: 0.98 }} onClick={() => setAvatarPreview(null)} variant="outline" className="rounded-lg border border-slate-300 dark:border-neutral-700 bg-transparent text-slate-700 dark:text-neutral-300 hover:bg-slate-100 dark:hover:bg-neutral-800 text-xs h-8 px-4 font-medium transition-colors">
-                  Remove
-                </MotionButton>
-              </div>
-              <p className="text-[0.75rem] text-slate-600 dark:text-neutral-400 font-medium">Accepted formats: PNG, JPEG, GIF (Max 10MB)</p>
-            </motion.div>
-          </motion.div>
-        </StaggeredItem>
-
-        {/* Name Section */}
-        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-neutral-800">
-          <motion.div layout className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-            <div className="space-y-2">
-              <Label htmlFor="firstName" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>First Name</Label>
-              <Input 
-                id="firstName" 
-                value={firstName} 
-                onChange={(e) => setFirstName(e.target.value)} 
-                readOnly={!isEditingNames}
-                className={`h-9 transition-all ${DESIGN_TOKENS.input} ${!isEditingNames ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-neutral-900/50' : ''}`} 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>Last Name</Label>
-              <Input 
-                id="lastName" 
-                value={lastName} 
-                onChange={(e) => setLastName(e.target.value)} 
-                readOnly={!isEditingNames}
-                className={`h-9 transition-all ${DESIGN_TOKENS.input} ${!isEditingNames ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-neutral-900/50' : ''}`} 
-              />
-            </div>
-          </motion.div>
-          <motion.div layout className="flex justify-end">
-            {!isEditingNames ? (
-              <MotionButton whileTap={{ scale: 0.98 }} onClick={() => setIsEditingNames(true)} variant="outline" className="rounded-lg border border-slate-300 dark:border-neutral-700 bg-transparent text-slate-700 dark:text-neutral-300 hover:bg-slate-100 dark:hover:bg-neutral-800 text-xs h-9 px-6 font-medium transition-colors">
-                Edit
-              </MotionButton>
-            ) : (
-              <MotionButton whileTap={{ scale: 0.98 }} onClick={handleSaveNames} className="bg-[#007FFF] hover:bg-[#007FFF]/90 text-white font-semibold transition-colors text-xs h-9 px-6 rounded-lg">
-                Save
-              </MotionButton>
-            )}
-          </motion.div>
-        </StaggeredItem>
-
-        {/* Email Section */}
-        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-neutral-800">
-          <motion.div layout className="space-y-2">
-            <Label htmlFor="email" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>Email</Label>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-              <Input id="email" defaultValue={user?.email || ""} readOnly disabled className={`max-w-md h-9 font-medium opacity-70 cursor-not-allowed ${DESIGN_TOKENS.input}`} />
-            </div>
-            <p className="text-[0.75rem] text-slate-600 dark:text-neutral-400 font-medium pt-1">Used to log in to your account</p>
-          </motion.div>
-        </StaggeredItem>
-
-        {/* Role & Organization Section */}
-        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-neutral-800">
-          <motion.div layout className="space-y-3">
-            <Label className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>Role</Label>
-            <div className="flex items-center gap-3">
-              <Badge
-                variant="outline"
-                className={`text-[0.75rem] font-semibold px-3 py-1 rounded-md capitalize gap-1.5 ${
-                  userRole === "owner"
-                    ? "bg-amber-500/15 text-amber-400 border border-amber-500/25"
-                    : userRole === "admin"
-                      ? "bg-blue-500/15 text-blue-400 border border-blue-500/25"
-                      : "bg-slate-500/15 text-slate-400 border border-slate-500/25"
-                }`}
-              >
-                {userRole === "owner" ? <Crown className="h-3.5 w-3.5" /> : userRole === "admin" ? <Shield className="h-3.5 w-3.5" /> : <UserIcon className="h-3.5 w-3.5" />}
-                {userRole || "member"}
-              </Badge>
-              {memberships && memberships.length > 0 && (
-                <p className="text-[0.75rem] text-slate-500 dark:text-neutral-400 font-medium">
-                  {memberships[0].organizations.company_name}
-                </p>
-              )}
-            </div>
-            <p className="text-[0.75rem] text-slate-600 dark:text-neutral-400 font-medium">
-              {userRole === "owner"
-                ? "You are the organization owner with full control."
-                : userRole === "admin"
-                  ? "You can manage team members and settings."
-                  : "Contact your organization owner to change your role."}
-            </p>
-          </motion.div>
-        </StaggeredItem>
-
-        {/* Password Section */}
-        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-neutral-800">
-          <motion.div layout className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <h3 className="font-semibold text-[0.85rem] text-slate-800 dark:text-neutral-200">Password</h3>
-            </div>
-            {!showChangePassword && (
-              <MotionButton whileTap={{ scale: 0.98 }} onClick={() => setShowChangePassword(true)} variant="outline" className="border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs h-9 px-4 font-medium transition-colors shrink-0">
-                Change Password
-              </MotionButton>
-            )}
-          </motion.div>
-          {showChangePassword && (
-            <motion.div layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="w-full mt-2 overflow-hidden">
-              <ChangePasswordForm onCancel={() => setShowChangePassword(false)} />
-            </motion.div>
-          )}
-        </StaggeredItem>
-
-        {/* Two-Factor Authentication Section */}
-        <StaggeredItem className="relative z-10 p-6">
-          <motion.div layout className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-[0.85rem] text-slate-800 dark:text-neutral-200">
-                  Two-Factor Authentication (2FA)
-                </h3>
-                <Badge
-                  variant="outline"
-                  className={`text-[0.7rem] px-2 py-0.5 rounded-full font-medium ${
-                    is2FAEnabled
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                      : "border-slate-700 bg-slate-800/80 text-slate-400"
-                  }`}
-                >
-                  {is2FAEnabled ? "Enabled" : "Disabled"}
-                </Badge>
-              </div>
-              <p className="text-[0.75rem] text-slate-600 dark:text-neutral-400">
-                Protect your Revluma account with an additional layer of security using an authenticator app.
+      {/* ── Personal information ─────────────────────────────────────── */}
+      <form onSubmit={handleSaveName} noValidate aria-label="Personal information">
+        <SettingsSection
+          id="profile-personal"
+          title="Personal information"
+          description="This is how you appear to teammates in activity, mentions and Rev conversations."
+          footer={
+            <>
+              <p className="flex min-h-5 items-center gap-2 text-[12.5px] text-ink-muted" aria-live="polite">
+                {saveError ? (
+                  <span role="alert" className="flex items-center gap-1.5 font-medium text-danger">
+                    <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{saveError}
+                  </span>
+                ) : (
+                  <>
+                    {dirty && !saving ? <span className="h-1.5 w-1.5 rounded-full bg-warning-strong" aria-hidden="true" /> : null}
+                    {justSaved && !dirty ? <Check className="h-3.5 w-3.5 text-success" aria-hidden="true" /> : null}
+                    {footerStatus}
+                  </>
+                )}
               </p>
-            </div>
-            <MotionButton
-              whileTap={{ scale: 0.98 }}
-              onClick={is2FAEnabled ? handleDisable2FA : handleSetup2FA}
-              variant="outline"
-              className="border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs h-9 px-4 font-medium transition-colors shrink-0"
-            >
-              <ShieldCheck className="mr-1.5 h-3.5 w-3.5 text-sky-400" />
-              {is2FAEnabled ? "Manage 2FA" : "Setup 2FA"}
-            </MotionButton>
-          </motion.div>
-        </StaggeredItem>
-      </StaggeredList>
-
-      {/* 2FA Setup Modal */}
-      <AnimatePresence>
-        {is2FAModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-black/80 p-4 backdrop-blur-sm"
-            onClick={(e) => {
-              if (e.target === e.currentTarget && !isVerifying2FA) {
-                setIs2FAModalOpen(false);
-              }
-            }}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 16 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 16 }}
-              transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className="relative w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-6 text-slate-900 dark:text-neutral-100 shadow-2xl sm:p-8"
-            >
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                {dirty ? (
+                  <button type="button" onClick={discardChanges} disabled={saving} className={ui.ghostButton}>Discard</button>
+                ) : null}
+                <button type="submit" disabled={!dirty || saving} className={ui.primaryButton}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                  {saving ? "Saving" : "Save changes"}
+                </button>
+              </div>
+            </>
+          }
+        >
+          <SettingsRow label="Profile photo" description="A clear, recognizable photo helps teammates know who did what.">
+            <div className="flex items-start gap-4">
               <button
                 type="button"
-                onClick={() => setIs2FAModalOpen(false)}
-                disabled={isVerifying2FA}
-                className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-neutral-800 dark:hover:text-white disabled:opacity-50"
-                aria-label="Close modal"
+                onClick={openFilePicker}
+                disabled={Boolean(avatarBusy)}
+                aria-label={avatarUrl ? "Change profile photo" : "Upload profile photo"}
+                aria-describedby={ids.photoHint}
+                className={cn(
+                  "group relative h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-full border border-line bg-brand-soft disabled:cursor-progress",
+                  ui.focusRing,
+                  "focus-visible:rounded-full",
+                )}
               >
-                <X className="h-5 w-5" />
-              </button>
-
-              <div className="flex flex-col items-center text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-50 dark:bg-sky-500/10 text-[#007FFF] dark:text-sky-400 ring-1 ring-sky-500/20">
-                  <ShieldCheck className="h-7 w-7" />
-                </div>
-                <h3 className="mt-5 text-xl font-bold text-slate-900 dark:text-white">
-                  Setup Two-Factor Authentication
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-neutral-400">
-                  Scan the QR code below using your authenticator app (e.g. Google Authenticator, 1Password, or Authy).
-                </p>
-              </div>
-
-              {/* Placeholder QR Code */}
-              <div className="my-6 flex flex-col items-center justify-center gap-3">
-                <div className="flex h-40 w-40 items-center justify-center rounded-2xl border border-slate-200 dark:border-neutral-700 bg-white p-3 shadow-sm">
-                  {qrCodeUrl ? (
-                    <img src={qrCodeUrl} alt="2FA QR Code" className="h-full w-full rounded-lg object-contain" />
-                  ) : (
-                    <div className="h-full w-full animate-pulse rounded-lg bg-slate-100 dark:bg-neutral-800" />
-                  )}
-                </div>
-                <p className="text-xs font-medium text-slate-500 dark:text-neutral-400 mt-2">
-                  Can't scan? Use the secret key:
-                </p>
-              </div>
-
-              {/* Secret Key Copy Block - Wrapped to 2 lines! */}
-              <div className="mb-6 flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-neutral-800 bg-slate-50 dark:bg-neutral-900/80 p-3">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400">
-                    Secret Key
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-[20px] font-semibold tracking-[-0.02em] text-brand-deep" aria-hidden="true">
+                    {initials}
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleCopySecret}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-white dark:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-neutral-300 shadow-sm border border-slate-200 dark:border-neutral-700 hover:bg-slate-100 dark:hover:bg-neutral-700 hover:text-slate-900 dark:hover:text-white transition-all"
-                  >
-                    {copiedSecret ? (
-                      <>
-                        <Check className="h-3.5 w-3.5 text-emerald-500" />
-                        <span className="text-emerald-600 dark:text-emerald-400">Copied</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-3.5 w-3.5" />
-                        <span>Copy</span>
-                      </>
-                    )}
+                )}
+                <span
+                  className={cn(
+                    "absolute inset-0 flex items-center justify-center bg-black/45 text-white transition-opacity",
+                    avatarBusy ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+                  )}
+                  aria-hidden="true"
+                >
+                  {avatarBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Camera className="h-5 w-5" />}
+                </span>
+              </button>
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={openFilePicker} disabled={Boolean(avatarBusy)} className={ui.secondaryButton}>
+                    {avatarBusy === "upload" ? "Uploading…" : avatarUrl ? "Replace photo" : "Upload photo"}
                   </button>
+                  {avatarUrl ? (
+                    <button type="button" onClick={() => void handleRemovePhoto()} disabled={Boolean(avatarBusy)} className={ui.dangerGhostButton}>
+                      {avatarBusy === "remove" ? "Removing…" : "Remove"}
+                    </button>
+                  ) : null}
                 </div>
-                {/* break-all forces long strings to wrap automatically */}
-                <div className="select-all break-all rounded-lg bg-white dark:bg-neutral-950 p-2.5 text-center font-mono text-sm font-medium tracking-[0.15em] text-slate-800 dark:text-neutral-200 border border-slate-200/60 dark:border-neutral-800/60">
-                  {setupSecret || "FY2D65JTIBNUORKUOR5UQSK5JVOXIPCHMQXGQVX"}
-                </div>
+                <p id={ids.photoHint} className={ui.helper}>{AVATAR_HINT}</p>
+                {avatarError ? (
+                  <p role="alert" className={ui.fieldError}><AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{avatarError}</p>
+                ) : null}
               </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={AVATAR_ACCEPT}
+                className="sr-only"
+                tabIndex={-1}
+                aria-hidden="true"
+                data-testid="profile-photo-input"
+                onChange={(event) => void handleFileChange(event)}
+              />
+            </div>
+          </SettingsRow>
 
-              {/* 6-Digit OTP Form */}
-              <form onSubmit={handleVerify2FA} className="space-y-5">
-                <div className="space-y-2">
-                  <Label htmlFor="otp-code" className="text-xs font-semibold text-slate-700 dark:text-neutral-300">
-                    Verification Code
-                  </Label>
-                  <Input
-                    id="otp-code"
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="123456"
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                    className="h-12 text-center font-mono text-lg tracking-[0.35em] border-slate-300 bg-white text-slate-900 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-white placeholder:tracking-normal placeholder:text-slate-400 dark:placeholder:text-neutral-600 focus-visible:border-[#007FFF] dark:focus-visible:border-sky-500 shadow-sm transition-all"
-                    disabled={isVerifying2FA}
-                  />
-                </div>
+          <SettingsRow label="Full name" labelId={ids.nameLabel} description="Use the name your team knows you by.">
+            <div role="group" aria-labelledby={ids.nameLabel} className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label htmlFor={ids.first} className={ui.fieldLabel}>First name</label>
+                <input
+                  ref={firstNameRef}
+                  id={ids.first}
+                  name="firstName"
+                  autoComplete="given-name"
+                  maxLength={NAME_MAX_LENGTH}
+                  value={draft.firstName}
+                  onChange={updateDraft("firstName")}
+                  onBlur={() => setTouched((current) => ({ ...current, firstName: true }))}
+                  aria-invalid={showFirstError ? true : undefined}
+                  aria-describedby={showFirstError ? ids.firstError : undefined}
+                  className={ui.input}
+                />
+                {showFirstError ? (
+                  <p id={ids.firstError} className={ui.fieldError}><AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{firstError}</p>
+                ) : null}
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor={ids.last} className={ui.fieldLabel}>Last name</label>
+                <input
+                  ref={lastNameRef}
+                  id={ids.last}
+                  name="lastName"
+                  autoComplete="family-name"
+                  maxLength={NAME_MAX_LENGTH}
+                  value={draft.lastName}
+                  onChange={updateDraft("lastName")}
+                  onBlur={() => setTouched((current) => ({ ...current, lastName: true }))}
+                  aria-invalid={showLastError ? true : undefined}
+                  aria-describedby={showLastError ? ids.lastError : undefined}
+                  className={ui.input}
+                />
+                {showLastError ? (
+                  <p id={ids.lastError} className={ui.fieldError}><AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{lastError}</p>
+                ) : null}
+              </div>
+            </div>
+          </SettingsRow>
 
-                <div className="flex items-center gap-3 pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIs2FAModalOpen(false)}
-                    disabled={isVerifying2FA}
-                    className="h-11 flex-1 border-slate-200 dark:border-neutral-700 bg-white dark:bg-transparent text-slate-700 dark:text-neutral-300 hover:bg-slate-50 dark:hover:bg-neutral-800 dark:hover:text-white shadow-sm transition-all"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={otpCode.length !== 6 || isVerifying2FA}
-                    className="h-11 flex-1 bg-[#007FFF] font-semibold text-white hover:bg-[#007FFF]/90 disabled:opacity-50 shadow-sm transition-all"
-                  >
-                    {isVerifying2FA ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Verifying...
-                      </span>
-                    ) : (
-                      "Verify & Enable"
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>    
-    </PageTransition>
+          <SettingsRow label="Email address" description="Used to sign in and for account notifications.">
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                <span className="min-w-0 break-all text-[14px] font-medium text-ink" data-testid="profile-email">
+                  {email || "No email on file"}
+                </span>
+                {emailVerified === true ? (
+                  <span className={ui.badgeSuccess}><BadgeCheck className="h-3.5 w-3.5" aria-hidden="true" />Verified</span>
+                ) : emailVerified === false ? (
+                  <span className={ui.badgeWarning}><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />Not verified</span>
+                ) : null}
+              </div>
+              <p className={ui.helper}>To move your account to a different address, contact Revluma support.</p>
+            </div>
+          </SettingsRow>
+        </SettingsSection>
+      </form>
+
+      {/* ── Workspace access ─────────────────────────────────────────── */}
+      <SettingsSection
+        id="profile-workspace"
+        title="Workspace access"
+        description="Your membership and permissions in the workspace you're working in."
+        aside={
+          <Link to="/dashboard/settings/roles" className={cn(ui.textLink, "inline-flex items-center gap-0.5")}>
+            Roles & permissions <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+        }
+      >
+        <SettingsRow label="Workspace">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[14px] font-medium leading-5 text-ink" data-testid="profile-workspace">{workspaceName ?? "No workspace selected"}</span>
+            {otherWorkspaces > 0 ? (
+              <span className={ui.helper}>
+                You belong to {otherWorkspaces} other workspace{otherWorkspaces === 1 ? "" : "s"}. Switch workspaces from the account menu in the sidebar.
+              </span>
+            ) : null}
+          </div>
+        </SettingsRow>
+        <SettingsRow label="Role" description={role.description}>
+          <div className="flex items-center">
+            <span className={role.role === "member" ? ui.badgeNeutral : ui.badgeBrand} data-testid="profile-role">
+              <RoleIcon role={role.role} className="h-3.5 w-3.5" />
+              {role.label}
+            </span>
+          </div>
+        </SettingsRow>
+        {joinedWorkspace ? (
+          <SettingsRow label="Joined workspace">
+            <div className="text-[14px] leading-5 text-ink">{joinedWorkspace}</div>
+          </SettingsRow>
+        ) : null}
+      </SettingsSection>
+
+      {/* ── Sign-in & security ───────────────────────────────────────── */}
+      <SettingsSection
+        id="profile-security"
+        title="Sign-in & security"
+        description="Keep your account protected. Changes here apply to every workspace you belong to."
+      >
+        <SettingsRow label="Password" description="Changing your password signs you out of every other device.">
+          {changingPassword ? (
+            <ChangePasswordForm onCancel={() => setChangingPassword(false)} />
+          ) : (
+            <div className="flex min-h-[38px] flex-wrap items-center justify-between gap-3">
+              <span className={ui.helper}>Use a strong password you don't use anywhere else.</span>
+              <button type="button" onClick={() => setChangingPassword(true)} className={ui.secondaryButton}>Change password</button>
+            </div>
+          )}
+        </SettingsRow>
+
+        <SettingsRow label="Two-factor authentication" description="Require a code from your authenticator app each time you sign in.">
+          <div className="flex min-h-[38px] flex-wrap items-center justify-between gap-3">
+            {twoFactorEnabled ? (
+              <span className={ui.badgeSuccess} data-testid="profile-2fa-status"><ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />Enabled · Authenticator app</span>
+            ) : (
+              <span className={ui.badgeNeutral} data-testid="profile-2fa-status">Off</span>
+            )}
+            {twoFactorEnabled ? (
+              <button type="button" onClick={() => setDisableOpen(true)} className={ui.dangerGhostButton}>Turn off</button>
+            ) : (
+              <button type="button" onClick={() => setSetupOpen(true)} className={ui.secondaryButton}>
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" /> Set up 2FA
+              </button>
+            )}
+          </div>
+        </SettingsRow>
+
+        <SettingsRow label="Active sessions" description="Review the devices signed in to your account and sign out any you don't recognize.">
+          <div className="flex min-h-[38px] items-center sm:justify-end">
+            <Link to="/dashboard/settings/active-sessions" className={ui.secondaryButton}>
+              Manage sessions <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          </div>
+        </SettingsRow>
+      </SettingsSection>
+
+      {/* ── Account ──────────────────────────────────────────────────── */}
+      <SettingsSection id="profile-account" title="Account" description="Reference details for your Revluma account.">
+        <SettingsRow label="User ID" description="Share this with Revluma support so they can find your account quickly.">
+          <div className="flex min-h-[38px] items-center gap-2">
+            <code className="min-w-0 flex-1 truncate rounded-md border border-line bg-subtle px-2.5 py-1.5 font-mono text-[12.5px] text-ink-soft" title={userId} data-testid="profile-user-id">
+              {userId || "Unavailable"}
+            </code>
+            <button
+              type="button"
+              onClick={() => void handleCopyId()}
+              disabled={!userId}
+              className={cn(ui.secondaryButton, "w-9 px-0")}
+              aria-label={copiedId ? "User ID copied" : "Copy user ID"}
+            >
+              {copiedId ? <Check className="h-4 w-4 text-success" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+            </button>
+          </div>
+        </SettingsRow>
+        {memberSince ? (
+          <SettingsRow label="Member since">
+            <div className="text-[14px] leading-5 text-ink">{memberSince}</div>
+          </SettingsRow>
+        ) : null}
+      </SettingsSection>
+
+      <TwoFactorSetupDialog
+        open={setupOpen}
+        onOpenChange={setSetupOpen}
+        onEnabled={() => {
+          setTwoFactorEnabled(true);
+          patchAuthUser({ two_factor_enabled: true });
+          toast.success("Two-factor authentication is on");
+        }}
+      />
+      <TwoFactorDisableDialog
+        open={disableOpen}
+        onOpenChange={setDisableOpen}
+        onDisabled={() => {
+          setTwoFactorEnabled(false);
+          patchAuthUser({ two_factor_enabled: false });
+          toast.success("Two-factor authentication is off");
+        }}
+      />
+    </div>
   );
 };
 
 export default Profile;
-

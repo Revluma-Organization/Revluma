@@ -166,7 +166,7 @@ const SettingsLayout: FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 w-full pb-20">
-        <div className="max-w-4xl border-l border-border pl-8 min-h-full">
+        <div className="max-w-4xl min-h-full md:border-l md:border-border md:pl-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}

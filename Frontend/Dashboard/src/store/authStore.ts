@@ -30,6 +30,8 @@ export interface User {
   membership_tier?: string;
   account_status?: string;
   last_login_at?: string | null;
+  two_factor_enabled?: boolean;
+  created_at?: string | null;
   organization_memberships?: OrgMembership[];
 }
 
