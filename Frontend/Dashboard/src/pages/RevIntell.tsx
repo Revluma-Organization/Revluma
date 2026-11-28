@@ -874,16 +874,6 @@ function HistoryStatus({ loading, error, count, query, onRetry, color }: {
   </>;
 }
 
-function historyRowMeta(conversation: Conversation): string {
-  const time = new Date(conversation.last_activity_at);
-  const when = Number.isNaN(time.getTime()) ? ""
-    : historyGroupLabel(conversation.last_activity_at) === "Today"
-      ? time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-      : time.toLocaleDateString([], { month: "short", day: "numeric" });
-  const count = conversation.message_count ? `${conversation.message_count} messages` : "";
-  return [when, count].filter(Boolean).join(" · ");
-}
-
 // Drawer palette: the landing and auth system (auth-theme.css). Light is the
 // warm #FBFAF8 canvas, ink #0C0A1D type and #E8E6E1 hairlines; dark is the
 // same system on the ink canvas. Exposed as CSS variables so hover and focus
@@ -985,37 +975,37 @@ function ConversationHistoryList({
       <div aria-busy={loading} className="flex-1 overflow-y-auto px-3 pb-3 [scrollbar-width:thin]">
         <HistoryStatus loading={loading} error={error} count={conversations.length} query={query}
           onRetry={onRetry} color={isDark ? "#A3A3A3" : "#5E5C6B"} />
-        {groups.map(group => (
-          <section key={group.label} aria-label={group.label} className="pt-2">
-            <h3 className="px-3 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--h-faint)", margin: 0 }}>{group.label}</h3>
-            <ul className="m-0 flex list-none flex-col gap-1 p-0">
+        {groups.map((group, index) => (
+          <section key={group.label} aria-label={group.label} className={index === 0 ? "pt-1" : "pt-4"}>
+            <h3 className="px-3 pb-1 pt-1 text-[13px] font-medium" style={{ color: "var(--h-muted)", margin: 0 }}>{group.label}</h3>
+            <ul className="m-0 flex list-none flex-col gap-px p-0">
               {group.items.map((conversation) => {
                 const active = activeId === conversation.id;
                 return (
                   <li key={conversation.id} className="rev-history-row group relative">
                     <button aria-current={active ? "page" : undefined} onClick={() => onSelect(conversation.id)}
-                      className={`w-full rounded-2xl border py-2.5 pl-3.5 pr-[88px] text-left transition-[background-color,border-color] duration-150 motion-reduce:transition-none ${active ? "" : "hover:bg-[var(--h-hover)]"} ${focusRing}`}
+                      className={`rev-history-link flex min-h-9 w-full items-center rounded-xl border py-1.5 pl-3 text-left transition-[background-color,border-color] duration-150 motion-reduce:transition-none ${active ? "" : "hover:bg-[var(--h-hover)]"} ${focusRing}`}
                       style={{
                         background: active ? "var(--h-surface)" : "transparent",
                         borderColor: active ? "var(--h-border)" : "transparent",
                         boxShadow: active ? "var(--h-shadow)" : "none",
                       }}>
-                      <span className="flex items-center gap-2">
+                      <span className="flex min-w-0 items-center gap-2">
                         {active && <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--h-accent)" }} />}
-                        <span className="block truncate text-[14px] font-medium tracking-[-0.005em]" style={{ color: "var(--h-text)" }}>
+                        <span className="block truncate text-[14px] tracking-[-0.005em]"
+                          style={{ color: active ? "var(--h-text)" : "var(--h-soft)", fontWeight: active ? 600 : 450 }}>
                           {conversation.title || "Untitled conversation"}
                         </span>
                       </span>
-                      <span className="mt-0.5 block truncate text-[12px]" style={{ color: "var(--h-muted)" }}>{historyRowMeta(conversation)}</span>
                     </button>
-                    <div className="rev-history-actions absolute right-1.5 top-1/2 flex -translate-y-1/2 gap-0.5">
+                    <div className="rev-history-actions absolute right-1 top-1/2 flex -translate-y-1/2 gap-0.5">
                       <button onClick={event => onRename(conversation.id, event.currentTarget)} aria-label="Rename conversation"
-                        className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-150 hover:bg-[var(--h-wash)] hover:text-[var(--h-accent)] ${focusRing}`}
+                        className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-150 hover:bg-[var(--h-wash)] hover:text-[var(--h-accent)] ${focusRing}`}
                         style={{ color: "var(--h-muted)" }}>
                         <Pencil size={14} aria-hidden="true" />
                       </button>
                       <button onClick={event => onDelete(conversation.id, event.currentTarget)} aria-label="Delete conversation"
-                        className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-150 hover:bg-[var(--h-wash)] hover:text-[var(--h-accent)] ${focusRing}`}
+                        className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-150 hover:bg-[var(--h-wash)] hover:text-[var(--h-accent)] ${focusRing}`}
                         style={{ color: "var(--h-muted)" }}>
                         <Trash2 size={14} aria-hidden="true" />
                       </button>
@@ -2607,13 +2597,20 @@ export default function RevIntell() {
         .rev-turn-rev[data-latest="false"]:focus-within .rev-dock { opacity: 1; }
       }
       .rev-composer-dock { background: linear-gradient(to bottom, transparent, ${bg} 38%); }
-      /* History rows: actions reveal on hover or keyboard focus for fine
-         pointers (always shown on touch, and on the open conversation). */
+      /* History rows: one compact line per conversation. Actions reveal on
+         hover or keyboard focus for fine pointers (always shown on touch, and
+         on the open conversation); a title only gives up room for them while
+         they are visible. */
+      .rev-history-link { padding-right: 76px; }
       @media (hover: hover) and (pointer: fine) {
         .rev-history-row .rev-history-actions { opacity: 0; transition: opacity 150ms ease; }
+        .rev-history-row .rev-history-link { padding-right: 12px; }
         .rev-history-row:hover .rev-history-actions,
         .rev-history-row:focus-within .rev-history-actions,
         .rev-history-row:has([aria-current="page"]) .rev-history-actions { opacity: 1; }
+        .rev-history-row:hover .rev-history-link,
+        .rev-history-row:focus-within .rev-history-link,
+        .rev-history-row:has([aria-current="page"]) .rev-history-link { padding-right: 76px; }
       }
     `}</style>
     <div className="rev-workspace relative flex overflow-hidden"
