@@ -21,7 +21,7 @@ jobs:
       - run: npm ci
       - run: |
           set -o pipefail
-          npm test -- --run > /tmp/test.log 2>&1; code=$?
+          code=0; npm test -- --run > /tmp/test.log 2>&1 || code=$?
           if [ $code -ne 0 ]; then
             sed -r 's/\x1b\[[0-9;]*m//g' /tmp/test.log | grep -vE "^\s*$|✓|act\(|fire events|assert on the output|This ensures|^\s+at |^\}\);|Warning: An update|When testing|^stderr \|" | tail -45 > /tmp/tail.log
             echo "exit=$code" >> /tmp/tail.log; free -m | head -2 >> /tmp/tail.log
