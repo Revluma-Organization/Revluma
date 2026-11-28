@@ -44,6 +44,7 @@ import { polishDictation } from "@/lib/dictationPolish";
 import { useRevLiveCall, type CallEndedInfo, type CallSaveState, type RevLiveCall } from "@/lib/useRevLiveCall";
 import { mergeTimeline, savedTranscriptEntry, type TranscriptEntry, type VoiceAskOutcome } from "@/lib/revLiveCall";
 import { RevLiveCallBar, RevLiveCallStage, RevLiveTranscriptLine } from "@/components/rev/RevLiveCall";
+import { prewarmRevOrb, prewarmRevOrbWhenIdle } from "@/components/rev/revOrbGL";
 import { requestConversationTitle } from "@/lib/revTitle";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
@@ -815,6 +816,7 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, onPaste, onDictate
           {/* Live voice call (ChatGPT Voice): talk with Rev, hands free. */}
           {onCall && (callSupported ? (
             <button type="button" onClick={onCall} disabled={Boolean(disabled) || thinking}
+              onPointerEnter={prewarmRevOrb} onFocus={prewarmRevOrb} onTouchStart={prewarmRevOrb}
               aria-label="Start a voice call with Rev" title="Voice call"
               className="h-11 w-11 flex items-center justify-center rounded-full transition-colors hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6F66FF]"
               style={{ color: t1 }}>
@@ -2145,6 +2147,10 @@ export default function RevIntell() {
     onConversation: adoptCallConversation, onSaved: callLinesSaved, onEnded: callEnded,
   });
   const { inCall: callActive, end: endCall, clearTranscript: clearCallTranscript } = call;
+  // Compile the call orb's shader while the page is idle, so opening a call
+  // paints the orb on its first frame.
+  const callSupported = call.supported;
+  useEffect(() => (callSupported ? prewarmRevOrbWhenIdle() : undefined), [callSupported]);
   // Opening another conversation (or a new one) hangs up and clears the call
   // transcript. The conversation a call creates with its first spoken
   // question keeps the call going.

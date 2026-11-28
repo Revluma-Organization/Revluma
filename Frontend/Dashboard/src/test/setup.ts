@@ -21,3 +21,11 @@ Object.defineProperty(HTMLMediaElement.prototype, "play", {
   writable: true,
   value: () => Promise.resolve(),
 });
+
+// jsdom has no WebGL (and logs "not implemented" for getContext). Behave like
+// a browser without it, so the GPU Rev orb falls back to its still frame.
+Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+  configurable: true,
+  writable: true,
+  value: () => null,
+});

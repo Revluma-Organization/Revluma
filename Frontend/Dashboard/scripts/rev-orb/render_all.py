@@ -47,11 +47,9 @@ elif job == "loader":
     still = Image.fromarray(orb.to_rgba8(orb.render(672, 0.0, R=0.97)), "RGBA").resize((112, 112), Image.LANCZOS)
     still.save("out/rev-orb-loader.png", optimize=True)
 elif job == "call":
-    # Full-screen voice call stage. Like the loader, the sphere fills the frame
-    # so a circular CSS clip removes the black. 512 px at CRF 28 keeps the
-    # filaments crisp at the stage's largest size (300 CSS px) for ~1 MB.
-    encode([24, "-c:v", "libx264", "-preset", "veryslow", "-crf", "28", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-            "-an", "out/rev-orb-call.mp4"], on_black(frames(512, 24, 0.97)), 512)
+    # Still frame for the full-screen voice call (reduced motion / no WebGL).
+    # The live orb itself is drawn on the GPU by src/components/rev/revOrbGL.ts.
+    # Like the loader, the sphere fills the frame so a circular CSS clip removes the black.
     still = next(on_black(iter([orb.to_rgba8(orb.render(512, 0.0, R=0.97))])))
     Image.fromarray(still[..., :3], "RGB").save("out/rev-orb-call.webp", quality=82, method=6)
 elif job == "images":
