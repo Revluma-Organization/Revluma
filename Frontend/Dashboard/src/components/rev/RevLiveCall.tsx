@@ -142,7 +142,7 @@ export function RevLiveCallStage({ call, isDark }: { call: RevLiveCall; isDark: 
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-7 px-6">
         <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.4, ease: EASE }}>
           <RevLiveOrb levelsRef={call.levelsRef} activity={call.activity} isDark={isDark} muted={call.muted}
-            size={typeof window !== "undefined" ? Math.min(260, Math.round(window.innerWidth * 0.62)) : 240} />
+            connecting={call.phase === "starting" || call.phase === "connecting" || call.phase === "reconnecting"} size="min(300px, 64vw, 40vh)" />
         </motion.div>
         <div className="flex max-w-xl flex-col items-center gap-2 text-center">
           <p className="m-0 text-[1.05rem] font-semibold" data-rev-live-activity={call.activity}>
