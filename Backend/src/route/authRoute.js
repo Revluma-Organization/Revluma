@@ -41,7 +41,8 @@ router.post('/workspace', authenticateToken, authController.selectWorkspace);
 router.get('/me', authenticateToken, authController.getProfile);
 router.get('/getProfile', authenticateToken, authController.getProfile); // legacy alias
 router.patch("/profile", authenticateToken, authController.updateProfile);
-router.put("/profile/picture",authenticateToken,uploadProfilePicture.single("image"),authController.updateProfilePicture);
+router.put("/profile/picture", authenticateToken, uploadProfilePicture.singleProfileImage, authController.updateProfilePicture);
+router.delete("/profile/picture", authenticateToken, authController.removeProfilePicture);
 
 // Two-Factor Authentication
 router.post('/2fa/setup', authenticateToken, authController.setupTwoFactor);

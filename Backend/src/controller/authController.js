@@ -1450,6 +1450,45 @@ exports.updateProfilePicture = async (req, res, next) => {
   }
 };
 
+// Remove Profile Picture: clears the stored URL first (the source of truth for
+// every avatar surface), then best-effort deletes the Cloudinary asset. A CDN
+// failure never resurrects the photo or fails the request.
+exports.removeProfilePicture = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const user = await prisma.users.findUnique({
+      where: { id: userId },
+      select: { id: true, profile_picture_url: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found." });
+    }
+
+    const updatedUser = await prisma.users.update({
+      where: { id: userId },
+      data: { profile_picture_url: null, updated_at: new Date() },
+      select: { id: true, full_name: true, email: true, profile_picture_url: true },
+    });
+
+    if (user.profile_picture_url && typeof cloudinary?.uploader?.destroy === "function") {
+      try {
+        await cloudinary.uploader.destroy(`revluma/profile-pictures/user_${userId}`, { invalidate: true, resource_type: "image" });
+      } catch (error) {
+        logger.warn("profile_picture_cdn_delete_failed", { error_type: error?.name || "cdn_error" });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile picture removed.",
+      data: updatedUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 //Update Profile (First Name, Last Name)
 exports.updateProfile = async (req, res) => {
   try {
