@@ -19,5 +19,5 @@ jobs:
           cache: npm
           cache-dependency-path: Frontend/Dashboard/package-lock.json
       - run: npm ci
-      - run: npm test -- --run
+      - run: npm test -- --run --reporter=default --reporter=github-actions
       - run: npm run build
