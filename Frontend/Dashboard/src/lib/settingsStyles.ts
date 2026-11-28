@@ -9,7 +9,7 @@ const focusRing =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-panel";
 
 const buttonBase =
-  "inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-3.5 text-[13px] font-semibold transition-[background-color,border-color,color,filter] disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-9 shrink-0 cursor-pointer whitespace-nowrap items-center justify-center gap-1.5 rounded-lg px-3.5 text-[13px] font-semibold transition-[background-color,border-color,color,filter] disabled:cursor-not-allowed disabled:opacity-50";
 
 export const settingsUi = {
   focusRing,
