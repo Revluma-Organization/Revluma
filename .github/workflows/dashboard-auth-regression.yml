@@ -19,5 +19,11 @@ jobs:
           cache: npm
           cache-dependency-path: Frontend/Dashboard/package-lock.json
       - run: npm ci
-      - run: npm test -- --run --reporter=default --reporter=github-actions
+      - run: |
+          set -o pipefail
+          npm test -- --run 2>&1 | tee /tmp/test.log || {
+            tail -c 60000 /tmp/test.log | sed -r 's/\x1b\[[0-9;]*m//g' | grep -vE "^\s*$|✓" | tail -120 > /tmp/tail.log
+            echo "::error title=vitest tail::$(sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g' /tmp/tail.log)"
+            exit 1
+          }
       - run: npm run build
