@@ -100,7 +100,7 @@ export function ChangePasswordForm({ onCancel }: { onCancel: () => void }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="mt-4 space-y-4 rounded-lg border border-line bg-subtle p-4">
+    <form onSubmit={handleSubmit} noValidate className="space-y-4 rounded-xl border border-line bg-panel p-4">
       <PasswordField
         id={ids.current}
         label="Current password"

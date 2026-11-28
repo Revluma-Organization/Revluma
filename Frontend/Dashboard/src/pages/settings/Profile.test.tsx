@@ -105,6 +105,7 @@ describe("Profile settings page", () => {
   beforeEach(() => {
     Object.values(apiMock).forEach((fn) => fn.mockReset());
     apiMock.get.mockResolvedValue({ data: { success: true, data: profile } });
+    Object.assign(URL, { createObjectURL: vi.fn(() => "blob:preview"), revokeObjectURL: vi.fn() });
     seedStore();
   });
 
@@ -112,98 +113,118 @@ describe("Profile settings page", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders enterprise sections with real account facts and no close button", async () => {
+  it("leads with a centred identity header, then read-first sections", async () => {
     await renderLoaded();
     expect(apiMock.get).toHaveBeenCalledWith("/auth/me");
     expect(screen.getByRole("heading", { level: 1, name: "Profile" })).toBeInTheDocument();
-    for (const name of ["Personal information", "Workspace access", "Sign-in & security", "Account"]) {
-      expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
-    }
+    expect(screen.getByTestId("profile-hero-name")).toHaveTextContent("Amina Bello");
+    expect(screen.getByTestId("profile-hero-avatar")).toHaveAccessibleName("Add profile photo");
     expect(screen.getByTestId("profile-email")).toHaveTextContent("amina@example.test");
     expect(screen.getByText("Verified")).toBeInTheDocument();
     expect(screen.getByTestId("profile-role")).toHaveTextContent("Owner");
+    expect(screen.getByTestId("profile-workspace")).toHaveTextContent("+1");
+    expect(screen.getByText("March 4, 2025")).toBeInTheDocument();
+    for (const name of ["Personal info", "Sign-in & security", "Account details"]) {
+      expect(screen.getByRole("heading", { name })).toBeInTheDocument();
+    }
+    // Read-first: no editable inputs and no global save bar until the user asks to edit.
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId("profile-name-value")).toHaveTextContent("Amina Bello");
     expect(screen.getByText(/1 other workspace\b/)).toBeInTheDocument();
     expect(screen.getByTestId("profile-user-id")).toHaveTextContent("user-1");
-    expect(screen.getByText("PNG, JPEG or WebP, up to 5 MB.", { exact: false })).toBeInTheDocument();
-    expect(screen.queryByText(/GIF/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /close/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Manage sessions/ })).toHaveAttribute("href", "/dashboard/settings/active-sessions");
+    expect(screen.getByRole("link", { name: "Manage sessions" })).toHaveAttribute("href", "/dashboard/settings/active-sessions");
   });
 
-  it("keeps Save disabled until the name changes, validates on blur, and discards", async () => {
+  it("edits the name inline, validates, and cancels with Escape", async () => {
     await renderLoaded();
-    const save = screen.getByRole("button", { name: "Save changes" });
-    expect(save).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Edit name" }));
     const first = screen.getByLabelText("First name");
+    expect(first).toHaveValue("Amina");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
     fireEvent.change(first, { target: { value: "  " } });
     fireEvent.blur(first);
     expect(screen.getByText("First name is required.")).toBeInTheDocument();
     expect(first).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText("You have unsaved changes.")).toBeInTheDocument();
-
-    fireEvent.click(save);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(apiMock.patch).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
-    expect(first).toHaveValue("Amina");
-    expect(save).toBeDisabled();
+    fireEvent.keyDown(first, { key: "Escape" });
+    expect(screen.queryByLabelText("First name")).not.toBeInTheDocument();
+    expect(screen.getByTestId("profile-name-value")).toHaveTextContent("Amina Bello");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit name" }));
+    expect(screen.getByLabelText("First name")).toHaveValue("Amina");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByLabelText("First name")).not.toBeInTheDocument();
   });
 
-  it("saves trimmed names and syncs the sidebar user", async () => {
+  it("saves trimmed names, closes the editor and syncs the sidebar user", async () => {
     apiMock.patch.mockResolvedValue({ data: { data: { full_name: "Amina Okafor" } } });
     await renderLoaded();
+    fireEvent.click(screen.getByRole("button", { name: "Edit name" }));
     fireEvent.change(screen.getByLabelText("Last name"), { target: { value: "  Okafor " } });
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(apiMock.patch).toHaveBeenCalledWith("/auth/profile", { firstName: "Amina", lastName: "Okafor" }));
-    await waitFor(() => expect(screen.getByText("All changes saved.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByLabelText("Last name")).not.toBeInTheDocument());
+    expect(screen.getByTestId("profile-name-value")).toHaveTextContent("Amina Okafor");
+    expect(screen.getByTestId("profile-hero-name")).toHaveTextContent("Amina Okafor");
     expect(useAuthStore.getState().user?.full_name).toBe("Amina Okafor");
-    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
   });
 
-  it("surfaces the API's save error instead of failing silently", async () => {
+  it("keeps the editor open with the API's error when saving fails", async () => {
     apiMock.patch.mockRejectedValue(new ApiError(400, "Name is too long."));
     await renderLoaded();
+    fireEvent.click(screen.getByRole("button", { name: "Edit name" }));
     fireEvent.change(screen.getByLabelText("First name"), { target: { value: "Ami" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    expect(await screen.findByText("Name is too long.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Name is too long.");
+    expect(screen.getByLabelText("First name")).toHaveValue("Ami");
   });
 
-  it("rejects unsupported photos client-side and uploads valid ones", async () => {
-    const createUrl = vi.fn(() => "blob:preview");
-    Object.assign(URL, { createObjectURL: createUrl, revokeObjectURL: vi.fn() });
+  it("previews a photo in the dialog and uploads only after Save photo", async () => {
     apiMock.put.mockResolvedValue({ data: { data: { profile_picture_url: "https://cdn.example.test/a.png" } } });
     await renderLoaded();
-    const input = screen.getByTestId("profile-photo-input");
+    fireEvent.click(screen.getByTestId("profile-hero-avatar"));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("button", { name: /Remove photo/ })).not.toBeInTheDocument();
+    const input = within(dialog).getByTestId("profile-photo-input");
 
     fireEvent.change(input, { target: { files: [new File(["x"], "a.gif", { type: "image/gif" })] } });
-    expect(await screen.findByText("Choose a PNG, JPEG or WebP image.")).toBeInTheDocument();
-    expect(apiMock.put).not.toHaveBeenCalled();
+    expect(await within(dialog).findByText("Choose a PNG, JPEG or WebP image.")).toBeInTheDocument();
 
     fireEvent.change(input, { target: { files: [new File(["x"], "a.png", { type: "image/png" })] } });
+    const save = await within(dialog).findByRole("button", { name: "Save photo" });
+    expect(apiMock.put).not.toHaveBeenCalled();
+    fireEvent.click(save);
     await waitFor(() => expect(apiMock.put).toHaveBeenCalledWith("/auth/profile/picture", expect.any(FormData)));
-    await waitFor(() => expect(useAuthStore.getState().user?.profile_picture_url).toBe("https://cdn.example.test/a.png"));
-    expect(screen.getByRole("button", { name: "Replace photo" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(useAuthStore.getState().user?.profile_picture_url).toBe("https://cdn.example.test/a.png");
+    expect(screen.getByTestId("profile-hero-avatar")).toHaveAccessibleName("Change profile photo");
   });
 
-  it("removes the photo through the API and keeps it when removal fails", async () => {
+  it("removes the photo from the dialog and keeps it when removal fails", async () => {
     apiMock.get.mockResolvedValue({ data: { data: { ...profile, profile_picture_url: "https://cdn.example.test/a.png" } } });
     apiMock.delete.mockRejectedValueOnce(new ApiError(500, "boom")).mockResolvedValueOnce({ data: {} });
     await renderLoaded();
+    fireEvent.click(screen.getByRole("button", { name: "Change profile photo" }));
+    const dialog = await screen.findByRole("dialog");
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
-    expect(await screen.findByText("We couldn't remove your photo. Try again.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: /Remove photo/ }));
+    expect(await within(dialog).findByText("We couldn't remove your photo. Try again.")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Upload photo" })).toBeInTheDocument());
+    fireEvent.click(within(dialog).getByRole("button", { name: /Remove photo/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(apiMock.delete).toHaveBeenCalledWith("/auth/profile/picture");
+    expect(screen.getByText("Showing your initials (AB)")).toBeInTheDocument();
   });
 
-  it("confirms before turning off 2FA", async () => {
+  it("confirms before turning off 2-step verification", async () => {
     apiMock.get.mockResolvedValue({ data: { data: { ...profile, two_factor_enabled: true } } });
     apiMock.post.mockResolvedValue({ data: {} });
     await renderLoaded();
-    expect(screen.getByTestId("profile-2fa-status")).toHaveTextContent("Enabled");
+    expect(screen.getByTestId("profile-2fa-status")).toHaveTextContent("On");
 
     fireEvent.click(screen.getByRole("button", { name: "Turn off" }));
     const dialog = await screen.findByRole("alertdialog");
@@ -213,14 +234,14 @@ describe("Profile settings page", () => {
     await waitFor(() => expect(screen.getByTestId("profile-2fa-status")).toHaveTextContent("Off"));
   });
 
-  it("enables 2FA only after a verified code and shows verification errors", async () => {
+  it("enables 2-step verification only after a verified code", async () => {
     apiMock.post.mockImplementation(async (path: string) => {
       if (path === "/auth/2fa/setup") return { data: { qrCode: "data:image/png;base64,AAAA", secret: "JBSWY3DPEHPK3PXP" } };
       if (path === "/auth/2fa/verify") throw new ApiError(400, "Invalid verification code");
       return { data: {} };
     });
     await renderLoaded();
-    fireEvent.click(screen.getByRole("button", { name: /Set up 2FA/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Set up/ }));
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByText("JBSW Y3DP EHPK 3PXP")).toBeInTheDocument();
 
@@ -238,14 +259,15 @@ describe("Profile settings page", () => {
     apiMock.get.mockRejectedValueOnce(new Error("offline"));
     renderProfile();
     expect(await screen.findByText(/couldn't load your latest profile/)).toBeInTheDocument();
-    expect(screen.getByLabelText("First name")).toHaveValue("Amina");
+    expect(screen.getByTestId("profile-name-value")).toHaveTextContent("Amina Bello");
     fireEvent.click(screen.getByRole("button", { name: /Retry/ }));
     await waitFor(() => expect(screen.getByTestId("profile-workspace")).toHaveTextContent("Northwind Goods"));
   });
 
-  it("shows the password rules the API enforces", async () => {
+  it("expands the password form inline with the API's rules", async () => {
     await renderLoaded();
-    fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+    expect(screen.queryByLabelText("New password")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
     const rules = screen.getByRole("list", { name: "Password requirements" });
     expect(within(rules).getAllByRole("listitem")).toHaveLength(5);
     fireEvent.change(screen.getByLabelText("New password"), { target: { value: "Abcdef1!" } });
