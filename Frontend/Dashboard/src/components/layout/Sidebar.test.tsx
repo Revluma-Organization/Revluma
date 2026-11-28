@@ -143,3 +143,69 @@ describe("Landing-language sidebar and responsive navigation", () => {
     expect(document.querySelector("aside")?.className).toContain("motion-reduce:transition-none");
   });
 });
+
+describe("Settings mode (one sidebar, never two)", () => {
+  afterEach(() => window.sessionStorage.clear());
+
+  it("swaps the workspace links for the settings menu in the same rail", () => {
+    renderSidebar("/dashboard/settings/profile");
+    expect(screen.queryByRole("link", { name: "Command Center" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Workspace" })).not.toBeInTheDocument();
+    const settings = screen.getByRole("navigation", { name: "Settings" });
+    expect(settings).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    const profile = screen.getByRole("link", { name: "Profile" });
+    expect(profile).toHaveAttribute("aria-current", "page");
+    expect(isActive(profile)).toBe(true);
+    // Brand and account card stay put so the frame doesn't jump.
+    expect(screen.getByText("Revluma")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open account menu" })).toBeInTheDocument();
+  });
+
+  it("returns to the last app page, remembered while browsing the app", () => {
+    const app = renderSidebar("/dashboard/rev-intell?c=7");
+    app.unmount();
+    renderSidebar("/dashboard/settings/team");
+    expect(screen.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute("href", "/dashboard/rev-intell?c=7");
+    expect(screen.getByRole("link", { name: "Members" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("falls back to Overview when there is no remembered page", () => {
+    renderSidebar("/dashboard/settings/profile");
+    expect(screen.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute("href", "/dashboard/overview");
+  });
+
+  it("stays expanded even when the user collapsed the app sidebar", () => {
+    useUI.setState({ sidebarCollapsed: true });
+    renderSidebar("/dashboard/settings/profile");
+    const aside = document.querySelector("aside")!.className;
+    expect(aside).toContain("md:w-[var(--sidebar-w)]");
+    expect(aside).not.toContain("md:w-[var(--sidebar-w-collapsed)]");
+    expect(screen.queryByRole("button", { name: "Collapse sidebar" })?.className).toContain("md:hidden");
+  });
+
+  it("lights Billing for every billing tab page", () => {
+    renderSidebar("/dashboard/settings/invoice-history");
+    expect(screen.getByRole("link", { name: "Billing" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("filters settings, shows an empty state, and clears with Escape", () => {
+    renderSidebar("/dashboard/settings/profile");
+    const search = screen.getByRole("searchbox", { name: "Search settings" });
+    fireEvent.change(search, { target: { value: "invoice" } });
+    expect(screen.getByRole("link", { name: "Billing" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Profile" })).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "nothing-here" } });
+    expect(screen.getByRole("status")).toHaveTextContent("No settings match");
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(search).toHaveValue("");
+    expect(screen.getByRole("link", { name: "Profile" })).toBeInTheDocument();
+  });
+
+  it("leaves placeholder pages out of the menu", () => {
+    renderSidebar("/dashboard/settings/profile");
+    for (const name of ["API Keys", "Webhooks", "Audit Log", "SMS", "AI Settings"]) {
+      expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
+    }
+  });
+});

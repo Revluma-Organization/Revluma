@@ -8,7 +8,11 @@ import { WorkspaceSelection } from '../WorkspaceSelection';
 import { cn } from '@/lib/utils';
 import { useThemeStore } from '@/store/themeStore';
 
-export function Topbar({ section = 'Overview', lightWorkspace = false }: { section?: string; lightWorkspace?: boolean }) {
+export interface Crumb { label: string; to?: string }
+
+export function Topbar({ section = 'Overview', crumbs, lightWorkspace = false }: { section?: string; crumbs?: Crumb[]; lightWorkspace?: boolean }) {
+  // Default trail is Dashboard / <section>; Settings passes Settings / <page>.
+  const trail: Crumb[] = crumbs ?? [{ label: 'Dashboard', to: '/dashboard/overview' }, { label: section }];
   const { mobileSidebarOpen, setMobileSidebarOpen, setCmdOpen, setNotifOpen, notifOpen, startTour } = useUI();
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
 
@@ -38,10 +42,20 @@ export function Topbar({ section = 'Overview', lightWorkspace = false }: { secti
         >
           <Menu className="h-4 w-4 text-t1" />
         </button>
-        <nav data-tour="topbar-breadcrumb" className="flex items-center gap-1.5" aria-label="Breadcrumb">
-          <Link to="/dashboard/overview" className="text-[0.76rem] text-t3 hover:text-t1 transition-colors">Dashboard</Link>
-          <span className="text-[0.76rem] text-t4">/</span>
-          <span className="text-[0.76rem] font-medium text-t1">{section}</span>
+        <nav data-tour="topbar-breadcrumb" aria-label="Breadcrumb" className="min-w-0">
+          <ol className="flex min-w-0 items-center gap-1.5">
+            {trail.map((crumb, index) => {
+              const last = index === trail.length - 1;
+              return (
+                <li key={`${crumb.label}-${index}`} className={cn('flex min-w-0 items-center gap-1.5', !last && index === 0 && trail.length > 2 && 'max-sm:hidden')}>
+                  {index > 0 ? <span aria-hidden="true" className="text-[0.76rem] text-t4">/</span> : null}
+                  {last || !crumb.to
+                    ? <span aria-current={last ? 'page' : undefined} className={cn('truncate text-[0.76rem]', last ? 'font-medium text-t1' : 'text-t3')}>{crumb.label}</span>
+                    : <Link to={crumb.to} className="truncate text-[0.76rem] text-t3 transition-colors hover:text-t1">{crumb.label}</Link>}
+                </li>
+              );
+            })}
+          </ol>
         </nav>
       </div>
 

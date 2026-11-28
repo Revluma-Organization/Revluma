@@ -1,185 +1,125 @@
-import { FC, useState, useEffect } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { FC, useEffect, useState } from "react";
+import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
+import { BILLING_TABS, findSettingsLocation, visibleSettingsNav } from "@/data/settingsNav";
 
-// Groupings based on the user document + image layout logic
-const SIDEBAR_SECTIONS = [
-  {
-    title: "Account",
-    links: [
-      { path: "/dashboard/settings/profile", label: "Profile" },
-      { path: "/dashboard/settings/preferences", label: "Preferences" },
-      { path: "/dashboard/settings/notifications", label: "Notifications" },
-      { path: "/dashboard/settings/active-sessions", label: "Active Sessions" },
-    ]
-  },
-  {
-    title: "Workspace",
-    links: [
-      { path: "/dashboard/settings/organization", label: "Organization" },
-      { path: "/dashboard/settings/team", label: "Team Members" },
-      { path: "/dashboard/settings/roles", label: "Roles & Permissions" },
-      { path: "/dashboard/settings/branding", label: "Branding" },
-    ]
-  },
-  {
-    title: "Billing",
-    links: [
-      { path: "/dashboard/settings/billing", label: "Overview" },
-      { path: "/dashboard/settings/subscription", label: "Subscription" },
-      { path: "/dashboard/settings/payment-methods", label: "Payment Methods" },
-      { path: "/dashboard/settings/invoices", label: "Invoice History" },
-    ]
-  },
-  {
-    title: "Intelligence & Automation",
-    links: [
-      { path: "/dashboard/settings/ai", label: "AI Settings" },
-      { path: "/dashboard/settings/automation", label: "Automation" },
-      { path: "/dashboard/settings/customer-data", label: "Customer Data" },
-      { path: "/dashboard/settings/analytics", label: "Analytics" },
-    ]
-  },
-  {
-    title: "Communication",
-    links: [
-      { path: "/dashboard/settings/communication", label: "Channels" },
-      { path: "/dashboard/settings/email", label: "Email" },
-      { path: "/dashboard/settings/sms", label: "SMS" },
-      { path: "/dashboard/settings/whatsapp", label: "WhatsApp" },
-    ]
-  },
-  {
-    title: "Developers",
-    links: [
-      { path: "/dashboard/settings/api-keys", label: "API Keys" },
-      { path: "/dashboard/settings/webhooks", label: "Webhooks" },
-      { path: "/dashboard/settings/feature-flags", label: "Feature Flags" },
-    ]
-  },
-  {
-    title: "Security & System",
-    links: [
-      { path: "/dashboard/settings/security", label: "Security" },
-      { path: "/dashboard/settings/privacy", label: "Privacy" },
-      { path: "/dashboard/settings/compliance", label: "Compliance" },
-      { path: "/dashboard/settings/domains", label: "Domains" },
-      { path: "/dashboard/settings/backups", label: "Backups" },
-      { path: "/dashboard/settings/audit-log", label: "Audit Log" },
-      { path: "/dashboard/settings/data-export", label: "Data Export" },
-      { path: "/dashboard/settings/danger-zone", label: "Danger Zone" },
-    ]
-  }
-];
-
+/**
+ * Settings content frame. Navigation lives in the app sidebar's Settings mode
+ * (see components/layout/SettingsNav), so this layout is only the content
+ * column: no second sidebar.
+ */
 const SettingsLayout: FC = () => {
   const location = useLocation();
-
-  // Find the initially active section to keep it open
-  const [expanded, setExpanded] = useState<string[]>(() => {
-    const activeSection = SIDEBAR_SECTIONS.find(section =>
-      section.links.some(link => location.pathname.startsWith(link.path))
-    );
-    return activeSection ? [activeSection.title] : [SIDEBAR_SECTIONS[0].title];
-  });
-
-  const toggleSection = (title: string) => {
-    setExpanded(prev =>
-      prev.includes(title)
-        ? prev.filter(t => t !== title)
-        : [...prev, title]
-    );
-  };
+  const reduceMotion = useReducedMotion();
+  const { item } = findSettingsLocation(location.pathname);
+  const showBillingTabs = item?.id === "billing";
 
   return (
-    <div className="flex flex-col md:flex-row gap-8 w-full max-w-[1400px] mx-auto min-h-[80vh]">
-      
-      {/* Sidebar - Scrollable independently on desktop */}
-      <aside className="w-full md:w-64 lg:w-72 flex-shrink-0">
-        <div className="sticky top-6 flex flex-col gap-2 md:h-[calc(100vh-120px)] md:overflow-y-auto pr-2 pb-10 scrollbar-hide">
-          {SIDEBAR_SECTIONS.map((section, idx) => {
-            const isExpanded = expanded.includes(section.title);
-            
-            return (
-              <div key={idx} className="flex flex-col">
-                <button
-                  onClick={() => toggleSection(section.title)}
-                  className="flex items-center justify-between w-full px-3 py-2 text-left group"
-                >
-                  <h4 className="text-[0.65rem] font-bold text-t4 uppercase tracking-[0.11em] group-hover:text-t3 transition-colors">
-                    {section.title}
-                  </h4>
-                  {isExpanded ? (
-                    <ChevronDown className="h-3.5 w-3.5 text-t4 group-hover:text-t3 transition-colors" />
-                  ) : (
-                    <ChevronRight className="h-3.5 w-3.5 text-t4 group-hover:text-t3 transition-colors" />
-                  )}
-                </button>
-                
-                <AnimatePresence initial={false}>
-                  {isExpanded && (
-                    <motion.nav
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.25, ease: [0.04, 0.62, 0.23, 0.98] }}
-                      className="flex flex-col gap-1 overflow-hidden"
-                    >
-                      {section.links.map((link) => {
-                        const isActive = location.pathname.startsWith(link.path);
-                        return (
-                          <NavLink
-                            key={link.path}
-                            to={link.path}
-                            className={cn(
-                              "relative px-3 py-2 text-[0.82rem] font-medium rounded-md transition-colors flex items-center justify-between border",
-                              isActive
-                                ? "text-t1 bg-[hsl(var(--accent)/0.1)] border-[hsl(var(--accent)/0.2)]"
-                                : "text-t2 border-transparent hover:text-t1 hover:bg-glass/[0.065]"
-                            )}
-                          >
-                            {isActive && (
-                              <motion.div
-                                layoutId="settings-active-pill"
-                                className="absolute inset-0 bg-[hsl(var(--accent)/0.05)] rounded-md -z-10"
-                                initial={false}
-                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                              />
-                            )}
-                            <span className="relative z-10 font-semibold">{link.label}</span>
-                            {isActive && (
-                              <span className="absolute left-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-r bg-[hsl(var(--accent))]" />
-                            )}
-                          </NavLink>
-                        );
-                      })}
-                    </motion.nav>
-                  )}
-                </AnimatePresence>
-              </div>
-            );
-          })}
-        </div>
-      </aside>
+    <div className="mx-auto w-full max-w-4xl pb-16">
+      {showBillingTabs ? <BillingTabs pathname={location.pathname} /> : null}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={location.pathname}
+          initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduceMotion ? undefined : { opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          <Outlet />
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+};
 
-      {/* Main Content Area */}
-      <main className="flex-1 w-full pb-20">
-        <div className="max-w-4xl min-h-full md:border-l md:border-border md:pl-8">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.15 }}
-            >
-              <Outlet />
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </main>
+/** One "Billing" menu entry; its four existing pages become tabs. */
+function BillingTabs({ pathname }: { pathname: string }) {
+  return (
+    <nav aria-label="Billing" className="-mx-1 mb-6 overflow-x-auto border-b border-line">
+      <ul className="flex min-w-max gap-1 px-1">
+        {BILLING_TABS.map((tab) => {
+          const active = pathname === tab.to || ("matches" in tab && tab.matches.some((alias) => pathname === alias));
+          return (
+            <li key={tab.to}>
+              <Link
+                to={tab.to}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "relative inline-flex h-10 items-center px-3 text-[13.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded-t-md",
+                  active ? "text-ink" : "text-ink-muted hover:text-ink",
+                )}
+              >
+                {tab.label}
+                {active ? <span aria-hidden="true" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand" /> : null}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+const DESKTOP_QUERY = "(min-width: 768px)";
+
+function useIsDesktop(): boolean {
+  const getMatch = () => typeof window === "undefined" || typeof window.matchMedia !== "function" || window.matchMedia(DESKTOP_QUERY).matches;
+  const [desktop, setDesktop] = useState(getMatch);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(DESKTOP_QUERY);
+    const onChange = () => setDesktop(query.matches);
+    query.addEventListener?.("change", onChange);
+    return () => query.removeEventListener?.("change", onChange);
+  }, []);
+  return desktop;
+}
+
+/**
+ * `/dashboard/settings`: desktop goes straight to Profile (the sidebar already
+ * lists everything). Phones get a grouped, tappable index instead, like iOS
+ * Settings, so the menu isn't hidden behind the drawer.
+ */
+export const SettingsIndex: FC = () => {
+  const desktop = useIsDesktop();
+  const { user } = useAuth();
+  if (desktop) return <Navigate to="profile" replace />;
+  const groups = visibleSettingsNav(user?.role);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">Settings</h1>
+        <p className="mt-1 text-[13.5px] text-ink-muted">Your account and this workspace.</p>
+      </div>
+      {groups.map((group) => (
+        <section key={group.id} aria-labelledby={group.label ? `settings-index-${group.id}` : undefined}>
+          {group.label ? (
+            <h2 id={`settings-index-${group.id}`} className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">{group.label}</h2>
+          ) : null}
+          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-panel">
+            {group.items.map((entry) => {
+              const Icon = entry.icon;
+              const danger = entry.tone === "danger";
+              return (
+                <li key={entry.id}>
+                  <Link to={entry.to} className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors hover:bg-subtle focus-visible:bg-subtle focus-visible:outline-none">
+                    <Icon aria-hidden="true" strokeWidth={1.8} className={cn("h-[18px] w-[18px] shrink-0", danger ? "text-danger" : "text-ink-muted")} />
+                    <span className="min-w-0 flex-1">
+                      <span className={cn("block text-[14px] font-medium", danger ? "text-danger" : "text-ink")}>{entry.label}</span>
+                      <span className="mt-0.5 block truncate text-[12.5px] text-ink-muted">{entry.description}</span>
+                    </span>
+                    <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-ink-faint" />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
     </div>
   );
 };

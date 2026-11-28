@@ -3,6 +3,7 @@ import {
   CreditCard, UserCircle, Download, Search,
 } from "lucide-react";
 import { MVP_NAV } from "@/data/nav";
+import { SETTINGS_NAV } from "@/data/settingsNav";
 import { resolveDashboardRoute } from "./routes";
 import type { PaletteCommand, CommandContext } from "./types";
 
@@ -193,11 +194,33 @@ function buildSettingsCommands(): PaletteCommand[] {
       keywords: ["team", "members", "invite", "staff", "colleagues"],
       aliases: ["staff", "invite member"],
       perform: ({ navigate, close }: CommandContext) => {
-        navigate("/dashboard/settings/team-members");
+        navigate("/dashboard/settings/team");
         close();
       },
     },
   ];
+}
+
+/**
+ * Every settings page in the sidebar's Settings menu, so ⌘K reaches all of
+ * them. Pages already covered by a hand-written intent above are skipped.
+ */
+const HAND_WRITTEN_SETTINGS = new Set(["profile", "billing", "danger-zone", "team"]);
+function buildSettingsPageCommands(): PaletteCommand[] {
+  return SETTINGS_NAV.flatMap((group) => group.items)
+    .filter((item) => !HAND_WRITTEN_SETTINGS.has(item.id))
+    .map((item) => ({
+      id: `settings-page-${item.id}`,
+      title: `${item.label} settings`,
+      description: item.description,
+      category: "settings" as const,
+      icon: item.icon,
+      keywords: ["settings", item.label.toLowerCase(), ...item.keywords],
+      perform: ({ navigate, close }: CommandContext) => {
+        navigate(item.to);
+        close();
+      },
+    }));
 }
 
 export function buildStaticCommands(deps: StaticCommandDeps): PaletteCommand[] {
@@ -205,5 +228,6 @@ export function buildStaticCommands(deps: StaticCommandDeps): PaletteCommand[] {
     ...buildPageCommands(),
     ...buildActionCommands(deps),
     ...buildSettingsCommands(),
+    ...buildSettingsPageCommands(),
   ];
 }
