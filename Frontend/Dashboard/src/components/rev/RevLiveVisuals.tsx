@@ -1,23 +1,25 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 import type { CallActivity } from "@/lib/revLiveCall";
-import callMp4 from "@/assets/rev-orb/rev-orb-call.mp4";
+import { bounceTransform, createOrbMotion, kickOrb, nucleusOffset, stepOrbMotion } from "@/lib/revOrbMotion";
+import { getRevOrbRenderer } from "@/components/rev/revOrbGL";
 import callStill from "@/assets/rev-orb/rev-orb-call.webp";
 
 // Voice visuals for live calls with Rev. Both read audio levels from a ref on
 // animation frames and write styles directly (no React re-render per frame),
 // and both respect prefers-reduced-motion.
 //
-// RevLiveOrb   full-screen call stage built on the Rev Intelligence logo: the
-//              glass plasma orb video (scripts/rev-orb, `call` job), clipped to
-//              a circle so it works on light and dark surfaces.
-//              - Rev speaking: the sphere swells, flares and its plasma runs
-//                faster with Rev's voice.
+// RevLiveOrb   full-screen call stage: the Rev Intelligence plasma orb drawn
+//              live on the GPU (revOrbGL.ts). Nothing to download, and the
+//              shared renderer is prewarmed before the call opens.
+//              - Rev speaking: the orb turns into an amoeba (flowing
+//                pseudopodia, streaming endoplasm, drifting nucleus, vacuoles)
+//                and bounces on his syllables.
 //              - Merchant speaking: cyan ripples expand with their voice.
 //              - Connecting / checking the store / thinking: an orbit arc
-//                sweeps around the sphere and the plasma speeds up.
-//              - Listening: slow breathing. Muted: the plasma dims and slows.
-//              Reduced motion: the still frame, no breathing, orbit or speed-up.
+//                sweeps around the orb and the plasma speeds up.
+//              - Listening: slow breathing. Muted: the plasma greys and slows.
+//              Reduced motion or no WebGL: the still frame, nothing moves.
 // RevLiveBars  compact four-bar meter for the in-chat call bar.
 
 type Levels = React.MutableRefObject<{ input: number; output: number }>;
@@ -32,17 +34,17 @@ const ORB_CSS = `
 }
 `;
 
-// The sphere spans 97% of the frame; clipping just inside it removes the
-// encoded black background and its antialiased edge (same as RevOrbLoader).
+// The still is the orb on black with the sphere spanning 97% of the frame;
+// clipping just inside it removes the black (same as RevOrbLoader).
 const SPHERE_CLIP = "circle(47.5% at 50% 50%)";
+// The GL canvas overhangs the stage so pseudopodia and the halo have room.
+// With ORB_RADIUS 0.69 the resting sphere matches the still's footprint.
+const CANVAS_OVERHANG = "-12%";
+// Zero-byte stand-in for the few milliseconds before the first GPU frame.
+const PLACEHOLDER =
+  "radial-gradient(circle at 50% 50%, #f2f9ff 0%, #9fe0ff 8%, #3f86ef 22%, #163a8f 44%, #13357f 64%, #2f6fd0 82%, #8fd4ff 95%, transparent 96.5%)";
 
-/** Target plasma speed for the current moment (1 = the logo's own pace). */
-function playbackTarget(mode: CallActivity, output: number, waiting: boolean, muted: boolean): number {
-  if (muted) return 0.5;
-  if (waiting) return 1.8;
-  if (mode === "rev") return 1 + Math.min(1, output * 1.6) * 1.4;
-  return 0.9;
-}
+type Surface = "pending" | "gl" | "still";
 
 export function RevLiveOrb({ levelsRef, activity, size = 220, isDark, muted = false, connecting = false }: {
   levelsRef: Levels;
@@ -54,100 +56,119 @@ export function RevLiveOrb({ levelsRef, activity, size = 220, isDark, muted = fa
   /** Call not live yet (starting, connecting, reconnecting). */
   connecting?: boolean;
 }) {
-  const sphereRef = useRef<HTMLDivElement>(null);
-  const flareRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const bounceRef = useRef<HTMLDivElement>(null);
+  const shadowRef = useRef<HTMLDivElement>(null);
   const auraRef = useRef<HTMLDivElement>(null);
   const rippleRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const reduce = useReducedMotion();
+  const reduce = Boolean(useReducedMotion());
+  const [surface, setSurface] = useState<Surface>("pending");
   const waiting = connecting || activity === "checking" || activity === "thinking";
-  const live = useRef({ activity, waiting, muted });
-  live.current = { activity, waiting, muted };
+  const live = useRef({ activity, waiting, muted, isDark });
+  live.current = { activity, waiting, muted, isDark };
 
-  // React sets `muted` as a property only; mobile Safari decides autoplay from
-  // the attribute, so make it explicit. If autoplay is refused, the poster stays.
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = true;
-    video.defaultMuted = true;
-    video.setAttribute("muted", "");
-    try {
-      const playing = video.play();
-      if (playing && typeof playing.catch === "function") playing.catch(() => undefined);
-    } catch {
-      /* media playback unavailable: the poster remains */
+    if (reduce) return;
+    const host = hostRef.current;
+    const renderer = host ? getRevOrbRenderer() : null;
+    if (!host || !renderer) {
+      setSurface("still");
+      return;
     }
-  }, [reduce]);
+    // One shared canvas: its context and compiled program survive between calls.
+    host.appendChild(renderer.canvas);
+    let cssSize = host.clientWidth;
+    const observer = typeof ResizeObserver === "undefined" ? null
+      : new ResizeObserver(([entry]) => { cssSize = entry.contentRect.width; });
+    observer?.observe(host);
 
-  useEffect(() => {
+    const motion = kickOrb(createOrbMotion());
     let raf = 0;
     let last = 0;
-    let lastRateAt = 0;
-    let core = 0;
+    let shown = false;
+    let quality = 1;
+    let samples = 0;
+    let total = 0;
     let voice = 0;
-    let rate = 1;
+    let mutedMix = live.current.muted ? 1 : 0;
+
     const step = (time: number) => {
       raf = requestAnimationFrame(step);
-      if (reduce && time - last < 200) return;
+      const dt = last ? (time - last) / 1000 : 1 / 60;
       last = time;
       const { input, output } = levelsRef.current;
-      const { activity: mode, waiting: busy, muted: silenced } = live.current;
-      const ease = reduce ? 1 : 0.22;
-      core += ((mode === "rev" ? output : 0) - core) * ease;
+      const { activity: mode, waiting: busy, muted: silenced, isDark: dark } = live.current;
+      stepOrbMotion(motion, { dt, now: time, activity: mode, output, waiting: busy, muted: silenced });
+      const ease = 1 - Math.exp(-Math.min(dt, 0.1) * 12);
       voice += ((mode === "user" && !silenced ? input : 0) - voice) * ease;
-      if (!reduce) {
-        if (sphereRef.current) sphereRef.current.style.transform = `scale(${1 + core * 0.12})`;
-        if (flareRef.current) flareRef.current.style.opacity = String(Math.min(0.85, core * 1.5));
-        if (auraRef.current) auraRef.current.style.transform = `scale(${1 + core * 0.28 + voice * 0.18})`;
-        rippleRefs.current.forEach((ripple, index) => {
-          if (!ripple) return;
-          // Capped so the outer ripple stays within ~6% beyond the stage and
-          // never reaches the activity label below it.
-          const spread = Math.min(1, voice * 1.4) * (0.12 + index * 0.08);
-          ripple.style.transform = `scale(${1.02 + spread})`;
-          ripple.style.opacity = String(Math.min(1, voice * (2.4 - index * 0.9)));
-        });
-        // Plasma speed follows the moment. playbackRate is applied in coarse
-        // steps a few times a second: per-frame changes stutter in some browsers.
-        rate += (playbackTarget(mode, output, busy, silenced) - rate) * 0.08;
-        const video = videoRef.current;
-        if (video && time - lastRateAt > 120) {
-          const stepped = Math.round(rate * 10) / 10;
-          if (Math.abs(video.playbackRate - stepped) >= 0.1) video.playbackRate = stepped;
-          lastRateAt = time;
-        }
-      } else if (auraRef.current) {
-        auraRef.current.style.opacity = String(0.7 + Math.min(0.3, (core + voice) * 0.6));
+      mutedMix += ((silenced ? 1 : 0) - mutedMix) * ease * 0.5;
+
+      if (bounceRef.current) bounceRef.current.style.transform = bounceTransform(motion);
+      if (shadowRef.current) {
+        const lift = Math.max(0, motion.bounce);
+        shadowRef.current.style.transform = `scale(${(1 - lift * 2.5).toFixed(3)})`;
+        shadowRef.current.style.opacity = (1 - lift * 5).toFixed(3);
       }
+      if (auraRef.current) auraRef.current.style.transform = `scale(${(1 + motion.energy * 0.25 + voice * 0.18).toFixed(3)})`;
+      rippleRefs.current.forEach((ripple, index) => {
+        if (!ripple) return;
+        // Capped so the outer ripple stays clear of the activity label below.
+        const spread = Math.min(1, voice * 1.4) * (0.12 + index * 0.08);
+        ripple.style.transform = `scale(${1.02 + spread})`;
+        ripple.style.opacity = String(Math.min(1, voice * (2.4 - index * 0.9)));
+      });
+
+      if (renderer.lost()) {
+        if (shown) { shown = false; setSurface("still"); }
+        return;
+      }
+      if (!renderer.ready()) return; // still linking in parallel: placeholder stays up
+
+      // Adaptive resolution: if frames run slow, render fewer pixels (never below half).
+      if (dt < 0.25) { total += dt; samples += 1; }
+      if (samples === 45) {
+        if (total / samples > 0.024 && quality > 0.55) quality = Math.max(0.5, quality * 0.8);
+        total = 0;
+        samples = 0;
+      }
+      renderer.resize(cssSize || host.clientWidth, Math.min(window.devicePixelRatio || 1, 2) * quality);
+      const drawn = renderer.draw({
+        phase: motion.phase, amoeba: motion.amoeba, energy: motion.energy, muted: mutedMix,
+        glow: dark ? 0.55 : 0.4, nucleus: nucleusOffset(motion),
+      });
+      if (drawn && !shown) { shown = true; setSurface("gl"); }
     };
     raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      observer?.disconnect();
+      if (renderer.canvas.parentNode === host) host.removeChild(renderer.canvas);
+    };
   }, [levelsRef, reduce]);
 
+  const shownSurface: Surface = reduce ? "still" : surface;
   const length = typeof size === "number" ? `${size}px` : size;
-  const glow = isDark ? "rgba(79,168,255,0.55)" : "rgba(26,79,230,0.30)";
+  const glow = isDark ? "rgba(79,168,255,0.50)" : "rgba(26,79,230,0.26)";
   const rippleColor = isDark ? "rgba(146,220,255,0.70)" : "rgba(26,79,230,0.42)";
-  const media: React.CSSProperties = {
-    position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
-    clipPath: SPHERE_CLIP, WebkitClipPath: SPHERE_CLIP, pointerEvents: "none",
-    filter: muted ? "grayscale(0.85) brightness(0.75)" : undefined, transition: "filter 260ms ease",
-  };
 
   return (
     <div aria-hidden="true" data-rev-live-orb={activity} data-rev-live-orb-waiting={waiting ? "" : undefined}
-      className="relative" style={{ width: length, height: length }}>
+      data-rev-orb-surface={shownSurface} className="relative" style={{ width: length, height: length }}>
       <style>{ORB_CSS}</style>
-      {/* Aura: the orb's own cyan-blue light spilling onto the page. */}
+      {/* Aura: the orb's own light spilling onto the page. */}
       <div ref={auraRef} className="absolute -inset-[14%] rounded-full"
         style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 62%)`, filter: "blur(22px)",
           opacity: muted ? 0.35 : 1, transition: "opacity 300ms ease" }} />
+      {/* Ground shadow: shrinks and fades as the orb hops. */}
+      <div ref={shadowRef} className="absolute left-[24%] right-[24%] -bottom-[3%] h-[9%]" style={{
+        background: `radial-gradient(closest-side, ${isDark ? "rgba(79,168,255,0.28)" : "rgba(26,79,230,0.30)"}, transparent)`,
+        filter: "blur(4px)" }} />
       {/* Merchant voice: two ripples, the outer one lagging behind. */}
       {[0, 1].map((index) => (
         <div key={index} ref={(node) => { rippleRefs.current[index] = node; }} data-rev-live-ripple=""
           className="absolute inset-[4%] rounded-full" style={{ border: `${index ? 1 : 2}px solid ${rippleColor}`, opacity: 0 }} />
       ))}
-      {/* Waiting: an orbit arc sweeps around the sphere. */}
+      {/* Waiting: an orbit arc sweeps around the orb. */}
       <div data-rev-live-orbit="" className={`absolute inset-[1%] rounded-full ${waiting ? "rv-orb-orbit" : ""}`}
         style={{
           background: `conic-gradient(from 0deg, transparent 0deg, transparent 250deg, ${isDark ? "rgba(146,220,255,0.95)" : "rgba(26,79,230,0.85)"} 350deg, transparent 360deg)`,
@@ -155,23 +176,18 @@ export function RevLiveOrb({ levelsRef, activity, size = 220, isDark, muted = fa
           mask: "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px))",
           opacity: waiting ? 1 : 0, transition: "opacity 300ms ease",
         }} />
-      <div className={`absolute inset-[5%] ${activity === "listening" && !muted && !waiting ? "rv-orb-breathe" : ""}`}>
-        <div ref={sphereRef} className="absolute inset-0" style={{ willChange: reduce ? undefined : "transform" }}>
-          {/* Grounding shadow for light surfaces (clip-path would cut a box-shadow). */}
-          <div className="absolute inset-[3%] rounded-full" style={{
-            boxShadow: isDark ? "0 0 60px -6px rgba(79,168,255,0.45)" : "0 28px 60px -22px rgba(26,79,230,0.55), 0 0 0 1px rgba(26,79,230,0.06)" }} />
-          {reduce ? (
-            <img src={callStill} alt="" draggable={false} data-rev-orb="still" style={media} />
-          ) : (
-            <video ref={videoRef} autoPlay muted loop playsInline preload="auto" poster={callStill}
-              tabIndex={-1} disablePictureInPicture data-rev-orb="call-video" style={media}>
-              <source src={callMp4} type="video/mp4" />
-            </video>
-          )}
-          {/* Rev's voice flares the core. */}
-          <div ref={flareRef} className="absolute inset-[2.5%] rounded-full" style={{
-            background: "radial-gradient(circle at 50% 50%, rgba(214,240,255,0.75) 0%, rgba(111,208,255,0.35) 28%, transparent 62%)",
-            opacity: 0, pointerEvents: "none" }} />
+      <div className={`absolute inset-0 ${activity === "listening" && !muted && !waiting ? "rv-orb-breathe" : ""}`}>
+        <div ref={bounceRef} data-rev-orb-bounce="" className="absolute inset-0"
+          style={{ willChange: reduce ? undefined : "transform", transformOrigin: "50% 100%" }}>
+          {shownSurface === "still" ? (
+            <img src={callStill} alt="" draggable={false} data-rev-orb="still" decoding="async"
+              className="absolute inset-[5%] h-[90%] w-[90%] object-cover"
+              style={{ clipPath: SPHERE_CLIP, WebkitClipPath: SPHERE_CLIP, pointerEvents: "none",
+                filter: muted ? "grayscale(0.85) brightness(0.75)" : undefined }} />
+          ) : shownSurface === "pending" ? (
+            <div data-rev-orb="placeholder" className="absolute inset-[7.2%] rounded-full" style={{ background: PLACEHOLDER }} />
+          ) : null}
+          {!reduce && <div ref={hostRef} data-rev-orb-host="" className="absolute" style={{ inset: CANVAS_OVERHANG }} />}
         </div>
       </div>
     </div>
